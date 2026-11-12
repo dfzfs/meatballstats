@@ -153,8 +153,16 @@ export const DEFAULT_STAGES = [
     { name: '친구', at: 25, trust: 10, unlock: '말 편하게 하기 · 사적인 연락' },
     { name: '가까운 사이', at: 45, trust: 25, unlock: '고민 털어놓기 · 단둘이 약속' },
     { name: '특별한 사이', at: 65, trust: 40, unlock: '애칭 · 질투 · 스킨십 조금' },
-    { name: '연인', at: 85, trust: 55, unlock: '고백 이후 · 연인다운 행동' },
+    { name: '연인', at: 85, trust: 55, unlock: '고백 이후 · 연인다운 행동', love: true },
 ];
+// 💞 연인 단계: 직접 표시한 단계 → 없으면 이름으로 짐작 (연인·애인·커플·lover…) → 없으면 -1 (우정·신뢰 단계뿐인 세계관)
+const LOVE_RE = /연인|애인|커플|부부|약혼|사랑하는|lover|couple|sweetheart|romanc|spouse|married|engaged/i;
+export function loveIndex(st) {
+    if (!Array.isArray(st)) return -1;
+    const k = st.findIndex(x => x?.love === true);
+    if (k >= 0) return k;
+    return st.findIndex(x => x?.love !== false && LOVE_RE.test(String(x?.name ?? '')));
+}
 export const MOD = Object.fromEntries(MODS.map(m => [m.id, m]));
 export const MOD_IDS = MODS.map(m => m.id);
 
@@ -441,7 +449,7 @@ export const NORM = {
         trash: arr(d.trash).filter(t => t?.name).map(t => ({ name: str(t.name), date: str(t.date) })).slice(-20),
     }),
     rel: (d) => {
-        const stages = arr(d.stages).filter(x => x?.name).map(x => ({ name: str(x.name), at: clamp(Math.round(num(x.at, 0)), -100, 100), trust: clamp(Math.round(num(x.trust, -100)), -100, 100), unlock: str(x.unlock) })).sort((a, b) => a.at - b.at);
+        const stages = arr(d.stages).filter(x => x?.name).map(x => ({ name: str(x.name), at: clamp(Math.round(num(x.at, 0)), -100, 100), trust: clamp(Math.round(num(x.trust, -100)), -100, 100), unlock: str(x.unlock), ...(x.love === true || x.love === 'true' ? { love: true } : x.love === false || x.love === 'false' ? { love: false } : {}) })).sort((a, b) => a.at - b.at);
         return {
             user: arr(d.user).filter(r => r?.name).map(r => ({ name: str(r.name), label: str(r.label), aff: clamp(Math.round(num(r.aff, 0)), -100, 100), trust: clamp(Math.round(num(r.trust, 0)), -100, 100), memo: str(r.memo), stage: Number.isFinite(Number(r.stage)) && r.stage !== null && r.stage !== '' ? Math.round(Number(r.stage)) : -1, jealous: clamp(Math.round(num(r.jealous, 0)), 0, 100), met: str(r.met), bond: r.bond === true || r.bond === 'true', likes: str(r.likes), dislikes: str(r.dislikes), concern: str(r.concern) })),
             pairs: arr(d.pairs).filter(p => p?.a && p?.b).map(p => ({ a: str(p.a), b: str(p.b), label: str(p.label), memo: str(p.memo) })),
@@ -645,7 +653,7 @@ export const EDIT = {
     rel: [
         { k: 'user', label: '{{user}}와의 관계', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'aff', label: '호감', type: 'num' }, { k: 'trust', label: '신뢰', type: 'num' }, { k: 'jealous', label: '질투 (0~100)', type: 'num' }, { k: 'met', label: '처음 만난 날', type: 'text' }, { k: 'memo', label: '메모', type: 'area' }, { k: 'likes', label: '끌리는 것 (로맨스 보정)', type: 'text' }, { k: 'dislikes', label: '싫어하는 것 (로맨스 보정)', type: 'text' }, { k: 'concern', label: '요즘 신경 쓰는 것 (로맨스 보정)', type: 'text' }] },
         { k: 'pairs', label: '인물끼리의 관계', type: 'list', title: 'a', fields: [{ k: 'a', label: 'A', type: 'text' }, { k: 'b', label: 'B', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'memo', label: '메모', type: 'text' }] },
-        { k: 'stages', label: '관계 단계 (호감·신뢰가 넘으면 해금)', type: 'list', title: 'name', fields: [{ k: 'name', label: '단계 이름', type: 'text' }, { k: 'at', label: '필요한 호감', type: 'num' }, { k: 'trust', label: '필요한 신뢰', type: 'num' }, { k: 'unlock', label: '해금되는 것 (호칭·말투·행동)', type: 'text' }] },
+        { k: 'stages', label: '관계 단계 (호감·신뢰가 넘으면 해금)', type: 'list', title: 'name', fields: [{ k: 'name', label: '단계 이름', type: 'text' }, { k: 'at', label: '필요한 호감', type: 'num' }, { k: 'trust', label: '필요한 신뢰', type: 'num' }, { k: 'unlock', label: '해금되는 것 (호칭·말투·행동)', type: 'text' }, { k: 'love', label: '💞 연인 단계 (로맨스 보정 ①: 고백 후 💍 확정이 있어야 올라감)', type: 'bool' }] },
         { k: 'life', label: '화면 밖 소식', type: 'list', title: 'who', fields: [{ k: 'who', label: '누가', type: 'text' }, { k: 'text', label: '한 일', type: 'text' }, { k: 'date', label: '날짜', type: 'text' }] },
     ],
     map: [

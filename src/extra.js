@@ -1,5 +1,6 @@
 // v2.5 화면: SNS · 추천 음악 · 내 탭 · 추억 앨범 · 플레이 기록 · 검색 · 속마음 · 엔딩 · 모델 맞춤 설정
 import { app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, esc, short, clone, clamp, num, fmtNum, signed, uid, findBy, norm, stamp, userName, TITLE, LOG, MOD, dayIndex, msgText, DEFAULT_STAGES } from './core.js';
+import { loveIndex } from './core.js';
 import { addAdjust, commit, stageIndex, stripStatus } from './engine.js';
 import { newSns, snsReactions, musicPicks, peekMind, fillWants } from './ai.js';
 import { sec, emptyBox, chip, avatar, ai1, seg, gauge, meter, askInput, askConfirm, busyBtn, insertInput, closeIfPopup, mascot } from './kit.js';
@@ -123,17 +124,19 @@ export function relView(s, d, ui) {
     const st = stagesOf(d);
     const set = settings();
     const left = peekLeft(s);
+    const L = loveIndex(st);
     const card = (r) => {
         const k = clamp(r.stage ?? stageIndex(st, r.aff, r.trust), 0, st.length - 1);
         const g = st[k], nx = st[k + 1];
         const need = nx ? [r.aff < nx.at ? `호감 ${nx.at - r.aff}` : '', r.trust < nx.trust ? `신뢰 ${nx.trust - r.trust}` : ''].filter(Boolean).join(' · ') : '';
-        return `<div class="ss-card ss-relc"><div class="ss-relc-h">${avatar(r.name)}<div class="ss-ct-b"><b>${esc(r.name)} <span class="ss-stage s${k}">${esc(g.name)}</span></b>${r.label ? `<small>${esc(r.label)}</small>` : ''}</div>
+        return `<div class="ss-card ss-relc"><div class="ss-relc-h">${avatar(r.name)}<div class="ss-ct-b"><b>${esc(r.name)} <span class="ss-stage s${k}">${esc(g.name)}</span>${set.romBond && r.bond && k < (L < 0 ? Infinity : L) ? ' <span class="ss-stage love">💞 연인</span>' : ''}</b>${r.label ? `<small>${esc(r.label)}</small>` : ''}</div>
             <button class="ss-ib" data-act="peek" data-arg="${esc(r.name)}" title="속마음 엿보기 (AI 1회${set.peekPerDay ? ` · 오늘 ${left}번 남음` : ''})" ${set.peekPerDay && left <= 0 ? 'disabled' : ''}><i class="fa-solid fa-heart-circle-question"></i></button>
             ${modOn('contact') ? `<button class="ss-ib" data-act="talk" data-arg="${esc(r.name)}" title="연락"><i class="fa-solid fa-envelope"></i></button>` : ''}</div>
             ${meter('호감', r.aff, 'love')}${meter('신뢰', r.trust, 'trust')}${set.jealousy && r.jealous ? `<div class="ss-meter jealous"><span>질투</span><div class="ss-meter-t"><b style="left:0;width:${r.jealous}%"></b></div><em>${r.jealous}</em></div>` : ''}
             ${g.unlock ? `<p class="ss-unlock"><i class="fa-solid fa-lock-open"></i> ${esc(g.unlock)}</p>` : ''}
-            ${nx ? `<p class="ss-hint">${r.bondReady && k === st.length - 2 ? `「${esc(nx.name)}」 조건은 채웠어요 — 고백이 오가야 넘어가요` : `다음 「${esc(nx.name)}」까지 ${need || '조금만 더'}`}${nx.unlock ? ` → ${esc(nx.unlock)}` : ''}</p>` : '<p class="ss-hint">가장 높은 단계예요 💞</p>'}
-            ${set.romBond ? (r.bond ? `<div class="ss-row-btns"><span class="ss-dim">💍 연인 확정됨</span><button class="ss-btn sm" data-act="unbond" data-arg="${esc(r.name)}" title="확정 취소 (단계가 숫자대로 돌아가요)"><i class="fa-solid fa-heart-crack"></i> 확정 취소</button></div>` : `<div class="ss-row-btns"><button class="ss-btn sm${r.bondAsk || r.bondReady ? ' pri' : ''}" data-act="bond" data-arg="${esc(r.name)}" title="고백이 오갔으면 눌러 주세요"><i class="fa-solid fa-ring"></i> 연인 확정${r.bondAsk ? ' · AI가 고백을 감지했어요' : ''}</button></div>`) : ''}
+            ${nx ? `<p class="ss-hint">${r.bondReady && k + 1 === L ? `「${esc(nx.name)}」 조건은 채웠어요 — 고백 후 💍 확정해야 넘어가요` : `다음 「${esc(nx.name)}」까지 ${need || '조금만 더'}`}${nx.unlock ? ` → ${esc(nx.unlock)}` : ''}</p>` : '<p class="ss-hint">가장 높은 단계예요 💞</p>'}
+            ${!set.romBond ? '' : r.bond ? `<div class="ss-bondrow"><span>💍 연인 확정됨</span><button class="ss-btn sm ghost" data-act="unbond" data-arg="${esc(r.name)}" title="확정 취소 (단계가 숫자대로 돌아가요)">확정 취소</button></div>`
+                : r.bondAsk || r.bondReady ? `<div class="ss-row-btns"><button class="ss-btn sm pri" data-act="bond" data-arg="${esc(r.name)}" title="고백이 오갔으면 눌러 주세요"><i class="fa-solid fa-ring"></i> 연인 확정${r.bondAsk ? ' · 고백이 감지됐어요' : ' · 조건 충족'}</button></div>` : ''}
             ${set.romDrive && (r.likes || r.dislikes || r.concern) ? `<div class="ss-wants">${[r.likes && `<span class="like" title="끌리는 것"><i class="fa-solid fa-heart"></i>${esc(r.likes)}</span>`, r.dislikes && `<span class="hate" title="싫어하는 것"><i class="fa-solid fa-ban"></i>${esc(r.dislikes)}</span>`, r.concern && `<span class="mind" title="요즘 신경 쓰는 것"><i class="fa-solid fa-cloud"></i>${esc(r.concern)}</span>`].filter(Boolean).join('')}</div>` : ''}
             ${r.memo ? `<p class="ss-dim ss-pre">${esc(r.memo)}</p>` : ''}</div>`;
     };
@@ -142,7 +145,7 @@ export function relView(s, d, ui) {
     return `${romBar}<div class="ss-stack">${d.user.map(card).join('') || emptyBox('관계가 없어요', 'fa-people-arrows')}</div>
         ${life.length ? sec('🌙 화면 밖 소식', `<div class="ss-stack">${life.map(x => `<div class="ss-ev"><b>${esc(x.who)}</b><small>${esc(x.text)}${x.date ? ` · ${esc(x.date)}` : ''}</small></div>`).join('')}</div>`) : ''}
         ${d.pairs.length ? sec('인물끼리', `<div class="ss-pairs">${d.pairs.map(p => `<div><b>${esc(p.a)}</b><i class="fa-solid fa-arrows-left-right"></i><b>${esc(p.b)}</b>${chip(esc(p.label))}${p.memo ? `<small>${esc(p.memo)}</small>` : ''}</div>`).join('')}</div>`) : ''}
-        <details class="ss-more"><summary>관계 단계 ${st.length}개</summary><ol class="ss-stages">${st.map(x => `<li><b>${esc(x.name)}</b> <small>호감 ${x.at}+${x.trust > -100 ? ` · 신뢰 ${x.trust}+` : ''}${x.unlock ? ` — ${esc(x.unlock)}` : ''}</small></li>`).join('')}</ol><p class="ss-hint">편집이나 AI로 수정에서 세계관에 맞게 바꿀 수 있어요.</p></details>`;
+        <details class="ss-more"><summary>관계 단계 ${st.length}개</summary><ol class="ss-stages">${st.map((x, i) => `<li><b>${i === L ? '💞 ' : ''}${esc(x.name)}</b> <small>호감 ${x.at}+${x.trust > -100 ? ` · 신뢰 ${x.trust}+` : ''}${x.unlock ? ` — ${esc(x.unlock)}` : ''}</small></li>`).join('')}</ol><p class="ss-hint">${L >= 0 ? `💞 표시가 <b>연인 단계</b>예요${set.romBond ? ' — 숫자만으론 안 올라가고, 고백 후 💍 확정해야 올라가요' : ''}.` : '이 세계관의 단계엔 <b>연인 단계가 없어요</b> (우정·신뢰 단계). 고백 후 💍 확정하면 단계와 따로 「💞 연인」으로 표시돼요.'} 연인 단계를 바꾸려면 ✏️ 편집 › 관계 단계에서 「💞 연인 단계」를 체크하세요.</p></details>`;
 }
 function peekLeft(s) {
     const per = Number(settings().peekPerDay) || 0;

@@ -1088,3 +1088,8 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-wants .like i { color: var(--ss-love); }
 .ss-wants .hate i { color: var(--ss-neg); }
 .ss-wants .mind i { color: var(--ss-trust); }
+
+/* ── v2.6.1: 연인 표시 ── */
+.ss-stage.love { background: color-mix(in srgb, var(--ss-love) 16%, transparent); color: var(--ss-love); border-color: color-mix(in srgb, var(--ss-love) 40%, transparent); }
+.ss-bondrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: .88em; color: var(--ss-dim); }
+.ss-bondrow .ss-btn { padding: 2px 10px; font-size: .9em; }

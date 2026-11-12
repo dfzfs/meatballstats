@@ -116,6 +116,7 @@ async function askBond(who) {
     } catch (e) { console.error(LOG, 'askBond', e); } finally { bondAsking = false; }
 }
 app.askBond = askBond;
+app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
@@ -124,7 +125,9 @@ const CHANGELOG = [
         ['🔔 한국어로 저장된 칸 알림', '「화면만 번역」인데 한국어로 저장된 칸이 남아 있으면 채팅을 열 때 알려 줘요. 알림을 누르거나 「상태창 전체 번역」을 누르면 바로 영어 저장으로 바뀌어요.'],
         ['💗 관계 사실: 앞 단계 행동이 섞이던 문제', '④가 이전 단계(예: 「차갑고 적대적」)의 행동까지 이어 붙여 보내던 것을 고쳤어요. 이제 지금 단계의 모습만 보내요.'],
         ['💍 연인 확정이 풀리던 문제', '편집 창을 확정 전에 열어 두고 저장하면 확정이 풀리던 것을 고쳤어요. 확정은 관계 탭 버튼으로만 해요. 풀린 채팅은 「💍 연인 확정」을 한 번 다시 눌러 주세요.'],
-        ['📣 업데이트 알림', '같은 버전 안에서 내용이 바뀌어도 다시 알려 주고, 창이 제대로 떴을 때만 「봤음」으로 처리해요.'],
+        ['💞 연인 표시가 분명해졌어요', '연인 단계는 💞로 표시돼요. 우정·신뢰 단계뿐인 세계관에선 고백 후 💍 확정하면 단계 옆에 「💞 연인」이 따로 붙고, AI에게도 연인이라고 알려 줘요. 편집 › 관계 단계에서 「💞 연인 단계」를 직접 고를 수도 있어요.'],
+        ['💍 연인 확정 버튼은 필요할 때만', '고백이 감지됐거나 연인 단계 조건을 채운 사람에게만 떠요.'],
+        ['📣 업데이트 알림', '화면을 막는 창 대신 팝업 알림 한 장으로 떠요. 누르면 자세히 볼 수 있어요.'],
     ] },
     { v: '2.6.0', title: '로맨스 보정 · 화면만 번역 · 업데이트 알림', items: [
         ['💗 로맨스 보정 (전부 선택 · 기본 꺼짐)', '확장 설정 › 로맨스 보정. 연인은 고백으로만(확정 창이 떠요) · 한 번에 확 못 오르게 · 연달아 꼬시면 덜 오르게 · 관계를 사실로 알려 주기 · 인물의 욕구 · 의도 먼저 · 내 추가 주입문. 「추천 세트 켜기」 버튼 하나로 시작할 수 있어요.'],
@@ -160,9 +163,15 @@ function whatsNewOnLoad(fresh) {
     const done = () => { s.lastSeenVersion = VERSION; s.lastSeenNote = key; saveSettings(); };
     if (fresh || s.updateNotice === false) { done(); return; } // 처음 설치 · 알림 끔
     const sameVer = s.lastSeenVersion === VERSION; // 버전은 같은데 내역만 바뀜 → 맨 위 내역만
-    setTimeout(async () => {
-        try { await showWhatsNew(false, sameVer); done(); } // 창이 제대로 떴을 때만 「봤음」
-        catch (e) { console.error(LOG, 'whatsnew', e); }
+    const list = sameVer ? CHANGELOG.slice(0, 1) : CHANGELOG.filter(c => !s.lastSeenVersion || verGt(c.v, s.lastSeenVersion));
+    const heads = list.flatMap(c => c.items.map(([h]) => h.replace(/^\S+\s/u, ''))).slice(0, 4).join(' · ');
+    setTimeout(() => {
+        try {
+            // 팝업 알림 한 장 (누르면 「바뀐 점」 자세히) — 화면을 막는 창은 띄우지 않는다
+            if (settings().toastMode === 'popup') notify({ kind: 'update', icon: '📣', title: `미트볼 상태창 v${VERSION} 업데이트`, text: `${heads} — 눌러서 자세히` }, { save: false });
+            else toastr.info(`📣 v${esc(VERSION)} 업데이트: ${esc(heads)}<br><small>눌러서 자세히</small>`, TITLE, { timeOut: 12000, onclick: () => showWhatsNew(false, sameVer) });
+            done();
+        } catch (e) { console.error(LOG, 'whatsnew', e); }
     }, 2000);
 }
 app.notifyLatest = notifyLatest;

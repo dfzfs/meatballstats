@@ -19,6 +19,7 @@ const GUESS = [
 // 어떤 알림에 어떤 고양이 표정을 쓸지
 function moodOf(n) {
     if (n.kind === 'ending' || n.kind === 'stage') return 'party';
+    if (n.kind === 'update') return 'happy';
     if (n.kind === 'day') return 'idle';
     if (n.kind !== 'text') return '';
     if (n.icon === '🏆' || /^퀘스트 완료/.test(n.title)) return 'happy';
@@ -99,7 +100,8 @@ function box() {
 function toastHTML(n) {
     const extra = n.kind === 'music' && n.song ? `<a class="ss-t-play" href="${esc(songLink(n.song))}" target="_blank" rel="noopener" data-stop="1" title="검색해서 듣기"><i class="fa-solid fa-play"></i></a>`
         : n.kind === 'ending' ? `<button class="ss-t-btn" data-ending="${esc(n.ending)}">엔딩 쓰기</button>`
-            : n.kind === 'day' ? '<button class="ss-t-btn" data-open="record">자세히</button>' : '';
+            : n.kind === 'day' ? '<button class="ss-t-btn" data-open="record">자세히</button>'
+                : n.kind === 'update' ? '<button class="ss-t-btn" data-whatsnew="1">자세히</button>' : '';
     const mood = settings().showMascot === false ? '' : moodOf(n);
     return `<div class="ss-t-ico ${mood ? 'cat' : ''}">${mood ? `<img src="${mascotUrl(mood)}" alt="">` : esc(n.icon)}</div><div class="ss-t-b"><b>${esc(n.title)}</b>${n.text ? `<small>${esc(n.text)}</small>` : ''}</div>${extra}<button class="ss-t-x" data-x="1" title="닫기">×</button>`;
 }
@@ -112,7 +114,7 @@ export function showToast(n) {
     el.innerHTML = toastHTML(n);
     b.appendChild(el);
     requestAnimationFrame(() => el.classList.add('in'));
-    const life = Math.max(2, Number(settings().toastSec) || 4) * 1000 * (n.kind === 'day' || n.kind === 'ending' ? 1.6 : 1);
+    const life = Math.max(2, Number(settings().toastSec) || 4) * 1000 * (n.kind === 'update' ? 3 : n.kind === 'day' || n.kind === 'ending' ? 1.6 : 1);
     let timer = setTimeout(() => close(), life);
     const close = () => {
         clearTimeout(timer);
@@ -130,6 +132,7 @@ export function showToast(n) {
         if (e.target.closest('[data-stop]')) { setTimeout(close, 300); return; }
         e.preventDefault();
         if (e.target.closest('[data-x]')) return close();
+        if (n.kind === 'update') { close(); app.showWhatsNew?.(); return; } // 업데이트 알림: 누르면 바뀐 점 자세히
         const en = e.target.closest('[data-ending]');
         if (en) { app.writeEnding?.(en.dataset.ending); return close(); }
         const tab = e.target.closest('[data-open]')?.dataset.open ?? n.tab;

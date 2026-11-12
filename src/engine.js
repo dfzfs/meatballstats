@@ -2,7 +2,7 @@
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
     signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, trBack, viewTr, weekday,
-    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser,
+    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser,
 } from './core.js';
 import { P } from './prompts.js';
 
@@ -386,13 +386,14 @@ export function stageIndex(stages, aff, trust) {
 // ───── 로맨스 보정 (v2.6) — 설정에서 켠 뒤의 메시지에만 적용 (meta.romFrom) ─────
 const romLive = (s) => s.romActive === true;
 // 맨 위 단계(보통 「연인」)는 숫자만으론 못 감 — 「연인 확정」(r.bond)이 있어야. 확정이면 숫자와 상관없이 맨 위.
+// 💞 연인 단계(loveIndex)만 막는다. 연인 단계가 없는 세계관(우정·신뢰 단계뿐)이면 단계는 숫자대로 — 연인 확정은 따로 표시만.
 function bondCap(s, st, want, r) {
     if (!settings().romBond || !romLive(s)) return want;
-    const top = st.length - 1;
-    if (top < 1) return want;
-    if (r.bond) return top;
-    if (want < top || r.stage === top) return want; // 켜기 전에 이미 맨 위였던 사람은 그대로
-    return top - 1;
+    const L = loveIndex(st);
+    if (L < 1) return want;
+    if (r.bond) return Math.max(want, L);
+    if (want < L || (r.stage ?? -1) >= L) return want; // 켜기 전에 이미 연인 단계였던 사람은 그대로
+    return L - 1;
 }
 // AI 답 1번에 오를 수 있는 호감·신뢰 상한 + 연달아 오르면 점점 덜 오르게
 function romGain(s, info, name, key, gain) {
@@ -1536,7 +1537,13 @@ function romanceBlock(r) {
                 const allowed = g.unlock || ''; // 지금 단계의 모습만 (세계관마다 단계 설명이 「그 단계 전체 모습」이라, 앞 단계의 「차갑고 적대적」이 섞이면 안 됨)
                 L.push(P('inj.rom.facts', {
                     who: x.name, stage: g.name,
-                    reached: k === top ? `They have reached the highest stage 「${g.name}」.` : `They have NOT reached 「${st[top].name}」${set.romBond ? ' — no confession has been made and accepted' : ''}.`,
+                    reached: (() => {
+                        const L = loveIndex(st);
+                        if (set.romBond && x.bond) return 'They ARE lovers: a confession was made and accepted (confirmed by the user).';
+                        if (L >= 0 && k >= L) return `They have reached 「${st[L].name}」.`;
+                        if (set.romBond) return `They are NOT lovers${L >= 0 ? ` (「${st[L].name}」 not reached)` : ''} — no confession has been made and accepted.`;
+                        return '';
+                    })(),
                     allowed: allowed || 'only what people at this distance would do',
                     next: nx ? `「${nx.name}」${nx.unlock ? ` (${nx.unlock})` : ''}` : 'nothing — they are at the top',
                 }));
@@ -1638,7 +1645,7 @@ function buildInjection0(r, opt = {}) {
         const rl = d.rel;
         const here = rl.user.filter(x => inScene(x.name)), away = rl.user.filter(x => !inScene(x.name));
         const W = viewTr() ? { aff: 'affection', trust: 'trust', stage: 'stage', jealous: 'jealousy' } : { aff: '호감', trust: '신뢰', stage: '단계', jealous: '질투' }; // 화면만 번역: 고정 낱말도 영어로
-        for (const x of here.slice(0, 12)) { const g = stageOf(rl, x); PP.push(`${x.name}${x.label ? ` [${x.label}]` : ''} → {{user}}: ${W.aff} ${x.aff} · ${W.trust} ${x.trust} · ${W.stage} 「${g.name}」${g.unlock && !lite ? ` (unlocked: ${short(g.unlock, 60)}${set.stageLock && !set.romFacts ? " — don't act beyond this stage yet" : ''})` : set.stageLock && !set.romFacts ? ' (stay within this stage)' : ''}${x.jealous >= 30 ? ` · ${W.jealous} ${x.jealous}/100 (show it subtly when they meet)` : ''}${x.memo && !lite ? ` — ${short(x.memo, 90)}` : ''}`); }
+        for (const x of here.slice(0, 12)) { const g = stageOf(rl, x); PP.push(`${x.name}${x.label ? ` [${x.label}]` : ''} → {{user}}: ${W.aff} ${x.aff} · ${W.trust} ${x.trust} · ${W.stage} 「${g.name}」${set.romBond && x.bond ? ' · 💞 lovers (confirmed)' : ''}${g.unlock && !lite ? ` (unlocked: ${short(g.unlock, 60)}${set.stageLock && !set.romFacts ? " — don't act beyond this stage yet" : ''})` : set.stageLock && !set.romFacts ? ' (stay within this stage)' : ''}${x.jealous >= 30 ? ` · ${W.jealous} ${x.jealous}/100 (show it subtly when they meet)` : ''}${x.memo && !lite ? ` — ${short(x.memo, 90)}` : ''}`); }
         if (away.length) PP.push(`Not in this scene (${W.aff}/${W.trust}): ${away.slice(0, 15).map(x => `${x.name} ${x.aff}/${x.trust}`).join(', ')}`);
         const pairs = rl.pairs.filter(p => inScene(p.a) || inScene(p.b));
         if (pairs.length && !lite) PP.push(`Between others: ${pairs.slice(0, 10).map(p => `${p.a}↔${p.b} ${p.label}`).join(' · ')}`);
