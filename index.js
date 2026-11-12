@@ -7,7 +7,8 @@ import { listProfiles } from './src/prompts.js';
 import { diffHTML, confirmPopup, applyTheme, askInput, mascot, popup } from './src/kit.js';
 import { ensureUI, rerenderPanels, openSheet, openWizard, openRoll, openPromptWindow, openThemeWindow, panels, renderHud } from './src/shell.js';
 import { receivePing } from './src/contact.js';
-import { translateSheet, startViewTr, translateView } from './src/translate.js';
+import { translateSheet, startViewTr, translateView, convertToEnglish } from './src/translate.js';
+import { openHelp } from './src/help.js';
 import { notify } from './src/notify.js';
 import { offerCard, followBranch, saveSlot, fullBackup, diagnose } from './src/safe.js';
 import { starred, toggleStar, PRESETS, applyPreset } from './src/extra.js';
@@ -121,6 +122,9 @@ const CHANGELOG = [
         ['🌐 영어로 저장 · 화면만 번역', '상태창 생성 언어의 새 선택지. 상태창은 영어로 저장되어 AI에게도 영어로 가고, 화면에서만 번역돼 보여요.'],
         ['🆓 실리 기본 번역', '번역 담당을 「실리 기본 번역」(Chat Translation의 Google·DeepL 등)으로 바꾸면 토큰 없이 번역해요.'],
         ['📝 번역 지침', '「Rob Lucci = 로브 루치」처럼 적으면 이름·용어가 늘 그렇게 번역돼요. 번역 모델(LLM)에는 문장 지침도 그대로 전달돼요.'],
+        ['🔁 옛 채팅도 영어 저장으로', '「한국어로 저장된 칸을 영어 저장으로 바꾸기」 버튼 — 지금 보이는 한국어는 화면 번역으로 그대로 남아요.'],
+        ['🐱 미트볼 도우미', '상태창 머리의 ❓ 버튼이나 /ss-help 로 모르는 기능을 물어보세요. 답할 모델을 따로 고를 수 있어요.'],
+        ['🌱 인물의 욕구 · 먼저 움직이기', '관계 탭 「욕구 AI로 채우기」, 가끔 인물이 스스로 일을 벌이는 「먼저 움직이기」(로맨스 보정 ⑧).'],
         ['📣 업데이트 알림', '지금 보시는 이 창이에요. 확장 설정 › 데이터 · 화면에서 끌 수 있어요.'],
     ] },
 ];
@@ -217,6 +221,7 @@ function renderSettings() {
                 <button class="menu_button" data-s-act="wizard"><i class="fa-solid fa-wand-magic-sparkles"></i> 만들기</button>
                 <button class="menu_button" data-s-act="prompts"><i class="fa-solid fa-scroll"></i> 프롬프트 · 토큰</button>
                 <button class="menu_button" data-s-act="theme"><i class="fa-solid fa-palette"></i> 꾸미기</button>
+                <button class="menu_button" data-s-act="help"><i class="fa-solid fa-circle-question"></i> 도우미에게 물어보기</button>
                 <button class="menu_button" data-s-act="chaton">이 채팅에서 켜기</button>
             </div>
             <label>새 채팅 기본 난이도<select class="text_pole" data-s="difficulty">${Object.entries(DIFFS).map(([k, v]) => o('difficulty', k, v.name)).join('')}</select></label>
@@ -241,7 +246,8 @@ function renderSettings() {
             <label>실리 기본 번역 언어 코드<input class="text_pole" data-s="trCode" value="${esc(s.trCode)}" placeholder="ko"></label>
             <label>번역 지침<textarea class="text_pole" rows="4" data-s="trRules" placeholder="Rob Lucci = 로브 루치&#10;Kaku = 카쿠&#10;편지는 반말로 옮길 것">${esc(s.trRules ?? '')}</textarea>
                 <small><b>번역 모델</b>: 적은 글이 그대로 지침으로 가요. <b>실리 기본 번역</b>: 지침을 읽지 못해서 <code>원문 = 번역</code> 모양의 줄만 써요 (이름·용어 고정). 다른 줄은 무시돼요.</small></label>
-            <div class="ss-set-btns"><button class="menu_button" data-s-act="trsheet"><i class="fa-solid fa-language"></i> 상태창 전체 번역</button></div>
+            <div class="ss-set-btns"><button class="menu_button" data-s-act="trsheet"><i class="fa-solid fa-language"></i> 상태창 전체 번역</button><button class="menu_button" data-s-act="toenglish" title="예전에 한국어로 저장된 칸을 영어 저장으로 바꿔요. 지금 보이는 한국어는 화면 번역으로 남아요."><i class="fa-solid fa-right-left"></i> 한국어로 저장된 칸을 영어 저장으로 바꾸기</button></div>
+            <small>「화면만 번역」으로 바꿔도 <b>이미 한국어로 저장된 칸</b>은 그대로 한국어로 AI에게 가요. 위 오른쪽 버튼을 한 번 누르면 이 채팅의 칸들이 영어 저장으로 바뀌고, 지금 보이는 한국어는 화면 번역으로 그대로 남아요. (채팅마다 한 번)</small>
             <b class="ss-set-h">일시정지 · OOC</b>
             <label class="checkbox_label"><input type="checkbox" data-s="oocDetect" ${s.oocDetect ? 'checked' : ''}> 내 메시지가 OOC로 시작하면 그 턴은 상태창 안 보냄 <small>((, (OOC, [OOC, //</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="skipQuiet" ${s.skipQuiet ? 'checked' : ''}> 조용한 생성·퀵리플라이(/gen 등)엔 안 보냄</label>
@@ -261,6 +267,7 @@ function renderSettings() {
                 <label>만들기 · 추가 지시 · 다시 생성<select class="text_pole" data-s="profGen">${featOptions(s.profGen)}</select></label>
                 <label>소식 (뉴스 · 가십 · 게시판 · 의뢰)<select class="text_pole" data-s="profFeeds">${featOptions(s.profFeeds)}</select></label>
                 <label>별도 분석 (자동 반영 B · A+B)<select class="text_pole" data-s="profAnalyze">${featOptions(s.profAnalyze)}</select></label>
+                <label>미트볼 도우미 (기능 물어보기)<select class="text_pole" data-s="profHelp">${featOptions(s.profHelp)}</select></label>
             </details>
             <label class="checkbox_label"><input type="checkbox" data-s="aiFallbackMain" ${s.aiFallbackMain ? 'checked' : ''}> 연결 프로필이 실패하면 메인 연결로 다시 보내기 <small>(끄면 실패로 끝나요 · 비싼 메인 모델로 새는 것 방지)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="genBatch" ${s.genBatch ? 'checked' : ''}> 상태창 만들기: 관련 칸끼리 묶어서 생성 <small>(호출 17번 → 6번 · 빠진 칸만 따로 다시)</small></label>
@@ -301,11 +308,15 @@ function renderSettings() {
             <div class="ss-set-inline"><label>호감 최대 +<input type="number" min="1" max="50" class="text_pole" data-s="romCapAff" value="${s.romCapAff}"></label><label>신뢰 최대 +<input type="number" min="1" max="50" class="text_pole" data-s="romCapTrust" value="${s.romCapTrust}"></label></div>
             <label class="checkbox_label"><input type="checkbox" data-s="romFatigue" ${s.romFatigue ? 'checked' : ''}> ③ 연달아 꼬시면 덜 오르게 — 같은 사람 호감이 3턴 연속 오르면 60%, 4턴부터 34%만 <small>(토큰 0)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="romFacts" ${s.romFacts ? 'checked' : ''}> ④ 관계를 사실로 알려 주기 — 「하지 마」 대신 「지금은 친구고, 이 단계에선 이렇게 군다 · 선을 넘으려 하면 차가워지지 말고 자기 식으로 피한다」 <small>(장면 인물마다 주입 조금 · 켜면 위 「단계 넘는 행동 막기」 문구는 대신 빠져요)</small></label>
+            <details class="ss-set-more"><summary>더 보기 — ⑤ 인물의 욕구 · ⑥ 의도 먼저 · ⑦ 내 주입문 · ⑧ 먼저 움직이기 · 주입 깊이</summary>
             <label class="checkbox_label"><input type="checkbox" data-s="romDrive" ${s.romDrive ? 'checked' : ''}> ⑤ 인물의 욕구 — 끌리는 것 · 싫어하는 것 · 요즘 신경 쓰는 것을 알려 주고, AI가 바뀌면 고쳐 적어요 <small>(관계 편집에서 직접 적을 수도 · 주입 조금)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="romIntent" ${s.romIntent ? 'checked' : ''}> ⑥ 의도 먼저 — 「쓰기 전에 캐릭터가 원하는 것 · 걸리는 것 · 할 행동부터 정하라」 한 줄 <small>(주입 조금)</small></label>
             <label>⑦ 내 추가 주입문 <small>(아무 프롬프트·프리셋이든 같이 들어가요 · 비우면 안 보냄 · 영어 추천)</small><textarea class="text_pole" rows="3" data-s="romInject" placeholder="예: {{char}} has a life outside {{user}} and does not always agree.">${esc(s.romInject ?? '')}</textarea></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="romInit" ${s.romInit ? 'checked' : ''}> ⑧ 먼저 움직이기 — 가끔 그 장면의 인물이 유저를 기다리지 않고 스스로 일을 벌여요 (주도권 주사위) <small>(걸린 턴에만 주입 한 줄)</small></label>
+            <label>먼저 움직일 확률 % (AI 답 1번마다)<input type="number" min="0" max="100" class="text_pole" data-s="romInitPct" value="${s.romInitPct}"></label>
             <label>로맨스 보정 주입 깊이 (0 = 맨 끝 · 모델이 잘 안 지키면 0~1로)<input type="number" min="0" max="20" class="text_pole" data-s="romDepth" value="${s.romDepth}"></label>
-            <small>④⑤⑥ 문구는 「프롬프트 · 토큰」 창에서 고칠 수 있어요.</small>
+            <small>④⑤⑥⑧ 문구는 「프롬프트 · 토큰」 창에서 고칠 수 있어요. ⑤는 관계 탭의 「욕구 AI로 채우기」로 한 번에 채울 수 있어요.</small>
+            </details>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="romrec" title="① 연인은 고백으로만 · ② 한 번에 확 못 오르게 · ④ 관계를 사실로"><i class="fa-solid fa-heart"></i> 추천 세트 켜기 (①②④)</button><button class="menu_button" data-s-act="romoff"><i class="fa-solid fa-power-off"></i> 로맨스 보정 모두 끄기</button></div>
             <b class="ss-set-h">데이터 · 화면</b>
             <label class="checkbox_label"><input type="checkbox" data-s="updateNotice" ${s.updateNotice !== false ? 'checked' : ''}> 📣 업데이트하면 「바뀐 점」을 한 번 알려 주기</label>
@@ -371,10 +382,12 @@ function renderSettings() {
         if (!a) return;
         if (a === 'diag') return diagnose();
         if (a === 'whatsnew') return showWhatsNew(true);
+        if (a === 'help') return openHelp();
+        if (a === 'toenglish') return convertToEnglish(e.target.closest('button'));
         if (a === 'romrec' || a === 'romoff') {
             const set = settings(), on = a === 'romrec';
             if (on) { set.romBond = true; set.romCap = true; set.romFacts = true; }
-            else for (const k of ['romBond', 'romCap', 'romFatigue', 'romFacts', 'romDrive', 'romIntent']) set[k] = false;
+            else for (const k of ['romBond', 'romCap', 'romFatigue', 'romFacts', 'romDrive', 'romIntent', 'romInit']) set[k] = false;
             saveSettings();
             el.querySelectorAll('[data-s^="rom"]').forEach(i => { if (i.type === 'checkbox') i.checked = !!set[i.dataset.s]; });
             refreshNow();
@@ -484,6 +497,12 @@ function registerCommands() {
     add({ name: 'ss-backup', callback: () => { fullBackup(); return ''; }, helpString: '이 채팅의 상태창 전체를 파일로 백업한다.' });
     add({ name: 'ss-inbox', callback: () => { app.openInbox?.(); return ''; }, helpString: '알림함을 연다.' });
     add({ name: 'ss-search', callback: () => { app.openSearch?.(); return ''; }, helpString: '상태창 검색 창을 연다.' });
+    add({
+        name: 'ss-help',
+        callback: (_n, text) => { openHelp(String(text ?? '').trim()); return ''; },
+        unnamedArgumentList: [SlashCommandArgument.fromProps({ description: '물어볼 것 (비우면 창만 열어요)', typeList: ARGUMENT_TYPE.STRING, isRequired: false })],
+        helpString: '미트볼 도우미에게 기능을 물어본다. 예: /ss-help 연인 확정은 어디서 해요?',
+    });
     add({ name: 'ss-diag', callback: async () => { await diagnose(); return ''; }, helpString: '자가 진단 — 망가진 기록을 찾아 고친다.' });
 }
 

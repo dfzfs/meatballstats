@@ -1,7 +1,7 @@
 // v2.5 화면: SNS · 추천 음악 · 내 탭 · 추억 앨범 · 플레이 기록 · 검색 · 속마음 · 엔딩 · 모델 맞춤 설정
 import { app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, esc, short, clone, clamp, num, fmtNum, signed, uid, findBy, norm, stamp, userName, TITLE, LOG, MOD, dayIndex, msgText, DEFAULT_STAGES } from './core.js';
 import { addAdjust, commit, stageIndex, stripStatus } from './engine.js';
-import { newSns, snsReactions, musicPicks, peekMind } from './ai.js';
+import { newSns, snsReactions, musicPicks, peekMind, fillWants } from './ai.js';
 import { sec, emptyBox, chip, avatar, ai1, seg, gauge, meter, askInput, askConfirm, busyBtn, insertInput, closeIfPopup, mascot } from './kit.js';
 import { MUSIC_APPS, songLink } from './notify.js';
 
@@ -134,11 +134,12 @@ export function relView(s, d, ui) {
             ${g.unlock ? `<p class="ss-unlock"><i class="fa-solid fa-lock-open"></i> ${esc(g.unlock)}</p>` : ''}
             ${nx ? `<p class="ss-hint">${r.bondReady && k === st.length - 2 ? `「${esc(nx.name)}」 조건은 채웠어요 — 고백이 오가야 넘어가요` : `다음 「${esc(nx.name)}」까지 ${need || '조금만 더'}`}${nx.unlock ? ` → ${esc(nx.unlock)}` : ''}</p>` : '<p class="ss-hint">가장 높은 단계예요 💞</p>'}
             ${set.romBond ? (r.bond ? `<div class="ss-row-btns"><span class="ss-dim">💍 연인 확정됨</span><button class="ss-btn sm" data-act="unbond" data-arg="${esc(r.name)}" title="확정 취소 (단계가 숫자대로 돌아가요)"><i class="fa-solid fa-heart-crack"></i> 확정 취소</button></div>` : `<div class="ss-row-btns"><button class="ss-btn sm${r.bondAsk || r.bondReady ? ' pri' : ''}" data-act="bond" data-arg="${esc(r.name)}" title="고백이 오갔으면 눌러 주세요"><i class="fa-solid fa-ring"></i> 연인 확정${r.bondAsk ? ' · AI가 고백을 감지했어요' : ''}</button></div>`) : ''}
-            ${set.romDrive && (r.likes || r.dislikes || r.concern) ? `<p class="ss-dim">${[r.likes && `💗 ${esc(r.likes)}`, r.dislikes && `🚫 ${esc(r.dislikes)}`, r.concern && `💭 ${esc(r.concern)}`].filter(Boolean).join('<br>')}</p>` : ''}
+            ${set.romDrive && (r.likes || r.dislikes || r.concern) ? `<div class="ss-wants">${[r.likes && `<span class="like" title="끌리는 것"><i class="fa-solid fa-heart"></i>${esc(r.likes)}</span>`, r.dislikes && `<span class="hate" title="싫어하는 것"><i class="fa-solid fa-ban"></i>${esc(r.dislikes)}</span>`, r.concern && `<span class="mind" title="요즘 신경 쓰는 것"><i class="fa-solid fa-cloud"></i>${esc(r.concern)}</span>`].filter(Boolean).join('')}</div>` : ''}
             ${r.memo ? `<p class="ss-dim ss-pre">${esc(r.memo)}</p>` : ''}</div>`;
     };
     const life = [...(d.life ?? [])].reverse();
-    return `<div class="ss-stack">${d.user.map(card).join('') || emptyBox('관계가 없어요', 'fa-people-arrows')}</div>
+    const romBar = set.romDrive && d.user.length ? `<div class="ss-rombar"><span><i class="fa-solid fa-seedling"></i> 인물의 욕구 <small>끌리는 것 · 싫어하는 것 · 요즘 신경 쓰는 것</small></span><button class="ss-btn sm" data-act="fillwants" title="비어 있는 인물의 욕구를 AI가 채워요 (AI 1회)"><i class="fa-solid fa-wand-magic-sparkles"></i> 욕구 AI로 채우기 ${ai1}</button></div>` : '';
+    return `${romBar}<div class="ss-stack">${d.user.map(card).join('') || emptyBox('관계가 없어요', 'fa-people-arrows')}</div>
         ${life.length ? sec('🌙 화면 밖 소식', `<div class="ss-stack">${life.map(x => `<div class="ss-ev"><b>${esc(x.who)}</b><small>${esc(x.text)}${x.date ? ` · ${esc(x.date)}` : ''}</small></div>`).join('')}</div>`) : ''}
         ${d.pairs.length ? sec('인물끼리', `<div class="ss-pairs">${d.pairs.map(p => `<div><b>${esc(p.a)}</b><i class="fa-solid fa-arrows-left-right"></i><b>${esc(p.b)}</b>${chip(esc(p.label))}${p.memo ? `<small>${esc(p.memo)}</small>` : ''}</div>`).join('')}</div>`) : ''}
         <details class="ss-more"><summary>관계 단계 ${st.length}개</summary><ol class="ss-stages">${st.map(x => `<li><b>${esc(x.name)}</b> <small>호감 ${x.at}+${x.trust > -100 ? ` · 신뢰 ${x.trust}+` : ''}${x.unlock ? ` — ${esc(x.unlock)}` : ''}</small></li>`).join('')}</ol><p class="ss-hint">편집이나 AI로 수정에서 세계관에 맞게 바꿀 수 있어요.</p></details>`;
@@ -151,6 +152,18 @@ function peekLeft(s) {
 }
 export const REL_ACTIONS = {
     bond: async (el, arg) => { await addAdjust({ ops: [['_bond', arg]], label: `💍 ${arg}와(과) 고백이 오가 연인이 되었다 (확정)` }); },
+    fillwants: async (el, arg, btn, s) => {
+        busyBtn(btn, true, '채우는 중…');
+        try {
+            const list = await fillWants(s);
+            const nd = clone(s.data.rel); let n = 0;
+            for (const x of list) { const r = findBy(nd.user, x.name); if (!r) continue; for (const k of ['likes', 'dislikes', 'concern']) if (!r[k] && x[k]) { r[k] = String(x[k]); n++; } }
+            busyBtn(btn, false);
+            if (!n) { toastr.info('새로 채울 칸이 없어요. (이미 적힌 칸은 건드리지 않아요)', TITLE); return; }
+            await commit('rel', nd, '인물의 욕구를 채웠다');
+            toastr.success(`${n}칸을 채웠어요. 마음에 안 들면 ✏️ 편집에서 고치거나 되돌리기를 눌러 주세요.`, TITLE);
+        } catch (e) { busyBtn(btn, false); toastr.error(`채우지 못했어요: ${esc(e.message)}`, TITLE); }
+    },
     unbond: async (el, arg) => { await addAdjust({ ops: [['_unbond', arg]], label: `💔 ${arg}와(과)는 연인이 아니다 (확정 취소)` }); },
     peek: async (el, arg, btn, s) => {
         if (peekLeft(s) <= 0) { toastr.info('오늘은 더 엿볼 수 없어요. 내일 다시!', TITLE); return; }

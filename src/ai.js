@@ -184,6 +184,20 @@ async function freshItems(mod, feature, state, extra = '') {
     return finJSON((await aiJSON(feature, P('gen.system'), L.join('\n\n'))));
 }
 // 플레이 방식 알아보기 (카드 · 페르소나 · 첫 메시지 · 최근 채팅을 보고)
+// 로맨스 보정 ⑤: 관계 인물들의 끌리는 것 · 싫어하는 것 · 요즘 신경 쓰는 것을 한 번에 채운다
+export async function fillWants(state) {
+    const d = state.data;
+    const people = (d.rel?.user ?? []).slice(0, 16);
+    if (!people.length) return [];
+    const L = [
+        `World: ${state.core.title} — ${short(state.core.summary, 500)}`,
+        ...people.map(r => { const prof = d.profile ? findBy(d.profile.list, r.name) : null; const card = chatCharacters().find(ch => norm(ch.name) === norm(r.name));
+            return `- ${r.name}${r.label ? ` [${r.label}]` : ''}: ${prof ? short(`${prof.summary} ${prof.fields.map(f => `${f.k}: ${f.v}`).join(' / ')}`, 500) : card ? short(card.description, 700) : short(r.memo, 200) || '(no profile)'}${r.likes || r.dislikes || r.concern ? ` | existing — likes: ${r.likes || '-'}; dislikes: ${r.dislikes || '-'}; concern: ${r.concern || '-'}` : ''}`; }),
+        `Recent story (for context):\n${recentChat(8)}`,
+    ];
+    const o = await finJSON(await aiJSON('wants', P('ai.wants'), L.join('\n\n'), 1500));
+    return Array.isArray(o?.list) ? o.list.filter(x => x?.name) : [];
+}
 export const PLAY_SHAPE = '{"mode":"rp|multi|director","cardIsWorld":false,"hero":"","cast":["이름"]}';
 export async function detectPlay() {
     const c = ctx();

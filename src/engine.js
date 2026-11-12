@@ -1,7 +1,7 @@
 // 상태 엔진: <meatball> 변화량 → 상태 재계산 · 직접 편집 기록 · 프롬프트 주입
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
-    signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook,
+    signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, viewTr,
     PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser,
 } from './core.js';
 import { P } from './prompts.js';
@@ -1510,6 +1510,14 @@ function romanceBlock(r) {
         }
     }
     if (set.romIntent) L.push(P('inj.rom.intent'));
+    if (set.romInit) { // 먼저 움직이기: 답 1번마다 주사위 (같은 턴엔 같은 결과 → 프롬프트 창과 실제가 같다)
+        const rng = seeded(`${ctx().getCurrentChatId?.() ?? MODULE}:init:${s.turn}:${(ctx().chat ?? []).length}`);
+        if (rng() * 100 < clamp(num(set.romInitPct, 25), 0, 100)) {
+            const inScene = sceneTester(set, s);
+            const cand = (modOn('rel', meta) && d.rel ? d.rel.user.filter(y => inScene(y.name)).map(y => y.name) : []);
+            L.push(P('inj.rom.init', { who: cand.length ? cand[Math.floor(rng() * cand.length)] : 'one of the characters present' }));
+        }
+    }
     const out = L.length ? [P('inj.rom.header'), ...L] : [];
     const mine = String(set.romInject ?? '').trim();
     if (mine) out.push(mine);
@@ -1550,7 +1558,7 @@ function buildInjection0(r, opt = {}) {
         const ev = eventsOn(c, c.y, c.m, c.d);
         const soon = [];
         const tmp = { ...c };
-        for (let k = 1; k <= 7; k++) { addDays(tmp, 1); for (const e of eventsOn(c, tmp.y, tmp.m, tmp.d)) soon.push(`${e.title}(${k}일 후)`); }
+        for (let k = 1; k <= 7; k++) { addDays(tmp, 1); for (const e of eventsOn(c, tmp.y, tmp.m, tmp.d)) soon.push(viewTr() ? `${e.title} (in ${k}d)` : `${e.title}(${k}일 후)`); }
         L.push(`Date: ${dateStr(c)} · ${c.time}${c.weather ? ` · weather: ${c.weather} (${SEASON_NAME[seasonOf(c)]})` : ''}${ev.length ? ` · TODAY: ${ev.map(e => e.title + (e.desc ? ` — ${e.desc}` : '')).join('; ')}` : ''}${soon.length ? ` · coming: ${soon.slice(0, 4).join(', ')}` : ''}`);
     }
     if (on('map')) {
@@ -1591,8 +1599,9 @@ function buildInjection0(r, opt = {}) {
     if (on('rel')) {
         const rl = d.rel;
         const here = rl.user.filter(x => inScene(x.name)), away = rl.user.filter(x => !inScene(x.name));
-        for (const x of here.slice(0, 12)) { const g = stageOf(rl, x); PP.push(`${x.name}${x.label ? ` [${x.label}]` : ''} → {{user}}: 호감 ${x.aff} · 신뢰 ${x.trust} · 단계 「${g.name}」${g.unlock && !lite ? ` (unlocked: ${short(g.unlock, 60)}${set.stageLock && !set.romFacts ? " — don't act beyond this stage yet" : ''})` : set.stageLock && !set.romFacts ? ' (stay within this stage)' : ''}${x.jealous >= 30 ? ` · 질투 ${x.jealous}/100 (show it subtly when they meet)` : ''}${x.memo && !lite ? ` — ${short(x.memo, 90)}` : ''}`); }
-        if (away.length) PP.push(`Not in this scene (호감/신뢰): ${away.slice(0, 15).map(x => `${x.name} ${x.aff}/${x.trust}`).join(', ')}`);
+        const W = viewTr() ? { aff: 'affection', trust: 'trust', stage: 'stage', jealous: 'jealousy' } : { aff: '호감', trust: '신뢰', stage: '단계', jealous: '질투' }; // 화면만 번역: 고정 낱말도 영어로
+        for (const x of here.slice(0, 12)) { const g = stageOf(rl, x); PP.push(`${x.name}${x.label ? ` [${x.label}]` : ''} → {{user}}: ${W.aff} ${x.aff} · ${W.trust} ${x.trust} · ${W.stage} 「${g.name}」${g.unlock && !lite ? ` (unlocked: ${short(g.unlock, 60)}${set.stageLock && !set.romFacts ? " — don't act beyond this stage yet" : ''})` : set.stageLock && !set.romFacts ? ' (stay within this stage)' : ''}${x.jealous >= 30 ? ` · ${W.jealous} ${x.jealous}/100 (show it subtly when they meet)` : ''}${x.memo && !lite ? ` — ${short(x.memo, 90)}` : ''}`); }
+        if (away.length) PP.push(`Not in this scene (${W.aff}/${W.trust}): ${away.slice(0, 15).map(x => `${x.name} ${x.aff}/${x.trust}`).join(', ')}`);
         const pairs = rl.pairs.filter(p => inScene(p.a) || inScene(p.b));
         if (pairs.length && !lite) PP.push(`Between others: ${pairs.slice(0, 10).map(p => `${p.a}↔${p.b} ${p.label}`).join(' · ')}`);
         const life = rl.life.filter(x => inScene(x.who)).slice(-2);

@@ -94,6 +94,9 @@ export const DEFAULTS = Object.freeze({
     romDrive: false,         // 인물마다 끌리는 것 · 싫어하는 것 · 요즘 신경 쓰는 것
     romIntent: false,        // 본편 AI에게 「쓰기 전에 캐릭터 의도부터 정하기」 한 줄
     romInject: '',           // 내가 넣는 추가 주입문 (비우면 안 보냄)
+    romInit: false,          // 먼저 움직이기: 가끔 그 장면의 인물이 스스로 일을 벌이게
+    romInitPct: 25,          // 그 확률 % (AI 답 1번마다)
+    profHelp: '',            // 미트볼 도우미가 쓸 모델 (연결 프로필, '' = 확장 AI 모델)
     romDepth: 1,             // 로맨스 보정 주입 깊이 (0 = 맨 끝)
     offscreen: true,         // NPC 화면 밖 생활 (날이 지나면 가끔)
     favTabs: [],             // 즐겨찾기 탭

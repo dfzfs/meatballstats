@@ -31,23 +31,23 @@ const llmRules = () => (rulesText() ? `\n\nExtra rules from the user (follow the
 export function rulePairs() {
     return rulesText().split(/\r?\n/).map(l => l.match(/^\s*(.+?)\s*(?:=|->|→)\s*(.+?)\s*$/)).filter(Boolean).map(m => [m[1], m[2]]).filter(([a]) => /[A-Za-z]/.test(a)).sort((a, b) => b[0].length - a[0].length);
 }
-const preSub = (text) => { let t = String(text); for (const [a, b] of rulePairs()) t = t.split(a).join(b); return t; };
+const preSub = (text, rev = false) => { let t = String(text); for (const [a, b] of rulePairs()) t = rev ? t.split(b).join(a) : t.split(a).join(b); return t; };
 
 // ───── 실리 기본 번역 (Chat Translation 확장의 translate()) ─────
 const engineST = () => settings().trEngine === 'st';
 let stMod = null;
-async function stTranslate(text) {
+async function stTranslate(text, rev = false) {
     // 실리가 이미 올려 둔 translate()를 먼저 쓰고 (새 버전), 없으면 모듈을 직접 불러온다
     let fn = typeof globalThis.translate === 'function' ? globalThis.translate : null;
     if (!fn) { stMod ??= await import('/scripts/extensions/translate/index.js'); fn = stMod?.translate; }
     if (typeof fn !== 'function') throw new Error('실리 번역 확장을 찾지 못했어요');
     const es = ctx().extensionSettings?.translate ?? {};
-    const out = await fn(preSub(text), String(settings().trCode || 'ko').trim(), es.provider || 'google');
+    const out = await fn(preSub(text, rev), rev ? 'en' : String(settings().trCode || 'ko').trim(), es.provider || 'google');
     if (typeof out !== 'string') throw new Error('실리 번역이 실패했어요 (확장 메뉴 › Chat Translation에서 번역기를 확인해 주세요)');
     return out;
 }
 // 여러 줄을 묶어서 한 번에 (요청 수 줄이기). 줄 수가 안 맞으면 그 묶음만 하나씩.
-async function stMany(list) {
+async function stMany(list, rev = false) {
     const out = new Map();
     const flat = (x) => x.replace(/\s*\r?\n\s*/g, ' / ');
     const batches = [];
@@ -56,26 +56,44 @@ async function stMany(list) {
     if (cur.length) batches.push(cur);
     for (const b of batches) {
         let lines = null;
-        try { lines = (await stTranslate(b.map(flat).join('\n'))).split(/\r?\n/).map(x => x.trim()).filter(Boolean); } catch (e) { console.warn(LOG, 'st batch', e); }
+        try { lines = (await stTranslate(b.map(flat).join('\n'), rev)).split(/\r?\n/).map(x => x.trim()).filter(Boolean); } catch (e) { console.warn(LOG, 'st batch', e); }
         if (lines && lines.length === b.length) b.forEach((s, i) => out.set(s, lines[i]));
-        else for (const s of b) { try { out.set(s, (await stTranslate(s)).trim()); } catch (e) { console.warn(LOG, 'st one', e); } }
+        else for (const s of b) { try { out.set(s, (await stTranslate(s, rev)).trim()); } catch (e) { console.warn(LOG, 'st one', e); } }
     }
     return out;
 }
 // 코드 값(상태·종류·id 같은 것)은 번역하면 안 된다
 const CODE_KEYS = new Set(['id', 'kind', 'role', 'status', 'mode', 'type', 'cls', 'repeat', 'by', 'from', 'icon', 'color', 'unit', 'every', 'key', 'app', 'courier', 'currencyCode', 'genre', 'contact', 'play']);
-const isCode = (k, v) => CODE_KEYS.has(k) || /^[a-z0-9_\-]{1,14}$/.test(v) || !/[A-Za-z]/.test(v);
-function leaves(o, acc = new Set(), k = '') {
-    if (typeof o === 'string') { if (o.trim() && !isCode(k, o)) acc.add(o); return acc; }
-    if (Array.isArray(o)) { for (const v of o) leaves(v, acc, k); return acc; }
-    if (o && typeof o === 'object') for (const [kk, v] of Object.entries(o)) leaves(v, acc, kk);
+// rev = 한국어 → 영어 (옛 번역본을 영어 저장으로 바꿀 때): 한글이 든 칸만
+const isCode = (k, v, rev = false) => CODE_KEYS.has(k) || (rev ? !/[가-힣]/.test(v) : (/^[a-z0-9_\-]{1,14}$/.test(v) || !/[A-Za-z]/.test(v)));
+function leaves(o, acc = new Set(), k = '', rev = false) {
+    if (typeof o === 'string') { if (o.trim() && !isCode(k, o, rev)) acc.add(o); return acc; }
+    if (Array.isArray(o)) { for (const v of o) leaves(v, acc, k, rev); return acc; }
+    if (o && typeof o === 'object') for (const [kk, v] of Object.entries(o)) leaves(v, acc, kk, rev);
     return acc;
 }
-function rebuild(o, map, k = '') {
-    if (typeof o === 'string') return !isCode(k, o) && map.has(o) ? map.get(o) : o;
-    if (Array.isArray(o)) return o.map(v => rebuild(v, map, k));
-    if (o && typeof o === 'object') return Object.fromEntries(Object.entries(o).map(([kk, v]) => [kk, rebuild(v, map, kk)]));
+function rebuild(o, map, k = '', rev = false) {
+    if (typeof o === 'string') return !isCode(k, o, rev) && map.has(o) ? map.get(o) : o;
+    if (Array.isArray(o)) return o.map(v => rebuild(v, map, k, rev));
+    if (o && typeof o === 'object') return Object.fromEntries(Object.entries(o).map(([kk, v]) => [kk, rebuild(v, map, kk, rev)]));
     return o;
+}
+export const hasHangul = (o) => leaves(o, new Set(), '', true).size > 0;
+// 한국어로 저장된 칸 → 영어 (화면만 번역으로 옮길 때 1번). 실패하면 원본 그대로.
+// known = 앞 칸에서 이미 정해진 이름 (한국어 → 영어): 칸마다 따로 번역해도 같은 이름은 같은 영어로
+export async function trJSONToEnglish(obj, known = new Map()) {
+    if (engineST()) {
+        const fixed = new Map([...known, ...rulePairs().map(([en, ko]) => [ko, en])]);
+        const all = [...leaves(obj, new Set(), '', true)];
+        const map = await stMany(all.filter(s => !fixed.has(s.trim())), true);
+        for (const s of all) if (fixed.has(s.trim())) map.set(s, fixed.get(s.trim()));
+        return rebuild(obj, map, '', true);
+    }
+    const src = JSON.stringify(obj);
+    const fix = [...new Map([...[...known].map(([ko, en]) => [en, ko]), ...rulePairs()])].slice(-80);
+    const rules = fix.length ? `\nFixed names (English = Korean; whenever the Korean side appears, use exactly the English side): ${fix.map(([a, b]) => `${a} = ${b}`).join('; ')}` : '';
+    const out = await aiGenerate('translate', P('ai.translate', { lang: 'English', glossary: '' }) + rules, src, Math.min(16000, Math.max(1000, Math.ceil(src.length * 1.3))), trOpts());
+    return parseJSON(out);
 }
 
 export async function trJSON(obj, extra) {
@@ -247,5 +265,40 @@ export async function translateSheet(btn) {
     } finally { running = false; if (btn) btn.innerHTML = old; }
     if (viewTr()) { app.refreshNow?.(); translateView(); }
     toastr.success(`${k}칸 번역했어요${stop ? ' (멈춤)' : ''}.${viewTr() ? ' 데이터는 영어 그대로고, 화면에만 번역이 보여요.' : ''}`, TITLE);
+}
+// 「한국어로 저장된 칸을 영어 저장으로 바꾸기」: 예전 방식(번역본 저장)이나 한국어 생성으로 만든 상태창을
+// 화면만 번역으로 옮긴다. 원래 있던 한국어는 화면 번역(사전)으로 그대로 남는다.
+export async function convertToEnglish(btn) {
+    if (running) { stop = true; return; }
+    const s = app.current?.state;
+    if (!s) { toastr.info('이 채팅에 상태창이 없어요.', TITLE); return; }
+    if (!viewTr()) { toastr.info('먼저 「상태창 생성 언어」를 「영어로 저장 · 화면만 번역」으로 바꿔 주세요.', TITLE); return; }
+    const meta = getMeta();
+    const ids = ['core', ...MOD_IDS.filter(id => modOn(id, meta) && s.data[id])].filter(id => hasHangul(id === 'core' ? s.core : s.data[id]));
+    if (!ids.length) { toastr.success('한국어로 저장된 칸이 없어요. 이미 영어로 저장돼 있어요.', TITLE); return; }
+    const who = settings().trEngine === 'st' ? '실리 기본 번역 (토큰 0)' : `번역 모델 ${ids.length}회`;
+    if (!(await SillyTavern.getContext().Popup.show.confirm(TITLE, `한국어로 저장된 ${ids.length}칸을 영어 저장으로 바꿔요 (${esc(who)}).<br><br>• 지금 보이는 한국어는 <b>화면 번역으로 그대로 남아요</b> — 화면은 거의 그대로고, AI에게만 영어로 가요.<br>• 칸마다 「되돌리기」(<code>/ss-undo</code>)로 되돌릴 수 있어요. 걱정되면 먼저 관리 탭 › 세이브나 전체 백업을 해 두세요.<br>• 다시 누르면 멈춰요.`))) return;
+    running = true; stop = false;
+    const old = btn?.innerHTML;
+    let k = 0, fail = 0;
+    const known = new Map(); // 짧은 이름들: 한국어 → 영어
+    try {
+        for (const id of ids) {
+            if (stop) break;
+            if (btn) btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${k}/${ids.length} · 누르면 멈춤`;
+            const cur = id === 'core' ? app.current.state.core : app.current.state.data[id];
+            try {
+                const out = await trJSONToEnglish(cur, known);
+                const pairs = pairsOf(out, cur);
+                for (const [en, ko] of pairs) { const a = String(ko ?? '').trim(), b = String(en ?? '').trim(); if (a && b && a !== b && a.length <= 30 && !known.has(a)) known.set(a, b); }
+                addPairs(pairs); // 영어 → 원래 있던 한국어
+                await commit(id, out, '');
+                k++;
+            } catch (e) { fail++; console.warn(LOG, 'to english', id, e); }
+        }
+        addPairs(rulePairs());
+    } finally { running = false; if (btn) btn.innerHTML = old; }
+    app.refreshNow?.(); translateView();
+    toastr[fail ? 'warning' : 'success'](`${k}칸을 영어 저장으로 바꿨어요${fail ? ` · ${fail}칸은 실패해서 그대로 뒀어요` : ''}${stop ? ' (멈춤)' : ''}.`, TITLE);
 }
 export { MOD };
