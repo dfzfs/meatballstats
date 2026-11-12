@@ -677,7 +677,7 @@ export async function openPromptWindow(tab = 'when') {
         const set = settings();
         const meta = getMeta();
         const inj = app.current && !meta?.paused ? buildInjection(app.current) : null;
-        const injText = inj ? sub(`${inj.main}\n\n${inj.people}`).trim() : '';
+        const injText = inj ? sub([inj.main, inj.people, inj.romance].filter(Boolean).join('\n\n')).trim() : '';
         let body = '';
         if (cur === 'when') {
             const injTok = injText ? await countTokens(injText) : 0;

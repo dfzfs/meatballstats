@@ -132,7 +132,9 @@ export function relView(s, d, ui) {
             ${modOn('contact') ? `<button class="ss-ib" data-act="talk" data-arg="${esc(r.name)}" title="연락"><i class="fa-solid fa-envelope"></i></button>` : ''}</div>
             ${meter('호감', r.aff, 'love')}${meter('신뢰', r.trust, 'trust')}${set.jealousy && r.jealous ? `<div class="ss-meter jealous"><span>질투</span><div class="ss-meter-t"><b style="left:0;width:${r.jealous}%"></b></div><em>${r.jealous}</em></div>` : ''}
             ${g.unlock ? `<p class="ss-unlock"><i class="fa-solid fa-lock-open"></i> ${esc(g.unlock)}</p>` : ''}
-            ${nx ? `<p class="ss-hint">다음 「${esc(nx.name)}」까지 ${need || '조금만 더'}${nx.unlock ? ` → ${esc(nx.unlock)}` : ''}</p>` : '<p class="ss-hint">가장 높은 단계예요 💞</p>'}
+            ${nx ? `<p class="ss-hint">${r.bondReady && k === st.length - 2 ? `「${esc(nx.name)}」 조건은 채웠어요 — 고백이 오가야 넘어가요` : `다음 「${esc(nx.name)}」까지 ${need || '조금만 더'}`}${nx.unlock ? ` → ${esc(nx.unlock)}` : ''}</p>` : '<p class="ss-hint">가장 높은 단계예요 💞</p>'}
+            ${set.romBond ? (r.bond ? `<div class="ss-row-btns"><span class="ss-dim">💍 연인 확정됨</span><button class="ss-btn sm" data-act="unbond" data-arg="${esc(r.name)}" title="확정 취소 (단계가 숫자대로 돌아가요)"><i class="fa-solid fa-heart-crack"></i> 확정 취소</button></div>` : `<div class="ss-row-btns"><button class="ss-btn sm${r.bondAsk || r.bondReady ? ' pri' : ''}" data-act="bond" data-arg="${esc(r.name)}" title="고백이 오갔으면 눌러 주세요"><i class="fa-solid fa-ring"></i> 연인 확정${r.bondAsk ? ' · AI가 고백을 감지했어요' : ''}</button></div>`) : ''}
+            ${set.romDrive && (r.likes || r.dislikes || r.concern) ? `<p class="ss-dim">${[r.likes && `💗 ${esc(r.likes)}`, r.dislikes && `🚫 ${esc(r.dislikes)}`, r.concern && `💭 ${esc(r.concern)}`].filter(Boolean).join('<br>')}</p>` : ''}
             ${r.memo ? `<p class="ss-dim ss-pre">${esc(r.memo)}</p>` : ''}</div>`;
     };
     const life = [...(d.life ?? [])].reverse();
@@ -148,6 +150,8 @@ function peekLeft(s) {
     return Math.max(0, per - (s.peek?.day === day ? s.peek.n : 0));
 }
 export const REL_ACTIONS = {
+    bond: async (el, arg) => { await addAdjust({ ops: [['_bond', arg]], label: `💍 ${arg}와(과) 고백이 오가 연인이 되었다 (확정)` }); },
+    unbond: async (el, arg) => { await addAdjust({ ops: [['_unbond', arg]], label: `💔 ${arg}와(과)는 연인이 아니다 (확정 취소)` }); },
     peek: async (el, arg, btn, s) => {
         if (peekLeft(s) <= 0) { toastr.info('오늘은 더 엿볼 수 없어요. 내일 다시!', TITLE); return; }
         busyBtn(btn, true, '');

@@ -1,7 +1,7 @@
 // 상태 엔진: <meatball> 변화량 → 상태 재계산 · 직접 편집 기록 · 프롬프트 주입
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
-    signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2,
+    signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3,
     PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser,
 } from './core.js';
 import { P } from './prompts.js';
@@ -38,13 +38,14 @@ export const KEYMAP = {
     custom: 'custom', tab: 'custom', '내탭': 'custom', '탭': 'custom',
     life: 'life', offscreen: 'life', '근황': 'life', '화면밖': 'life',
     jealous: 'jealous', jealousy: 'jealous', '질투': 'jealous',
+    confess: 'confess', '고백': 'confess', concern: 'concern', '신경': 'concern', '고민': 'concern', taste: 'taste', '취향': 'taste',
     alert: '_alert', '알림': '_alert',
 };
 export const KEY_MOD = {
     stat: 'stats', attr: 'stats', cond: 'stats', cash: 'wallet', item: 'wallet', stock: 'shop', decor: 'home', room: 'home', loc: 'map', place: 'map',
     aff: 'rel', trust: 'rel', rel: 'rel', pair: 'rel', date: 'calendar', time: 'calendar', event: 'calendar', ach: 'ach', memo: 'memo', msg: 'contact',
     npc: 'profile', roll: 'dice', quest: 'quest', news: 'news', rumor: 'gossip', post: 'board', curse: 'fate', weather: 'calendar',
-    bgm: 'music', sns: 'sns', custom: 'custom', life: 'rel', jealous: 'rel',
+    bgm: 'music', sns: 'sns', custom: 'custom', life: 'rel', jealous: 'rel', confess: 'rel', concern: 'rel', taste: 'rel',
 };
 
 // 미트볼 블록 = <meatball> (v2.5.1~) · 예전 <status>.
@@ -382,10 +383,50 @@ export function stageIndex(stages, aff, trust) {
     stages.forEach((st, i) => { if (aff >= st.at && trust >= st.trust) k = i; });
     return k;
 }
+// ───── 로맨스 보정 (v2.6) — 설정에서 켠 뒤의 메시지에만 적용 (meta.romFrom) ─────
+const romLive = (s) => s.romActive === true;
+// 맨 위 단계(보통 「연인」)는 숫자만으론 못 감 — 「연인 확정」(r.bond)이 있어야. 확정이면 숫자와 상관없이 맨 위.
+function bondCap(s, st, want, r) {
+    if (!settings().romBond || !romLive(s)) return want;
+    const top = st.length - 1;
+    if (top < 1) return want;
+    if (r.bond) return top;
+    if (want < top || r.stage === top) return want; // 켜기 전에 이미 맨 위였던 사람은 그대로
+    return top - 1;
+}
+// AI 답 1번에 오를 수 있는 호감·신뢰 상한 + 연달아 오르면 점점 덜 오르게
+function romGain(s, info, name, key, gain) {
+    const set = settings();
+    if (!set.romCap && !set.romFatigue) return gain;
+    const k = `${key}:${norm(name)}`;
+    let g = gain;
+    if (set.romFatigue) { const run = s.romRun?.[k] ?? 0; if (run >= 2) g = Math.max(1, Math.round(g * (run >= 3 ? 0.34 : 0.6))); }
+    const used = (info.romUsed ??= {})[k] ?? 0;
+    const cap = set.romCap ? Math.max(1, Math.round(num(key === 'aff' ? set.romCapAff : set.romCapTrust, 5))) : Infinity;
+    g = Math.max(0, Math.min(g, cap - used));
+    info.romUsed[k] = used + g;
+    if (g < gain) info.labels.push(`⚖️ ${name} ${key === 'aff' ? '호감' : '신뢰'} +${gain}→+${g}`);
+    return g;
+}
+// 이 채팅에서 로맨스 보정을 처음 켠 지점 기록 (그 전 메시지는 예전 규칙 그대로 → 옛 채팅 숫자가 안 바뀜)
+function markRomFrom(meta, chat) {
+    const set = settings();
+    if (!meta || Number.isFinite(meta.romFrom)) return;
+    if (!(set.romBond || set.romCap || set.romFatigue)) return;
+    meta.romFrom = chat.length;
+    Promise.resolve().then(() => saveMeta()).catch(() => { /* ignore */ });
+}
 function updateStage(s, r, info, silent = false) {
     const rl = s.data.rel; if (!rl) return;
     const st = rl.stages?.length ? rl.stages : DEFAULT_STAGES;
-    const want = stageIndex(st, r.aff, r.trust);
+    const raw = stageIndex(st, r.aff, r.trust);
+    const want = bondCap(s, st, raw, r);
+    if (want < raw) {
+        if (!r.bondReady) {
+            r.bondReady = true;
+            if (!silent) { info.labels.push(`💌 ${r.name}: 「${st[raw].name}」 조건 충족 · 고백 전`); info.alerts.push(`💌 ${r.name} — 「${st[raw].name}」 단계 조건은 채웠어요. 고백이 오가면 관계 탭에서 「연인 확정」을 눌러 주세요.`); }
+        }
+    } else r.bondReady = false;
     if (r.stage < 0 || r.stage >= st.length) { r.stage = want; return; }
     if (want > r.stage) {
         r.stage = want;
@@ -532,6 +573,34 @@ export function applyOp(s, rawKey, rawVal, info) {
             const p = parseNum(m[2].replace(/\s+/g, '')); if (!p) return;
             const b = r.jealous; r.jealous = clamp(Math.round(p.mode === 'add' ? b + p.v : p.v), 0, 100);
             if (r.jealous !== b) L(`💢 ${r.name} ${signed(r.jealous - b)}`);
+            return;
+        }
+        case 'confess': { // 로맨스 보정: AI는 「고백이 오갔다」고 알리기만, 확정은 유저가
+            if (!settings().romBond) return;
+            const rl = ensure(s, 'rel');
+            const [nm] = splitBar(val);
+            const r = findBy(rl.user, nm.replace(/^[+]\s*/, ''));
+            if (!r || r.bond || r.bondAsk) return;
+            r.bondAsk = true;
+            L(`💌 ${r.name}: 고백?`);
+            info.alerts.push(`💌 ${r.name}와(과) 고백이 오간 것 같아요. 맞으면 관계 탭에서 「연인 확정」을 눌러 주세요. (AI가 잘못 본 거면 그냥 두면 돼요)`);
+            return;
+        }
+        case '_bond': case '_unbond': {
+            const rl = ensure(s, 'rel');
+            const r = findBy(rl.user, val); if (!r) return;
+            r.bond = key === '_bond'; r.bondAsk = false;
+            if (r.bond) updateStage(s, r, info);
+            else { r.stage = -1; updateStage(s, r, info, true); }
+            return;
+        }
+        case 'concern': case 'taste': {
+            if (!settings().romDrive) return;
+            const rl = ensure(s, 'rel');
+            const [nm, a, b] = splitBar(val);
+            const r = findBy(rl.user, nm); if (!r) return;
+            if (key === 'concern') { const v = String(a ?? '').trim(); if (v === r.concern) return; r.concern = /^(없음|none|-)$/i.test(v) ? '' : v; L(`💭 ${r.name}`); }
+            else { if (a) r.likes = a; if (b) r.dislikes = b; }
             return;
         }
         case '_peekday': { s.peek = { day: today(s) ?? s.turn, n: ((s.peek?.day === (today(s) ?? s.turn)) ? s.peek.n : 0) + 1 }; return; }
@@ -764,7 +833,10 @@ export function applyOp(s, rawKey, rawVal, info) {
             if (!r) { r = { name: nm, label: '', aff: 0, trust: 0, memo: '', stage: -1, jealous: 0, met: s.data.calendar ? dateShort(s.data.calendar) : '' }; rl.user.push(r); }
             const p = parseNum(m[2].replace(/\s+/g, '')); if (!p) return;
             if (key === 'aff' && p.mode === 'add' && p.v > 0) p.v = p.v * affMul(s); // 저주·축복의 호감 % 효과
-            const b = r[key]; r[key] = clamp(Math.round(p.mode === 'add' ? b + p.v : p.v), -100, 100);
+            const b = r[key];
+            let nv = clamp(Math.round(p.mode === 'add' ? b + p.v : p.v), -100, 100);
+            if (nv > b && info.ai && romLive(s)) nv = b + romGain(s, info, r.name, key, nv - b); // 로맨스 보정: 상한
+            r[key] = nv;
             if (m[3]) r.memo = m[3];
             if (r[key] !== b) L(`${key === 'aff' ? '♥' : '🤝'} ${r.name} ${signed(r[key] - b)}`);
             if (key === 'aff' && r[key] > b) jealousyFrom(s, r.name, r[key] - b, info);
@@ -1024,7 +1096,11 @@ export function compute(limit, opts = {}) {
     let lastAI = -1;
     for (let i = n - 1; i >= start; i--) if (isStoryAI(chat[i])) { lastAI = i; break; }
     let ai = 0;
+    markRomFrom(meta, chat);
+    const romFrom = Number.isFinite(meta.romFrom) ? meta.romFrom : Infinity;
+    const romRun = settings().romFatigue;
     const runAdjust = (a) => {
+        s.romActive = a.at >= romFrom;
         const info = { seed: `${seed}:adj:${a.t}`, labels: [], alerts: [], mods: meta.mods, meta, cut: 0 };
         if (a.set) {
             if (a.set.mod === 'core') s.core = clone(a.set.data);
@@ -1047,8 +1123,10 @@ export function compute(limit, opts = {}) {
         s.turn++;
         const ops = msgOps(m);
         if (!ops.length) continue;
-        const info = { seed: `${seed}:${i}`, labels: [], alerts: [], mods: meta.mods, roll: null, meta, cut: 0 };
+        s.romActive = i >= romFrom;
+        const info = { seed: `${seed}:${i}`, labels: [], alerts: [], mods: meta.mods, roll: null, meta, cut: 0, ai: true };
         for (const [k, v] of ops) applyOp(s, k, v, info);
+        if (romRun && s.romActive) { const used = info.romUsed ?? {}; const run = (s.romRun ??= {}); for (const k of new Set([...Object.keys(run), ...Object.keys(used)])) run[k] = used[k] > 0 ? (run[k] ?? 0) + 1 : 0; }
         checkRules(s, info);
         s.dayBuf?.labels.push(...info.labels.slice(info.cut));
         snaps.set(i, { labels: info.labels, alerts: info.alerts, roll: info.roll, turn: s.turn });
@@ -1157,6 +1235,8 @@ export function tagKeysFor(meta) {
     if (on('dice')) K.push('roll (판정 이름 | 난이도 — ask {{user}} to roll instead of deciding a risky outcome yourself)');
     if (on('fate')) K.push('curse (이름 | 효과1, 효과2 | 일수 | 풀리는 조건 — only when the story truly curses or blesses {{user}}; -이름 lifts it)');
     if (on('rel') && settings().jealousy) K.push('jealous (이름 ±N — someone gets jealous of {{user}} with another, or is reassured)');
+    if (on('rel') && settings().romBond) K.push('confess (이름 — ONLY right after a real confession was made AND accepted in this reply; the user confirms it. Never for closeness or time spent together)');
+    if (on('rel') && settings().romDrive) K.push('concern (이름 | 요즘 신경 쓰는 것 — when what they are preoccupied with changes or gets resolved; 이름 | 없음 clears) · taste (이름 | 끌리는 것 | 싫어하는 것 — fill once if blank)');
     if (on('rel') && settings().offscreen) K.push('life (이름 | 화면 밖에서 한 일 — only right after days pass, 1-2 people not in the scene, small believable things)');
     if (on('sns')) K.push('sns (작성자 | 글 | 사진 묘사 | #태그 — a character posts on social media; rarely, when it fits)');
     if (on('music')) K.push(`bgm (곡 제목 - 가수 | 분위기 — ONLY when the scene's mood clearly shifts; a REAL existing song that fits${musicTaste() ? `, taste: ${musicTaste()}` : ''}; never quote lyrics)`);
@@ -1398,6 +1478,41 @@ function buildDelta(r, plan, opt = {}) {
 
 // 플레이 방식: 다인봇·풀사칭이면 머리에 한 줄, 풀사칭이면 {{user}} → 주인공
 export function buildInjection(r, opt = {}) {
+    const inj = buildInjection1(r, opt);
+    if (r && !opt.noOutput) { try { inj.romance = swapUser(romanceBlock(r)); } catch (e) { console.warn(LOG, 'romance', e); } }
+    return inj;
+}
+// ───── 로맨스 보정 주입 (v2.6 · 따로 주입 · 깊이 따로) ─────
+function romanceBlock(r) {
+    const set = settings(), s = r.state, d = s.data, meta = getMeta();
+    const L = [];
+    if (modOn('rel', meta) && d.rel && (set.romFacts || set.romDrive)) {
+        const rl = d.rel, st = rl.stages?.length ? rl.stages : DEFAULT_STAGES, top = st.length - 1;
+        const inScene = sceneTester(set, s);
+        for (const x of rl.user.filter(y => inScene(y.name)).slice(0, 8)) {
+            const k = clamp(x.stage ?? 0, 0, top), g = st[k], nx = st[k + 1];
+            if (set.romFacts) {
+                const allowed = st.slice(0, k + 1).map(y => y.unlock).filter(Boolean).join('; ');
+                L.push(P('inj.rom.facts', {
+                    who: x.name, stage: g.name,
+                    reached: k === top ? `They have reached the highest stage 「${g.name}」.` : `They have NOT reached 「${st[top].name}」${set.romBond ? ' — no confession has been made and accepted' : ''}.`,
+                    allowed: allowed || 'only what people at this distance would do',
+                    next: nx ? `「${nx.name}」${nx.unlock ? ` (${nx.unlock})` : ''}` : 'nothing — they are at the top',
+                }));
+            }
+            if (set.romDrive) {
+                const det = [x.likes && `drawn to: ${short(x.likes, 80)}`, x.dislikes && `put off by: ${short(x.dislikes, 80)}`, x.concern && `currently preoccupied with: ${short(x.concern, 100)}`].filter(Boolean).join('; ');
+                L.push(P('inj.rom.drive', { who: x.name, details: det || 'not recorded yet — infer from the character and keep it consistent' }));
+            }
+        }
+    }
+    if (set.romIntent) L.push(P('inj.rom.intent'));
+    const out = L.length ? [P('inj.rom.header'), ...L] : [];
+    const mine = String(set.romInject ?? '').trim();
+    if (mine) out.push(mine);
+    return out.join('\n');
+}
+function buildInjection1(r, opt = {}) {
     const inj = buildInjection0(r, opt);
     if (!inj.main && !inj.people) return inj;
     const p = playOf();
@@ -1473,7 +1588,7 @@ function buildInjection0(r, opt = {}) {
     if (on('rel')) {
         const rl = d.rel;
         const here = rl.user.filter(x => inScene(x.name)), away = rl.user.filter(x => !inScene(x.name));
-        for (const x of here.slice(0, 12)) { const g = stageOf(rl, x); PP.push(`${x.name}${x.label ? ` [${x.label}]` : ''} → {{user}}: 호감 ${x.aff} · 신뢰 ${x.trust} · 단계 「${g.name}」${g.unlock && !lite ? ` (unlocked: ${short(g.unlock, 60)}${set.stageLock ? " — don't act beyond this stage yet" : ''})` : set.stageLock ? ' (stay within this stage)' : ''}${x.jealous >= 30 ? ` · 질투 ${x.jealous}/100 (show it subtly when they meet)` : ''}${x.memo && !lite ? ` — ${short(x.memo, 90)}` : ''}`); }
+        for (const x of here.slice(0, 12)) { const g = stageOf(rl, x); PP.push(`${x.name}${x.label ? ` [${x.label}]` : ''} → {{user}}: 호감 ${x.aff} · 신뢰 ${x.trust} · 단계 「${g.name}」${g.unlock && !lite ? ` (unlocked: ${short(g.unlock, 60)}${set.stageLock && !set.romFacts ? " — don't act beyond this stage yet" : ''})` : set.stageLock && !set.romFacts ? ' (stay within this stage)' : ''}${x.jealous >= 30 ? ` · 질투 ${x.jealous}/100 (show it subtly when they meet)` : ''}${x.memo && !lite ? ` — ${short(x.memo, 90)}` : ''}`); }
         if (away.length) PP.push(`Not in this scene (호감/신뢰): ${away.slice(0, 15).map(x => `${x.name} ${x.aff}/${x.trust}`).join(', ')}`);
         const pairs = rl.pairs.filter(p => inScene(p.a) || inScene(p.b));
         if (pairs.length && !lite) PP.push(`Between others: ${pairs.slice(0, 10).map(p => `${p.a}↔${p.b} ${p.label}`).join(' · ')}`);
@@ -1529,6 +1644,8 @@ export function setInjection(inj) {
     const depth = clamp(parseInt(settings().injectDepth, 10) || 0, 0, 20);
     c.setExtensionPrompt(INJECT_KEY, inj?.main ?? '', PROMPT_IN_CHAT, depth, true, ROLE_SYSTEM);
     c.setExtensionPrompt(INJECT_KEY2, inj?.people ?? '', PROMPT_IN_CHAT, depth, false, ROLE_SYSTEM);
+    const rd = clamp(parseInt(settings().romDepth, 10) || 0, 0, 20);
+    c.setExtensionPrompt(INJECT_KEY3, inj?.romance ?? '', PROMPT_IN_CHAT, rd, false, ROLE_SYSTEM);
 }
 
 // ───── 생성 재료 ─────

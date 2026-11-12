@@ -5,6 +5,7 @@ export const TITLE = '미트볼 상태창';
 export const VERSION = '2.5.1';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
+export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
 export const PROMPT_IN_CHAT = 1;
 export const ROLE_SYSTEM = 0;
 
@@ -80,6 +81,17 @@ export const DEFAULTS = Object.freeze({
     peekPerDay: 3,           // 속마음 엿보기 하루 횟수 (0 = 무제한)
     jealousy: true,          // 질투 게이지
     stageLock: false,        // 관계 단계를 넘는 행동을 본편 AI에게 막기 (끄면 단계만 알려 줌)
+    // ── 로맨스 보정 (v2.6 · 전부 선택 · 기본 꺼짐) ──
+    romBond: false,          // 맨 위 단계(연인)는 숫자만으론 안 됨 — 고백 후 「연인 확정」을 눌러야
+    romCap: false,           // AI 답 1번에 한 사람의 호감·신뢰가 오를 수 있는 양에 상한
+    romCapAff: 5,
+    romCapTrust: 5,
+    romFatigue: false,       // 같은 사람 호감이 여러 턴 연달아 오르면 점점 덜 오르게
+    romFacts: false,         // 「~하지 마」 대신 「지금 관계는 이렇고, 이 사람은 이렇게 군다」를 사실로 알려 줌
+    romDrive: false,         // 인물마다 끌리는 것 · 싫어하는 것 · 요즘 신경 쓰는 것
+    romIntent: false,        // 본편 AI에게 「쓰기 전에 캐릭터 의도부터 정하기」 한 줄
+    romInject: '',           // 내가 넣는 추가 주입문 (비우면 안 보냄)
+    romDepth: 1,             // 로맨스 보정 주입 깊이 (0 = 맨 끝)
     offscreen: true,         // NPC 화면 밖 생활 (날이 지나면 가끔)
     favTabs: [],             // 즐겨찾기 탭
     bottomNav: false,        // 폰: 탭 바를 아래로 (한 손 모드)
@@ -402,7 +414,7 @@ export const NORM = {
     rel: (d) => {
         const stages = arr(d.stages).filter(x => x?.name).map(x => ({ name: str(x.name), at: clamp(Math.round(num(x.at, 0)), -100, 100), trust: clamp(Math.round(num(x.trust, -100)), -100, 100), unlock: str(x.unlock) })).sort((a, b) => a.at - b.at);
         return {
-            user: arr(d.user).filter(r => r?.name).map(r => ({ name: str(r.name), label: str(r.label), aff: clamp(Math.round(num(r.aff, 0)), -100, 100), trust: clamp(Math.round(num(r.trust, 0)), -100, 100), memo: str(r.memo), stage: Number.isFinite(Number(r.stage)) && r.stage !== null && r.stage !== '' ? Math.round(Number(r.stage)) : -1, jealous: clamp(Math.round(num(r.jealous, 0)), 0, 100), met: str(r.met) })),
+            user: arr(d.user).filter(r => r?.name).map(r => ({ name: str(r.name), label: str(r.label), aff: clamp(Math.round(num(r.aff, 0)), -100, 100), trust: clamp(Math.round(num(r.trust, 0)), -100, 100), memo: str(r.memo), stage: Number.isFinite(Number(r.stage)) && r.stage !== null && r.stage !== '' ? Math.round(Number(r.stage)) : -1, jealous: clamp(Math.round(num(r.jealous, 0)), 0, 100), met: str(r.met), bond: r.bond === true || r.bond === 'true', likes: str(r.likes), dislikes: str(r.dislikes), concern: str(r.concern) })),
             pairs: arr(d.pairs).filter(p => p?.a && p?.b).map(p => ({ a: str(p.a), b: str(p.b), label: str(p.label), memo: str(p.memo) })),
             stages: stages.length ? stages : clone(DEFAULT_STAGES),
             life: arr(d.life).filter(x => x?.text).map(x => ({ who: str(x.who), text: str(x.text), date: str(x.date) })).slice(-20),
@@ -602,7 +614,7 @@ export const EDIT = {
         { k: 'trash', label: '쓰레기통', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'date', label: '버린 날', type: 'text' }] },
     ],
     rel: [
-        { k: 'user', label: '{{user}}와의 관계', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'aff', label: '호감', type: 'num' }, { k: 'trust', label: '신뢰', type: 'num' }, { k: 'jealous', label: '질투 (0~100)', type: 'num' }, { k: 'met', label: '처음 만난 날', type: 'text' }, { k: 'memo', label: '메모', type: 'area' }] },
+        { k: 'user', label: '{{user}}와의 관계', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'aff', label: '호감', type: 'num' }, { k: 'trust', label: '신뢰', type: 'num' }, { k: 'jealous', label: '질투 (0~100)', type: 'num' }, { k: 'met', label: '처음 만난 날', type: 'text' }, { k: 'memo', label: '메모', type: 'area' }, { k: 'bond', label: '연인 확정 (고백 이후 · 로맨스 보정용)', type: 'bool' }, { k: 'likes', label: '끌리는 것 (로맨스 보정)', type: 'text' }, { k: 'dislikes', label: '싫어하는 것 (로맨스 보정)', type: 'text' }, { k: 'concern', label: '요즘 신경 쓰는 것 (로맨스 보정)', type: 'text' }] },
         { k: 'pairs', label: '인물끼리의 관계', type: 'list', title: 'a', fields: [{ k: 'a', label: 'A', type: 'text' }, { k: 'b', label: 'B', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'memo', label: '메모', type: 'text' }] },
         { k: 'stages', label: '관계 단계 (호감·신뢰가 넘으면 해금)', type: 'list', title: 'name', fields: [{ k: 'name', label: '단계 이름', type: 'text' }, { k: 'at', label: '필요한 호감', type: 'num' }, { k: 'trust', label: '필요한 신뢰', type: 'num' }, { k: 'unlock', label: '해금되는 것 (호칭·말투·행동)', type: 'text' }] },
         { k: 'life', label: '화면 밖 소식', type: 'list', title: 'who', fields: [{ k: 'who', label: '누가', type: 'text' }, { k: 'text', label: '한 일', type: 'text' }, { k: 'date', label: '날짜', type: 'text' }] },
