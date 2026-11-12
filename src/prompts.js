@@ -73,7 +73,7 @@ export const PROMPT_MAP = Object.fromEntries(PROMPT_DEFS.map(p => [p.key, p]));
 export function P(key, vars = {}) {
     const s = settings();
     const raw = s.prompts?.[key] ?? PROMPT_MAP[key]?.text ?? '';
-    vars = { outLang: s.ssGenLang === 'en' ? 'English' : 'Korean', ...vars };
+    vars = { outLang: s.ssGenLang === 'en' || s.ssGenLang === 'enview' ? 'English' : 'Korean', ...vars };
     return String(raw).replace(/\{([a-z][a-zA-Z0-9_]*)\}/g, (m, k) => (Object.hasOwn(vars, k) ? String(vars[k] ?? '') : m));
 }
 export function setPrompt(key, text) {

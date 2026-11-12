@@ -7,7 +7,7 @@ import { listProfiles } from './src/prompts.js';
 import { diffHTML, confirmPopup, applyTheme, askInput } from './src/kit.js';
 import { ensureUI, rerenderPanels, openSheet, openWizard, openRoll, openPromptWindow, openThemeWindow, panels, renderHud } from './src/shell.js';
 import { receivePing } from './src/contact.js';
-import { translateSheet } from './src/translate.js';
+import { translateSheet, startViewTr, translateView } from './src/translate.js';
 import { notify } from './src/notify.js';
 import { offerCard, followBranch, saveSlot, fullBackup, diagnose } from './src/safe.js';
 import { starred, toggleStar, PRESETS, applyPreset } from './src/extra.js';
@@ -178,9 +178,14 @@ function renderSettings() {
             <label>메시지 변동 칩<select class="text_pole" data-s="msgCard">${o('msgCard', 'compact', '보이기')}${o('msgCard', 'off', '숨기기')}</select></label>
             <b class="ss-set-h">상태창 언어 · 번역</b>
             <small>상태창 칸(프로필·상점·편지·뉴스…)을 만드는 <b>확장 AI 모델</b>과, 그걸 번역하는 <b>번역 모델</b>을 따로 고를 수 있어요. 롤플 본문과는 상관없어요.</small>
-            <label>상태창 생성 언어<select class="text_pole" data-s="ssGenLang">${o('ssGenLang', 'ko', '한국어로 바로 생성 (번역 없음)')}${o('ssGenLang', 'en', '영어로 생성 → 번역 모델로 번역 (생성마다 번역 1회 추가)')}</select></label>
+            <label>상태창 생성 언어<select class="text_pole" data-s="ssGenLang">${o('ssGenLang', 'ko', '한국어로 바로 생성 (번역 없음)')}${o('ssGenLang', 'enview', '영어로 저장 · 화면만 번역 — AI에겐 영어, 나한텐 번역본 (추천 · 생성마다 번역 1회)')}${o('ssGenLang', 'en', '영어로 생성 → 번역본을 저장 (AI에게도 번역본이 감 · 예전 방식)')}</select></label>
             <label>번역 모델 (연결 프로필)<div class="ss-set-inline"><select class="text_pole" data-s="trProfile">${profileOptions(s.trProfile).replace('메인 연결 그대로', '확장 AI 모델 그대로 (없으면 메인)')}</select></div></label>
             <label>번역할 언어<input class="text_pole" data-s="trLang" value="${esc(s.trLang)}"></label>
+            <label>번역 담당<select class="text_pole" data-s="trEngine">${o('trEngine', 'llm', '번역 모델 (LLM) — 말투·지침을 이해함 · 토큰 듦')}${o('trEngine', 'st', '실리 기본 번역 — Google·DeepL 등 · 무료 · 빠름')}</select>
+                <small>실리 기본 번역은 확장 메뉴 › <b>Chat Translation</b>에서 고른 번역기를 써요.</small></label>
+            <label>실리 기본 번역 언어 코드<input class="text_pole" data-s="trCode" value="${esc(s.trCode)}" placeholder="ko"></label>
+            <label>번역 지침<textarea class="text_pole" rows="4" data-s="trRules" placeholder="Rob Lucci = 로브 루치&#10;Kaku = 카쿠&#10;편지는 반말로 옮길 것">${esc(s.trRules ?? '')}</textarea>
+                <small><b>번역 모델</b>: 적은 글이 그대로 지침으로 가요. <b>실리 기본 번역</b>: 지침을 읽지 못해서 <code>원문 = 번역</code> 모양의 줄만 써요 (이름·용어 고정). 다른 줄은 무시돼요.</small></label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="trsheet"><i class="fa-solid fa-language"></i> 상태창 전체 번역</button></div>
             <b class="ss-set-h">일시정지 · OOC</b>
             <label class="checkbox_label"><input type="checkbox" data-s="oocDetect" ${s.oocDetect ? 'checked' : ''}> 내 메시지가 OOC로 시작하면 그 턴은 상태창 안 보냄 <small>((, (OOC, [OOC, //</small></label>
@@ -290,6 +295,7 @@ function renderSettings() {
         settings()[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.type === 'number' || e.target.type === 'range' ? Number(e.target.value) : e.target.value;
         saveSettings();
         if (k === 'autoRegex' && e.target.checked) installRegex();
+        if (k === 'ssGenLang' && e.target.value === 'enview') toastr.info('이제부터 만드는 상태창은 영어로 저장되고 화면에만 번역돼요. 이미 한국어로 저장된 칸은 그대로예요.', TITLE);
         if (k === 'mascotSound' && e.target.value === 'custom' && !settings().mascotSoundFile) toastr.info('아래 「파일 고르기」로 소리 파일을 넣어 주세요. 넣기 전엔 냥냥으로 나요.', TITLE);
         if (k === 'mascotSound' || k === 'mascotVolume') playMascotSound(); // 고르면 바로 들려주기
         refreshNow();
@@ -530,6 +536,7 @@ function init() {
     registerCommands();
     registerMacros();
     if (settings().autoRegex) installRegex(false);
+    try { startViewTr(); } catch (e) { console.warn(LOG, 'viewtr', e); }
     const on = (name, fn) => { if (E[name]) eventSource.on(E[name], fn); };
     on('CHAT_CHANGED', onChatChanged);
     on('GENERATION_AFTER_COMMANDS', onBeforeGenerate);

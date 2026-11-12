@@ -1,7 +1,7 @@
 // 상태 엔진: <meatball> 변화량 → 상태 재계산 · 직접 편집 기록 · 프롬프트 주입
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
-    signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3,
+    signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook,
     PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser,
 } from './core.js';
 import { P } from './prompts.js';
@@ -1302,6 +1302,8 @@ export function sceneTester(set = settings(), s = null) {
         const nm = String(name ?? '').trim();
         if (!nm) return false;
         if (always.has(norm(nm)) || text.includes(nm)) return true;
+        const ko = trLook(nm); // 화면만 번역: 한국어 본편엔 번역된 이름으로 나옴
+        if (ko && text.includes(ko)) return true;
         return nm.split(/[\s·.]+/).some(part => part.length >= 2 && text.includes(part));
     };
 }

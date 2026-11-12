@@ -48,9 +48,12 @@ export const DEFAULTS = Object.freeze({
     fontScale: 1,
     radius: 12,
     defaultMods: null,
-    ssGenLang: 'ko',         // 상태창(확장 AI) 생성 언어: ko = 바로 한국어 | en = 영어로 생성 → 번역 모델로 번역
+    ssGenLang: 'ko',         // 상태창(확장 AI) 생성 언어: ko = 바로 한국어 | en = 영어로 생성 → 번역본 저장 | enview = 영어로 저장 · 화면만 번역 (v2.6)
     trProfile: '',           // 번역 모델 (연결 프로필, '' = 확장 AI 모델 → 없으면 메인)
     trLang: '한국어',
+    trEngine: 'llm',         // 번역 담당: llm = 번역 모델 (지침 이해) | st = 실리 기본 번역 (Chat Translation의 Google·DeepL 등 · 무료) (v2.6)
+    trCode: 'ko',            // 실리 기본 번역에 넘길 언어 코드
+    trRules: '',             // 번역 지침 — LLM: 그대로 전달 · 실리 기본 번역: 「원문 = 번역」 줄만 (이름 고정)
     prompts: {},             // 사용자 수정 프롬프트
     stashTags: true,         // <meatball>을 읽은 뒤 본문에서 떼어 메시지 숨은 칸에 보관 (다른 확장·요약에 안 보임)
     aiFallbackMain: true,    // 연결 프로필 실패·빈 응답 때 메인 연결로 다시 보냄
@@ -215,7 +218,26 @@ export function findBy(list, name, field = 'name') {
     if (!n || !Array.isArray(list)) return null;
     return list.find(x => norm(x?.[field]) === n)
         ?? list.find(x => { const m = norm(x?.[field]); return m.length >= 2 && n.length >= 2 && (m.includes(n) || n.includes(m)); })
-        ?? null;
+        ?? trFind(list, name, field);
+}
+// ───── 화면만 번역 (v2.6): 상태창 데이터는 영어 그대로 (= AI에게도 영어), 화면에 그릴 때만 번역본 ─────
+// 번역 사전은 채팅마다 meta.tr = { 영어 원문: 번역 } 에 쌓인다.
+export const viewTr = () => { try { return settings().ssGenLang === 'enview'; } catch { return false; } };
+export function trDict() { try { return viewTr() ? (getMeta()?.tr ?? null) : null; } catch { return null; } }
+export function trLook(en) { const d = trDict(); return d ? d[String(en ?? '').trim()] : undefined; }
+let trRev = { d: null, n: -1, map: null };
+export function trBack(ko) {
+    const d = trDict(); if (!d) return undefined;
+    const n = Object.keys(d).length;
+    if (trRev.d !== d || trRev.n !== n) trRev = { d, n, map: new Map(Object.entries(d).map(([e, k]) => [norm(k), e])) };
+    return trRev.map.get(norm(ko));
+}
+// 화면(번역된 이름)이나 한국어 본편이 번역된 이름으로 부를 때도 영어로 저장된 항목을 찾게
+function trFind(list, name, field) {
+    const en = trBack(name);
+    if (!en) return null;
+    const n = norm(en);
+    return list.find(x => norm(x?.[field]) === n) ?? null;
 }
 export function parseNum(raw) {
     const t = String(raw ?? '').trim().replace(/[−–—]/g, '-').replace(/[,\s]/g, '');

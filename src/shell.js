@@ -699,7 +699,7 @@ export async function openPromptWindow(tab = 'when') {
                 ${row('fa-newspaper', '새 소식 발행 · 새 호 발행 · 새 글 불러오기 · 댓글 달리기 · 의뢰 찾기', '누를 때', '각 1회')}
                 ${row('fa-hashtag', 'SNS 새 게시물 · 반응 받기 · 추천 곡 3개 · 속마음 엿보기', '누를 때', '각 1회')}
                 ${row('fa-screwdriver-wrench', `깨진 답 다시 받기 — ${set.retryJSON ? '켬' : '꺼짐'}`, '확장 AI 답(JSON)이 고쳐도 안 될 때만 한 번 더', set.retryJSON ? '가끔 +1' : '꺼짐', set.retryJSON)}
-                ${row('fa-language', `상태창 번역 — ${set.ssGenLang === 'en' ? '켬 (영어로 생성 → 번역)' : '꺼짐 (한국어로 바로 생성)'}`, `켜면 위의 AI 호출마다 번역 모델(${set.trProfile ? '고른 연결 프로필' : '확장 AI 모델'})이 1회 더. 「상태창 전체 번역」은 칸 1개 = 1회`, set.ssGenLang === 'en' ? '+1회씩' : '꺼짐', set.ssGenLang === 'en')}`)}
+                ${row('fa-language', `상태창 번역 — ${set.ssGenLang === 'enview' ? '켬 (영어로 저장 · 화면만 번역)' : set.ssGenLang === 'en' ? '켬 (영어로 생성 → 번역본 저장)' : '꺼짐 (한국어로 바로 생성)'}`, `켜면 위의 AI 호출마다 번역 모델(${set.trProfile ? '고른 연결 프로필' : '확장 AI 모델'})이 1회 더. 「상태창 전체 번역」은 칸 1개 = 1회`, set.ssGenLang === 'en' ? '+1회씩' : '꺼짐', set.ssGenLang === 'en')}`)}
             ${sec('③ 설정에 따라 자동', `
                 ${row('fa-magnifying-glass', `별도 분석 — 지금: ${syncTxt}`, 'B: 매 AI 응답마다 1회 · A+B: 응답에 &lt;status&gt;가 빠졌을 때만', set.sync === 'analyze' ? '매 응답' : set.sync === 'tagPlus' ? '가끔' : '꺼짐', set.sync === 'analyze' || set.sync === 'tagPlus')}
                 ${row('fa-bell', `자동 선톡 — ${set.autoPing ? `켬 (${set.autoPingEvery}턴마다 확률)` : '꺼짐'}`, '켜 두면 가끔 누군가 먼저 연락해요', set.autoPing ? '가끔' : '꺼짐', set.autoPing)}`)}
