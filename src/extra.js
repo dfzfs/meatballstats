@@ -219,7 +219,7 @@ export function albumView(s, d, ui) {
             <blockquote class="ss-pre">${esc(x.text)}</blockquote>
             ${x.note ? `<p class="ss-memo-note">✍ ${esc(x.note)}</p>` : ''}
             <div class="ss-row-btns">${x.song ? play(x.song, esc(short(x.song.title, 18))) : ''}${x.kind === 'mes' && Number.isFinite(x.mesid) ? `<button class="ss-btn sm ghost" data-act="albumgo" data-arg="${x.mesid}">그 장면으로</button>` : ''}<button class="ss-ib" data-act="albumnote" data-arg="${esc(x.id)}" title="한 줄 적기"><i class="fa-solid fa-pen"></i></button><button class="ss-ib" data-act="albumdel" data-arg="${esc(x.id)}" title="빼기"><i class="fa-solid fa-trash-can"></i></button></div>
-        </figure>`).join('') || `<div class="ss-mempty">${mascot('sleep', 'md')}${emptyBox('아직 담긴 추억이 없어요 — 메시지의 ☆를 눌러 보세요', 'fa-star')}</div>`}</div>`;
+        </figure>`).join('') || `<div class="ss-mempty">${mascot('sleep', 'md')}${emptyBox('아직 담긴 추억이 없어요 — 메시지의 앨범 단추(🖼️)를 눌러 보세요', 'fa-images')}</div>`}</div>`;
 }
 export const ALBUM_ACTIONS = {
     albumf: (el, arg) => { el._ss.ui.albumF = arg; app.renderPanel(el); },

@@ -114,6 +114,7 @@ export function renderPanel(el) {
     const nNew = unreadNotes(meta);
     el.innerHTML = `<div class="ss-root ss-scope ${inSide ? 'in-side' : ''} ${meta.paused ? 'paused' : ''} ${settings().bottomNav ? 'navbottom' : ''}">
         <header class="ss-head">
+            ${settings().mascotBuddy !== false ? mascot(meta.paused ? 'sleep' : nNew ? 'surprise' : 'idle', 'head', 'bob') : ''}
             <div class="ss-head-t"><b>${esc(c.title || TITLE)}</b>${sub2 ? `<small>${esc(sub2)}</small>` : ''}</div>
             <div class="ss-head-a">
                 <button class="ss-chip btn diff-${diffOf(meta)}" data-act="tab" data-arg="manage" title="난이도"><i class="fa-solid ${d0.icon}"></i> ${d0.name}</button>
