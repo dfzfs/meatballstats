@@ -51,7 +51,7 @@ export const DEFAULTS = Object.freeze({
     trProfile: '',           // 번역 모델 (연결 프로필, '' = 확장 AI 모델 → 없으면 메인)
     trLang: '한국어',
     prompts: {},             // 사용자 수정 프롬프트
-    stashTags: true,         // <status>를 읽은 뒤 본문에서 떼어 메시지 숨은 칸에 보관 (다른 확장·요약에 안 보임)
+    stashTags: true,         // <meatball>을 읽은 뒤 본문에서 떼어 메시지 숨은 칸에 보관 (다른 확장·요약에 안 보임)
     aiFallbackMain: true,    // 연결 프로필 실패·빈 응답 때 메인 연결로 다시 보냄
     profContact: '',         // 기능별 모델 (연결 프로필, '' = 확장 AI 모델)
     profGen: '',

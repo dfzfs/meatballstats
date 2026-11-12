@@ -93,7 +93,7 @@ export async function analyzeMessage(idx) {
     const prompt = `${inj.main}\n${inj.people}\n\nKeys: ${tagKeysFor(getMeta()).join(' · ')}\n\n=== {{user}} ===\n${short(prevUser?.mes ?? '', 1500)}\n\n=== REPLY ===\n${short(stripStatus(m.mes), 4000)}`;
     try {
         const out = await aiGenerate('analyze', P('ai.analyze'), prompt, 600);
-        const ops = extractOps(out.includes('<status>') ? out : `<status>\n${out}\n</status>`);
+        const ops = extractOps(/<(?:meatball|status)>/i.test(out) ? out : `<meatball>\n${out}\n</meatball>`);
         m.extra ??= {};
         m.extra[MODULE] ??= { bySwipe: {} };
         m.extra[MODULE].bySwipe ??= {};

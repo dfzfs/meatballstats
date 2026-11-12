@@ -1,7 +1,7 @@
 // 미트볼 상태창 (Meatball Stats) — SillyTavern UI extension
 // 어떤 카드·세계관에도 붙는 상태창. 모든 칸은 AI가 처음 채우고, 직접 편집 · 추가 지시 · 다시 생성이 된다.
 import { app, ctx, settings, saveSettings, getMeta, saveMeta, isActive, ready, modOn, MODS, MOD_IDS, MOD, esc, short, splitBar, findBy, TITLE, LOG, VERSION, MODULE, sub, rand, DIFFS } from './src/core.js';
-import { compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, drawerOps, setDrawer, extractOps, ssValue, undoLast } from './src/engine.js';
+import { compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, drawerOps, setDrawer, extractOps, ssValue, undoLast, hasStatus } from './src/engine.js';
 import { analyzeMessage, instructModule } from './src/ai.js';
 import { listProfiles } from './src/prompts.js';
 import { diffHTML, confirmPopup, applyTheme, askInput } from './src/kit.js';
@@ -41,7 +41,7 @@ function decorateAll() {
         }
         const hasCard = snap && set.msgCard !== 'off' && (snap.labels.length || snap.roll);
         if (hasCard && !textEl.querySelector('.ss-slot, .custom-ss-slot')) { const sl = document.createElement('div'); sl.className = 'ss-slot'; textEl.appendChild(sl); }
-        const editBtn = m && drawerOps(m) && !/<status>/i.test(m.mes ?? '') ? `<button class="ss-mchip edit" data-ss-edit="${i}" title="이 답의 상태 변화 고치기"><i class="fa-solid fa-pen"></i></button>` : '';
+        const editBtn = m && drawerOps(m) && !hasStatus(m.mes) ? `<button class="ss-mchip edit" data-ss-edit="${i}" title="이 답의 상태 변화 고치기"><i class="fa-solid fa-pen"></i></button>` : '';
         textEl.querySelectorAll('.ss-slot, .custom-ss-slot').forEach((slot, k) => {
             if (k > 0 || !snap || set.msgCard === 'off' || (!snap.labels.length && !snap.roll)) { slot.innerHTML = ''; slot.style.display = 'none'; return; }
             slot.style.display = '';
@@ -67,7 +67,7 @@ document.addEventListener('click', async (e) => {
         const cur = (drawerOps(m) ?? []).map(([k, v]) => `${k}: ${v}`).join('\n');
         const v = await ctx().Popup.show.input(TITLE, '이 답에서 바뀐 상태 (한 줄에 하나, key: 값). 비우면 변화 없음.', cur, { rows: 8 });
         if (v === null || v === false || v === undefined) return;
-        setDrawer(m, extractOps(`<status>\n${v}\n</status>`));
+        setDrawer(m, extractOps(`<meatball>\n${v}\n</meatball>`));
         await ctx().saveChat?.();
         refreshNow();
         return;
@@ -96,8 +96,8 @@ app.decorate = decorateAll;
 // ───── 정규식 ─────
 function regexScripts() {
     return [
-        { id: REGEX_IDS.show, scriptName: '미트볼 상태창 ① <status> 블록 → 변동 칩', findRegex: '/<status>[\\s\\S]*?(?:<\\/status>|$)/gi', replaceString: '<div class="ss-slot"></div>', trimStrings: [], placement: [2], disabled: false, markdownOnly: true, promptOnly: false, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null },
-        { id: REGEX_IDS.strip, scriptName: '미트볼 상태창 ② 오래된 <status> 프롬프트에서 제거', findRegex: '/\\s*<status>[\\s\\S]*?(?:<\\/status>|$)/gi', replaceString: '', trimStrings: [], placement: [2], disabled: false, markdownOnly: false, promptOnly: true, runOnEdit: false, substituteRegex: 0, minDepth: 3, maxDepth: null },
+        { id: REGEX_IDS.show, scriptName: '미트볼 상태창 ① <meatball> 블록 → 변동 칩', findRegex: '/<meatball>[\\s\\S]*?(?:<\\/meatball>|$)|<status>(?:(?!<\\/status>|<summary|<details|\\|\\s*Physical\\s*:)[\\s\\S])*?(?:<\\/status>|$)/gi', replaceString: '<div class="ss-slot"></div>', trimStrings: [], placement: [2], disabled: false, markdownOnly: true, promptOnly: false, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null },
+        { id: REGEX_IDS.strip, scriptName: '미트볼 상태창 ② 오래된 <meatball> 프롬프트에서 제거', findRegex: '/\\s*(?:<meatball>[\\s\\S]*?(?:<\\/meatball>|$)|<status>(?:(?!<\\/status>|<summary|<details|\\|\\s*Physical\\s*:)[\\s\\S])*?(?:<\\/status>|$))/gi', replaceString: '', trimStrings: [], placement: [2], disabled: false, markdownOnly: false, promptOnly: true, runOnEdit: false, substituteRegex: 0, minDepth: 3, maxDepth: null },
     ];
 }
 app.installRegex = (reload) => installRegex(reload);
@@ -108,7 +108,7 @@ function installRegex(reload = true) {
     for (const sc of regexScripts()) {
         const ex = es.regex.find(x => x.id === sc.id);
         if (!ex) { es.regex.push(sc); changed = true; }
-        else if (ex.scriptName !== sc.scriptName) { ex.scriptName = sc.scriptName; saveSettings(); } // 이름만 바뀐 경우 (다시 불러오기 없이)
+        else if (ex.scriptName !== sc.scriptName || ex.findRegex !== sc.findRegex) { ex.scriptName = sc.scriptName; ex.findRegex = sc.findRegex; changed = true; } // 이름·찾는 글이 바뀐 경우 (업데이트)
     }
     if (changed) { saveSettings(); if (reload) ctx().reloadCurrentChat?.(); }
     return changed;
@@ -166,12 +166,12 @@ function renderSettings() {
             </div>
             <label>새 채팅 기본 난이도<select class="text_pole" data-s="difficulty">${Object.entries(DIFFS).map(([k, v]) => o('difficulty', k, v.name)).join('')}</select></label>
             <label>스토리 → 상태창 자동 반영<select class="text_pole" data-s="sync">
-                ${o('sync', 'tag', 'A. 태그 — 메인 AI가 응답 끝에 &lt;status&gt; (추천 · 추가 호출 없음)')}
+                ${o('sync', 'tag', 'A. 태그 — 메인 AI가 응답 끝에 &lt;meatball&gt; (추천 · 추가 호출 없음)')}
                 ${o('sync', 'tagPlus', 'A+B. 태그 + 빠졌을 때만 별도 분석')}
                 ${o('sync', 'analyze', 'B. 별도 분석 — 매 응답 뒤 AI 1회 더 (정확 · 비용↑)')}
                 ${o('sync', 'off', 'C. 끔 — 직접 편집·추가 지시로만')}</select></label>
             <label>규칙 주입<select class="text_pole" data-s="injectMode">${o('injectMode', 'full', '전체 (세계 요약·예시 포함)')}${o('injectMode', 'lite', '간결 (토큰 절약)')}${o('injectMode', 'ultra', '초압축 (기호·키워드 · 토큰 최소)')}</select>
-                <small>초압축은 가벼운 모델이 &lt;status&gt;를 빼먹을 수 있어서, 자동 반영을 A+B로 두는 걸 추천해요.</small></label>
+                <small>초압축은 가벼운 모델이 &lt;meatball&gt;을 빼먹을 수 있어서, 자동 반영을 A+B로 두는 걸 추천해요.</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="sceneFilter" ${s.sceneFilter ? 'checked' : ''}> 장면 필터 — 최근 대화에 나온 인물만 자세히, 나머지는 이름·수치만</label>
             <label>장면 판단에 볼 최근 메시지 수<input type="number" min="1" max="40" class="text_pole" data-s="sceneTurns" value="${s.sceneTurns}"></label>
             <label>주입할 고정 메모 최대 개수<input type="number" min="0" max="30" class="text_pole" data-s="pinCap" value="${s.pinCap}"></label>
@@ -209,7 +209,7 @@ function renderSettings() {
             <label>생성 때 읽을 최근 채팅 수<input type="number" min="0" max="100" class="text_pole" data-s="recentForGen" value="${s.recentForGen}"></label>
             <label>생성 때 읽을 로어북 최대 글자 수<input type="number" min="0" max="100000" step="1000" class="text_pole" data-s="loreChars" value="${s.loreChars}"></label>
             <label>상태 주입 깊이 (0 = 맨 끝)<input type="number" min="0" max="20" class="text_pole" data-s="injectDepth" value="${s.injectDepth}"></label>
-            <label class="checkbox_label"><input type="checkbox" data-s="autoRegex" ${s.autoRegex ? 'checked' : ''}> &lt;status&gt; 숨김 정규식 자동 설치</label>
+            <label class="checkbox_label"><input type="checkbox" data-s="autoRegex" ${s.autoRegex ? 'checked' : ''}> &lt;meatball&gt; 숨김 정규식 자동 설치</label>
             <b class="ss-set-h">모델 맞춤 · 토큰 절약</b>
             <small>버튼 하나로 아래 설정들을 한 번에 맞춰요. 대부분 플래시·아르곤이면 첫 번째를 추천해요.</small>
             <div class="ss-set-btns">${Object.entries(PRESETS).map(([k, p]) => `<button class="menu_button" data-s-preset="${k}" title="${esc(p.desc)}"><i class="fa-solid ${p.icon}"></i> ${esc(p.name)}</button>`).join('')}</div>
@@ -247,7 +247,7 @@ function renderSettings() {
             <div class="ss-set-btns"><button class="menu_button" data-s-act="mascotsound"><i class="fa-solid fa-volume-high"></i> 소리 미리 듣기</button></div>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="diag"><i class="fa-solid fa-stethoscope"></i> 자가 진단 · 고치기</button><button class="menu_button" data-s-act="backup"><i class="fa-solid fa-box-archive"></i> 이 채팅 전체 백업</button></div>
             <b class="ss-set-h">다른 확장과 같이 쓰기</b>
-            <label class="checkbox_label"><input type="checkbox" data-s="stashTags" ${s.stashTags ? 'checked' : ''}> &lt;status&gt;를 읽은 뒤 본문에서 떼어 보관 <small>(추천 · 요약·번역·로그 복사 확장에 변화량 줄이 안 보여요. 고칠 땐 변동 칩의 ✏️)</small></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="stashTags" ${s.stashTags ? 'checked' : ''}> &lt;meatball&gt;을 읽은 뒤 본문에서 떼어 보관 <small>(추천 · 요약·번역·로그 복사 확장에 변화량 줄이 안 보여요. 고칠 땐 변동 칩의 ✏️)</small></label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="stashall"><i class="fa-solid fa-box-archive"></i> 이 채팅의 옛 태그도 모두 보관</button></div>
             <div class="ss-set-btns">
                 <button class="menu_button" data-s-act="defmods">지금 기능 구성을 새 채팅 기본값으로</button>
@@ -358,7 +358,7 @@ function registerCommands() {
             return '';
         },
         namedArgumentList: [SlashCommandNamedArgument.fromProps({ name: 'key', description: 'stat, cash, item, loc, aff, date, quest, news, msg …', typeList: ARGUMENT_TYPE.STRING, isRequired: true })],
-        unnamedArgumentList: [SlashCommandArgument.fromProps({ description: '값 (<status> 한 줄과 같은 형식)', typeList: ARGUMENT_TYPE.STRING, isRequired: true })],
+        unnamedArgumentList: [SlashCommandArgument.fromProps({ description: '값 (<meatball> 한 줄과 같은 형식)', typeList: ARGUMENT_TYPE.STRING, isRequired: true })],
         helpString: '상태를 직접 바꾼다. 예: /ss-set key=stat 체력 -10',
     });
     add({
@@ -424,7 +424,7 @@ async function onBeforeGenerate(type, _opts, dryRun) {
     try { setInjection(buildInjection(compute(limit))); } catch (e) { console.error(LOG, e); }
 }
 function onGenEnded() { refresh(); }
-// 서랍: AI 답이 끝나면 <status>를 본문에서 떼어 보관
+// 서랍: AI 답이 끝나면 <meatball>을 본문에서 떼어 보관
 let stashSave = null;
 function stashAt(id, { replace = false, rerender = true, save = false } = {}) {
     if (!settings().stashTags || !isActive() || !ready()) return; // 상태창을 안 만든 채팅의 <status>(다른 프리셋 것일 수도)는 건드리지 않는다
@@ -462,7 +462,7 @@ function onCharRendered(id, type) {
         }
     }
     if (set.sync !== 'analyze' && set.sync !== 'tagPlus') return;
-    if (set.sync === 'tagPlus' && /<status>/i.test(m.mes)) return;
+    if (set.sync === 'tagPlus' && hasStatus(m.mes)) return;
     if (m.extra?.[MODULE]?.bySwipe?.[m.swipe_id ?? 0]) return;
     const key = `${ctx().getCurrentChatId?.()}:${i}:${m.swipe_id ?? 0}:${m.mes.length}`;
     if (analyzed.has(key)) return;

@@ -1,4 +1,4 @@
-// 상태 엔진: <status> 변화량 → 상태 재계산 · 직접 편집 기록 · 프롬프트 주입
+// 상태 엔진: <meatball> 변화량 → 상태 재계산 · 직접 편집 기록 · 프롬프트 주입
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
     signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2,
@@ -47,12 +47,18 @@ export const KEY_MOD = {
     bgm: 'music', sns: 'sns', custom: 'custom', life: 'rel', jealous: 'rel',
 };
 
-const BLOCK_RE = /<status>([\s\S]*?)(?:<\/status>|$)/gi;
+// 미트볼 블록 = <meatball> (v2.5.1~) · 예전 <status>.
+// 다른 프리셋도 <status>를 쓸 수 있어서(<summary>/<details>, 「| Physical:」 표 모양) 그런 블록은 읽지도 지우지도 않는다.
+const ANY_BLOCK_RE = /\s*<(meatball|status)>([\s\S]*?)(?:<\/\1>|(?=\s*<(?:meatball|status)>)|$)/gi;
+const FOREIGN_RE = /<summary\b|<details\b|\|\s*Physical\s*:|Relationship \(mutual/i;
+const isOurs = (tag, body) => tag.toLowerCase() === 'meatball' || !FOREIGN_RE.test(body);
+export const ourBlocks = (text) => [...String(text ?? '').matchAll(ANY_BLOCK_RE)].filter(m => isOurs(m[1], m[2]));
+export const hasStatus = (text) => ourBlocks(text).length > 0;
+export const removeStatus = (text) => String(text ?? '').replace(ANY_BLOCK_RE, (all, tag, body) => (isOurs(tag, body) ? '' : all));
 export function extractOps(text) {
     const ops = [];
-    if (!text || !/<status>/i.test(text)) return ops;
-    for (const m of String(text).matchAll(BLOCK_RE)) {
-        for (const line of m[1].split(/\r?\n/)) {
+    for (const m of ourBlocks(text)) {
+        for (const line of m[2].split(/\r?\n/)) {
             // 가벼운 모델이 붙이는 꾸밈(**굵게**, `코드`, 번호)을 벗겨 낸다
             const clean = line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/\*\*|__|`/g, '');
             const lm = clean.match(/^\s*([^:：\n]{1,24}?)\s*[:：]\s*(.+?)\s*$/);
@@ -61,7 +67,8 @@ export function extractOps(text) {
     }
     return ops;
 }
-export const stripStatus = (t) => String(t ?? '').replace(/<status>[\s\S]*?(?:<\/status>|$)/gi, '').trim();
+// 읽기용(요약·앨범·AI에게 보내는 최근 대화): 미트볼 블록과 다른 프리셋의 상태 블록을 모두 뺀 이야기 본문
+export const stripStatus = (t) => String(t ?? '').replace(ANY_BLOCK_RE, '').trim();
 
 // ───── 서랍: <status>를 읽은 뒤 본문에서 떼어 메시지 숨은 칸(extra)에 보관 ─────
 // 본문엔 이야기만 남아서 다른 확장(요약·번역·로그 복사)이 변화량 줄을 보지 않는다.
@@ -84,10 +91,10 @@ export function setDrawer(m, ops) {
 }
 // replace = true: 서랍을 새 내용으로 바꿈 / false: 이어 쓰기(continue)처럼 뒤에 덧붙임
 export function stashStatus(m, { replace = false } = {}) {
-    if (!m || m.is_user || typeof m.mes !== 'string' || !/<status>/i.test(m.mes)) return false;
+    if (!m || m.is_user || typeof m.mes !== 'string' || !hasStatus(m.mes)) return false;
     const ops = extractOps(m.mes);
     const old = replace ? [] : (drawerOps(m) ?? []);
-    m.mes = m.mes.replace(/\s*<status>[\s\S]*?(?:<\/status>|$)/gi, '').replace(/\s+$/, '');
+    m.mes = removeStatus(m.mes).replace(/\s+$/, ''); // 다른 프리셋의 <status>는 본문에 그대로
     setDrawer(m, [...old, ...ops]);
     return true;
 }
@@ -96,12 +103,12 @@ export function stashAllSwipes(m) {
     if (!m || m.is_user) return 0;
     let n = 0;
     if (Array.isArray(m.swipes)) m.swipes.forEach((t, sid) => {
-        if (sid === (m.swipe_id ?? 0) || typeof t !== 'string' || !/<status>/i.test(t)) return;
+        if (sid === (m.swipe_id ?? 0) || typeof t !== 'string' || !hasStatus(t)) return;
         const info = m.swipe_info?.[sid];
         if (!info || typeof info !== 'object') return; // 보관할 칸이 없으면 그대로 둔다
         info.extra ??= {}; info.extra[MODULE] ??= {}; info.extra[MODULE].bySwipe ??= {};
         info.extra[MODULE].bySwipe[sid] = extractOps(t);
-        m.swipes[sid] = t.replace(/\s*<status>[\s\S]*?(?:<\/status>|$)/gi, '').replace(/\s+$/, '');
+        m.swipes[sid] = removeStatus(t).replace(/\s+$/, '');
         n++;
     });
     if (stashStatus(m, { replace: true })) n++;

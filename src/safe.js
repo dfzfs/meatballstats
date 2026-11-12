@@ -225,7 +225,7 @@ export async function diagnose() {
         if (!Number.isFinite(v) || v < lo || v > hi) { set[k] = Math.min(hi, Math.max(lo, Number.isFinite(v) ? v : lo)); fix.push(`설정 「${k}」 값을 고쳤어요.`); }
     }
     saveSettings();
-    if (set.autoRegex && !(c.extensionSettings.regex ?? []).some(x => x.id === 'b7c1a0e2-5a1d-4f0e-9a51-55a1a0c05501')) { app.installRegex?.(false); fix.push('<status> 숨김 정규식을 다시 설치했어요.'); }
+    if (set.autoRegex && !(c.extensionSettings.regex ?? []).some(x => x.id === 'b7c1a0e2-5a1d-4f0e-9a51-55a1a0c05501')) { app.installRegex?.(false); fix.push('<meatball> 숨김 정규식을 다시 설치했어요.'); }
     meta.v = DATA_V;
     await saveMeta(true);
     app.refreshNow();
