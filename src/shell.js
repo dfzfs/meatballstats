@@ -256,7 +256,11 @@ export async function openSheet(tab, opt = {}) {
     await popup(el, { large: true, full });
     panels.delete(el);
 }
-app.openSheet = (tab) => openSheet(tab);
+app.openSheet = (tab) => {
+    const el = [...panels].find(p => p.isConnected && p.classList.contains('ss-panel-pop') && p.closest('dialog[open]') && p._ss?.mode === 'view' && !p._ss.rollOnly);
+    if (!el) return openSheet(tab);
+    if (tab && el._ss.tab !== tab) { Object.assign(el._ss, { tab, group: null, mode: 'view', ui: {} }); renderPanel(el); }
+};
 app.rerenderPanels = rerenderPanels;
 
 async function togglePause() {
@@ -451,7 +455,7 @@ export async function openRoll(label, dc) {
     if (!modOn('dice') || !app.current.state.data.dice) { toastr.warning('주사위 기능이 꺼져 있거나 비어 있어요.', TITLE); return; }
     const el = document.createElement('div');
     el.className = 'ss-panel ss-panel-pop';
-    el._ss = { tab: 'dice', mode: 'view', work: null, ui: {} };
+    el._ss = { tab: 'dice', mode: 'view', work: null, ui: {}, rollOnly: true };
     if (label) {
         const attrs = app.current.state.data.stats?.attrs ?? [];
         const q = app.current.state.data.dice.quick.find(x => x.name === label);
@@ -483,6 +487,7 @@ export async function setBase(base, mods, difficulty, play) {
     if (mods) meta.mods = { ...meta.mods, ...mods };
     if (difficulty && DIFFS[difficulty]) meta.difficulty = difficulty;
     if (play) meta.play = normPlay(play);
+    app.playTemp = null;
     await saveMeta(true);
     app.refreshNow();
 }
@@ -578,7 +583,7 @@ export async function openWizard() {
             const fillHero = id === 'core' && opts.play?.mode === 'director' && !opts.play.hero;
             const auto = id === 'core' && (!opts.play || fillHero);
             const data = await genModule(id, { sources: opts.sources, core: results.core, instruction: opts.instruction, profileMode: opts.pmode, contactMode: opts.cmode, feature: 'wizard', play: opts.play, detectPlay: auto });
-            if (id === 'core') { results.core = data; if (fillHero) opts.play = normPlay({ ...opts.play, hero: data.play?.hero ?? '', cast: data.play?.cast ?? [] }); else if (auto) opts.play = data.play ?? normPlay({ mode: 'rp' }); results.play = opts.play; }
+            if (id === 'core') { results.core = data; queueMicrotask(() => { app.playTemp = opts.play; }); if (fillHero) opts.play = normPlay({ ...opts.play, hero: data.play?.hero ?? '', cast: data.play?.cast ?? [] }); else if (auto) opts.play = data.play ?? normPlay({ mode: 'rp' }); results.play = opts.play; }
             else results.data[id] = data;
             setRow(id, name, 'ok', id === 'core' ? `${esc(data.title)} · ${PLAY_MODES[opts.play.mode].name}${opts.play.mode === 'director' && opts.play.hero ? ` (주인공 ${esc(opts.play.hero)})` : ''}${opts.play.cardIsWorld ? ' · 카드=세계관' : ''}${auto ? ' — 자동' : ''}` : '');
             return true;
@@ -633,6 +638,7 @@ export async function openWizard() {
         const cmode = W.cmode === 'auto' && g && g.contact !== 'auto' ? g.contact : W.cmode;
         opts = { sources, instruction: W.base === 'new' ? `${instruction}\n(Create a NEW world. Ignore any existing card/lorebook.)` : instruction, pmode: W.pmode, cmode, play: W.play === 'auto' ? null : normPlay({ mode: W.play, hero: el.querySelector('.ss-w-hero').value, cardIsWorld: el.querySelector('.ss-w-world').checked }) };
         results.play = opts.play;
+        app.playTemp = opts.play;
         // 추천 음악은 장면이 생기면 본편 AI가 고르므로 처음엔 빈 칸으로 (AI 호출 아끼기)
         if (mods.music) results.data.music = EMPTY.music();
         const ids = MOD_IDS.filter(id => id !== 'music' && mods[id] && (!MOD[id].needs || mods[MOD[id].needs]));
@@ -658,6 +664,7 @@ export async function openWizard() {
         showApply();
     });
     await popup(el, { large: true });
+    app.playTemp = null;
 }
 
 // ───── 프롬프트 · 토큰 창 ─────

@@ -81,9 +81,16 @@ app.notify = notify;
 
 // ───── 팝업 ─────
 const queue = [];
+// 실리태번 팝업은 화면 맨 위 층(모달)에 떠서, body에 붙인 알림은 그 뒤에 깔린다 → 열려 있는 맨 위 창 안으로 옮긴다
+function toastHost() {
+    const open = [...document.querySelectorAll('dialog[open]')].filter(d => { try { return d.matches(':modal'); } catch { return true; } });
+    return open.at(-1) ?? document.body;
+}
 function box() {
     let b = document.getElementById('ss-toasts');
-    if (!b) { b = document.createElement('div'); b.id = 'ss-toasts'; b.className = 'ss-toasts ss-scope'; document.body.appendChild(b); }
+    const host = toastHost();
+    if (!b) { b = document.createElement('div'); b.id = 'ss-toasts'; b.className = 'ss-toasts ss-scope'; queue.length = 0; }
+    if (b.parentElement !== host) host.appendChild(b);
     // 폰에서 상태창을 열어 둔 동안엔 위쪽 탭을 가리지 않게 아래로
     const sheetOpen = window.innerWidth <= 700 && !!document.querySelector('dialog.ss-dlg[open]');
     b.classList.toggle('bottom', settings().toastPos === 'bottom' || sheetOpen);

@@ -224,7 +224,7 @@ export function normPlay(p) {
     p = p && typeof p === 'object' ? p : {};
     return { mode: PLAY_MODES[p.mode] ? p.mode : 'rp', hero: String(p.hero ?? '').trim().slice(0, 40), cardIsWorld: !!p.cardIsWorld, cast: Array.isArray(p.cast) ? p.cast.map(String).map(x => x.trim()).filter(Boolean).slice(0, 20) : [] };
 }
-export function playOf(meta) { try { return normPlay((meta ?? getMeta())?.play); } catch { return normPlay(null); } }
+export function playOf(meta) { try { return normPlay((meta ?? (app.playTemp ? { play: app.playTemp } : getMeta()))?.play); } catch { return normPlay(null); } }
 // 풀사칭이면 우리 글 속 {{user}}를 주인공 이름으로 (주인공이 없으면 '주인공')
 export function swapUser(text, meta) {
     const p = playOf(meta);

@@ -1574,7 +1574,7 @@ export async function gatherSources(opt = {}) {
     const c = ctx(), set = settings();
     const parts = [];
     const persona = c.powerUserSettings?.persona_description ?? '';
-    parts.push(`[USER] {{user}} = ${c.name1}${opt.persona !== false && persona ? `\n${short(persona, 2500)}` : ''}`);
+    parts.push(`[THE REAL USER — plays the protagonist in roleplay, or only directs the story (see PLAY STYLE)] name: ${c.name1}${opt.persona !== false && persona ? `\npersona: ${short(persona, 2500)}` : ''}`);
     if (opt.card !== false) {
         for (const ch of chatCharacters()) {
             const f = [ch.description, ch.personality && `Personality: ${ch.personality}`, ch.scenario && `Scenario: ${ch.scenario}`].filter(Boolean).join('\n');
