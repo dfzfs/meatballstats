@@ -238,8 +238,8 @@ function bubble(img, text, ms = 1000) {
 
 // ───── 누르기 ─────
 const REACT = ['happy', 'surprise', 'party', 'happy'];
-const CRY_LINES = ['그만 눌러…', '으앙ㅠㅠ 아파!', '냐아앙ㅠ 너무해…'];
-const SULK_LINES = ['훌쩍…', '흥, 안 놀아ㅠ', '…삐졌어'];
+const CRY_LINES = ['그만 눌러…', '캬옹!', '너 성가셔!'];
+const SULK_LINES = ['흥!', '캬악!', '…삐졌어', '안 놀아줄 거다냥!'];
 const CRY_AT = 12, SULK_MS = 4000;
 let combo = 0, comboT = 0, annoy = 0, annoyT = 0, sulkUntil = 0;
 function setFace(img, name, ms) {
