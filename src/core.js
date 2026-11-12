@@ -2,9 +2,10 @@
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.5.1';
+export const VERSION = '2.6.1';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
+export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
 export const PROMPT_IN_CHAT = 1;
 export const ROLE_SYSTEM = 0;
 
@@ -47,9 +48,14 @@ export const DEFAULTS = Object.freeze({
     fontScale: 1,
     radius: 12,
     defaultMods: null,
-    ssGenLang: 'ko',         // 상태창(확장 AI) 생성 언어: ko = 바로 한국어 | en = 영어로 생성 → 번역 모델로 번역
+    ssGenLang: 'ko',         // 상태창(확장 AI) 생성 언어: ko = 바로 한국어 | en = 영어로 생성 → 번역본 저장 | enview = 영어로 저장 · 화면만 번역 (v2.6)
     trProfile: '',           // 번역 모델 (연결 프로필, '' = 확장 AI 모델 → 없으면 메인)
     trLang: '한국어',
+    trEngine: 'llm',         // 번역 담당: llm = 번역 모델 (지침 이해) | st = 실리 기본 번역 (Chat Translation의 Google·DeepL 등 · 무료) (v2.6)
+    trCode: 'ko',            // 실리 기본 번역에 넘길 언어 코드
+    trRules: '',
+    legacyStatus: true,      // 옛 <status>도 미트볼 것으로 읽기 (v2.5 이전 채팅 호환 · 다른 프리셋이 <status>를 쓰면 끄기)
+    trAuto: 'st',            // 화면만 번역: 새로 생긴 영어 글 자동 번역 — st = 실리 기본 번역일 때만 (무료) | always = 번역 모델이어도 (AI 호출) | off             // 번역 지침 — LLM: 그대로 전달 · 실리 기본 번역: 「원문 = 번역」 줄만 (이름 고정)
     prompts: {},             // 사용자 수정 프롬프트
     stashTags: true,         // <meatball>을 읽은 뒤 본문에서 떼어 메시지 숨은 칸에 보관 (다른 확장·요약에 안 보임)
     aiFallbackMain: true,    // 연결 프로필 실패·빈 응답 때 메인 연결로 다시 보냄
@@ -80,12 +86,29 @@ export const DEFAULTS = Object.freeze({
     peekPerDay: 3,           // 속마음 엿보기 하루 횟수 (0 = 무제한)
     jealousy: true,          // 질투 게이지
     stageLock: false,        // 관계 단계를 넘는 행동을 본편 AI에게 막기 (끄면 단계만 알려 줌)
+    // ── 로맨스 보정 (v2.6 · 전부 선택 · 기본 꺼짐) ──
+    romBond: false,          // 맨 위 단계(연인)는 숫자만으론 안 됨 — 고백 후 「연인 확정」을 눌러야
+    romCap: false,           // AI 답 1번에 한 사람의 호감·신뢰가 오를 수 있는 양에 상한
+    romCapAff: 5,
+    romCapTrust: 5,
+    romFatigue: false,       // 같은 사람 호감이 여러 턴 연달아 오르면 점점 덜 오르게
+    romFacts: false,         // 「~하지 마」 대신 「지금 관계는 이렇고, 이 사람은 이렇게 군다」를 사실로 알려 줌
+    romDrive: false,         // 인물마다 끌리는 것 · 싫어하는 것 · 요즘 신경 쓰는 것
+    romIntent: false,        // 본편 AI에게 「쓰기 전에 캐릭터 의도부터 정하기」 한 줄
+    romInject: '',           // 내가 넣는 추가 주입문 (비우면 안 보냄)
+    romInit: false,          // 먼저 움직이기: 가끔 그 장면의 인물이 스스로 일을 벌이게
+    romInitPct: 25,          // 그 확률 % (AI 답 1번마다)
+    profHelp: '',            // 미트볼 도우미가 쓸 모델 (연결 프로필, '' = 확장 AI 모델)
+    romDepth: 1,             // 로맨스 보정 주입 깊이 (0 = 맨 끝)
     offscreen: true,         // NPC 화면 밖 생활 (날이 지나면 가끔)
     favTabs: [],             // 즐겨찾기 탭
     bottomNav: false,        // 폰: 탭 바를 아래로 (한 손 모드)
     cardOffer: true,         // 카드에 붙은 상태창이 있으면 새 채팅에서 불러올지 물어봄
     autoSave: true,          // 자동 세이브 (오래된 기록을 굳히기 전에 · 최근 3개)
     carry: {},               // 2회차 이어받기 (캐릭터별)
+    updateNotice: true,      // 업데이트하면 「바뀐 점」을 한 번 알려 줌 (v2.6)
+    lastSeenVersion: '',     // 마지막으로 「바뀐 점」을 본 버전
+    lastSeenNote: '',        // 그때 본 내역의 지문 (같은 버전이라도 내역이 바뀌면 다시 알림)
     showMascot: true,        // 마스코트 고양이 보이기
     mascotBuddy: true,       // 상태창 머리에 마스코트 항상 (누르면 반응)
     mascotSound: 'mix',      // 누르면 나는 소리: mix · squeak · meow · kitten · custom · pop · purr · bell · off
@@ -131,8 +154,36 @@ export const DEFAULT_STAGES = [
     { name: '친구', at: 25, trust: 10, unlock: '말 편하게 하기 · 사적인 연락' },
     { name: '가까운 사이', at: 45, trust: 25, unlock: '고민 털어놓기 · 단둘이 약속' },
     { name: '특별한 사이', at: 65, trust: 40, unlock: '애칭 · 질투 · 스킨십 조금' },
-    { name: '연인', at: 85, trust: 55, unlock: '고백 이후 · 연인다운 행동' },
+    { name: '연인', at: 85, trust: 55, unlock: '고백 이후 · 연인다운 행동', love: true },
 ];
+// 💞 연인 단계: 직접 표시한 단계 → 없으면 이름으로 짐작 (연인·애인·커플·lover…) → 없으면 -1 (우정·신뢰 단계뿐인 세계관)
+const LOVE_RE = /연인|애인|커플|부부|약혼|사랑하는|lover|couple|sweetheart|romanc|spouse|married|engaged/i;
+export function loveIndex(st) {
+    if (!Array.isArray(st)) return -1;
+    const k = st.findIndex(x => x?.love === true);
+    if (k >= 0) return k;
+    return st.findIndex(x => x?.love !== false && LOVE_RE.test(String(x?.name ?? '')));
+}
+// 프로필에 있는 사람이 관계에서 빠졌으면 채운다 (호감·신뢰 0, 메모 = 프로필 한 줄)
+export function relFromProfiles(rel, profile) {
+    if (!rel || !Array.isArray(rel.user) || !Array.isArray(profile?.list)) return 0;
+    let n = 0;
+    for (const p of profile.list) {
+        if (!p?.name || p.role === 'user' || findBy(rel.user, p.name)) continue;
+        rel.user.push({ name: String(p.name), label: '', aff: 0, trust: 0, memo: short(String(p.summary ?? ''), 90), stage: -1, jealous: 0, met: '' });
+        n++;
+    }
+    return n;
+}
+// 연인 단계가 없으면 맨 위에 하나 붙인다 (세계관이 동료·사제 단계로만 만들어도 연애 루트는 늘 있게)
+export function ensureLove(rel) {
+    if (!rel || !Array.isArray(rel.stages) || !rel.stages.length || loveIndex(rel.stages) >= 0) return rel;
+    const top = rel.stages[rel.stages.length - 1];
+    const en = settings().ssGenLang === 'enview';
+    // 맨 위 단계보다 조금 높게 (같으면 그 단계를 건너뜀)
+    rel.stages.push({ name: en ? 'Lovers' : '연인', at: Math.min(100, Math.max(85, top.at + 5)), trust: Math.min(100, Math.max(55, top.trust + 5)), unlock: en ? 'after a confession · romantic affection and touch' : '고백 이후 · 연인다운 행동', love: true });
+    return rel;
+}
 export const MOD = Object.fromEntries(MODS.map(m => [m.id, m]));
 export const MOD_IDS = MODS.map(m => m.id);
 
@@ -203,7 +254,27 @@ export function findBy(list, name, field = 'name') {
     if (!n || !Array.isArray(list)) return null;
     return list.find(x => norm(x?.[field]) === n)
         ?? list.find(x => { const m = norm(x?.[field]); return m.length >= 2 && n.length >= 2 && (m.includes(n) || n.includes(m)); })
-        ?? null;
+        ?? trFind(list, name, field);
+}
+// ───── 화면만 번역 (v2.6): 상태창 데이터는 영어 그대로 (= AI에게도 영어), 화면에 그릴 때만 번역본 ─────
+// 번역 사전은 채팅마다 meta.tr = { 영어 원문: 번역 } 에 쌓인다.
+// 아주 자주 불린다 (이름 찾기 · 화면 번역기) → settings()의 기본값 채우기를 거치지 않고 바로 읽는다
+export const viewTr = () => { try { return ctx().extensionSettings?.[MODULE]?.ssGenLang === 'enview'; } catch { return false; } };
+export function trDict() { try { return viewTr() ? (getMeta()?.tr ?? null) : null; } catch { return null; } }
+export function trLook(en) { const d = trDict(); const k = String(en ?? '').trim(); return d && Object.hasOwn(d, k) ? d[k] : undefined; }
+let trRev = { d: null, n: -1, map: null };
+export function trBack(ko) {
+    const d = trDict(); if (!d) return undefined;
+    const n = Object.keys(d).length;
+    if (trRev.d !== d || trRev.n !== n) trRev = { d, n, map: new Map(Object.entries(d).map(([e, k]) => [norm(k), e])) };
+    return trRev.map.get(norm(ko));
+}
+// 화면(번역된 이름)이나 한국어 본편이 번역된 이름으로 부를 때도 영어로 저장된 항목을 찾게
+function trFind(list, name, field) {
+    const en = trBack(name);
+    if (!en) return null;
+    const n = norm(en);
+    return list.find(x => norm(x?.[field]) === n) ?? null;
 }
 export function parseNum(raw) {
     const t = String(raw ?? '').trim().replace(/[−–—]/g, '-').replace(/[,\s]/g, '');
@@ -400,9 +471,9 @@ export const NORM = {
         trash: arr(d.trash).filter(t => t?.name).map(t => ({ name: str(t.name), date: str(t.date) })).slice(-20),
     }),
     rel: (d) => {
-        const stages = arr(d.stages).filter(x => x?.name).map(x => ({ name: str(x.name), at: clamp(Math.round(num(x.at, 0)), -100, 100), trust: clamp(Math.round(num(x.trust, -100)), -100, 100), unlock: str(x.unlock) })).sort((a, b) => a.at - b.at);
+        const stages = arr(d.stages).filter(x => x?.name).map(x => ({ name: str(x.name), at: clamp(Math.round(num(x.at, 0)), -100, 100), trust: clamp(Math.round(num(x.trust, -100)), -100, 100), unlock: str(x.unlock), ...(x.love === true || x.love === 'true' ? { love: true } : x.love === false || x.love === 'false' ? { love: false } : {}) })).sort((a, b) => a.at - b.at);
         return {
-            user: arr(d.user).filter(r => r?.name).map(r => ({ name: str(r.name), label: str(r.label), aff: clamp(Math.round(num(r.aff, 0)), -100, 100), trust: clamp(Math.round(num(r.trust, 0)), -100, 100), memo: str(r.memo), stage: Number.isFinite(Number(r.stage)) && r.stage !== null && r.stage !== '' ? Math.round(Number(r.stage)) : -1, jealous: clamp(Math.round(num(r.jealous, 0)), 0, 100), met: str(r.met) })),
+            user: arr(d.user).filter(r => r?.name).map(r => ({ name: str(r.name), label: str(r.label), aff: clamp(Math.round(num(r.aff, 0)), -100, 100), trust: clamp(Math.round(num(r.trust, 0)), -100, 100), memo: str(r.memo), stage: Number.isFinite(Number(r.stage)) && r.stage !== null && r.stage !== '' ? Math.round(Number(r.stage)) : -1, jealous: clamp(Math.round(num(r.jealous, 0)), 0, 100), met: str(r.met), bond: r.bond === true || r.bond === 'true', likes: str(r.likes), dislikes: str(r.dislikes), concern: str(r.concern) })),
             pairs: arr(d.pairs).filter(p => p?.a && p?.b).map(p => ({ a: str(p.a), b: str(p.b), label: str(p.label), memo: str(p.memo) })),
             stages: stages.length ? stages : clone(DEFAULT_STAGES),
             life: arr(d.life).filter(x => x?.text).map(x => ({ who: str(x.who), text: str(x.text), date: str(x.date) })).slice(-20),
@@ -537,7 +608,7 @@ export const SCHEMA = {
     wallet: `{"currency":"화폐 단위","cash":1000,"items":[{"name":"소지품","qty":1,"desc":"설명","effect":"(쓰면 바뀌는 것, 예: 체력 +20 / 없으면 빈칸)"}],"prices":[{"name":"흔한 물건·서비스 (빵 한 개, 한 끼 식사, 여관 1박, 말 한 필, 한 달 월세 등)","price":10}],"jobs":[{"name":"{{user}}가 할 수 있는 일거리","pay":50,"effect":"일하면 바뀌는 것 (예: 기력 -20)"}],"regular":[{"name":"정기 수입·지출 (월급, 월세 등)","amount":-300,"every":"day|week|month"}],"fx":{"unit":"현실 화폐 (예: 원)","rate":0}}  (fx.rate = 이 화폐 1의 현실 가치, 모르면 0)`,
     shop: `{"shops":[{"name":"상점 이름","desc":"설명","place":"있는 장소","items":[{"name":"상품","price":100,"desc":"설명","kind":"item|deco (deco = 본거지에 놓는 가구·장식)","stock":-1}]}]}`,
     home: `{"name":"본거지 이름","desc":"설명","rooms":[{"name":"방/구역","desc":"지금 모습","decor":["놓여 있는 가구·장식 이름"]}],"storage":["창고에 있는 미배치 가구"]}`,
-    rel: `{"user":[{"name":"캐릭터","label":"{{user}}와의 관계 이름","aff":0,"trust":0,"memo":"관계 메모","met":"처음 만난 날 (예: 3월 2일 · 모르면 빈칸)"}],"pairs":[{"a":"캐릭터A","b":"캐릭터B","label":"관계","memo":"메모"}],"stages":[{"name":"관계 단계 이름","at":0,"trust":-100,"unlock":"이 단계에서 새로 생기는 것 (호칭·말투·행동)"}]}  (aff 호감, trust 신뢰: -100~100 · stages: 낮은 단계부터 4~7개, at = 필요한 호감, trust = 필요한 신뢰)`,
+    rel: `{"user":[{"name":"캐릭터","label":"{{user}}와의 관계 이름","aff":0,"trust":0,"memo":"관계 메모","met":"처음 만난 날 (예: 3월 2일 · 모르면 빈칸)"}],"pairs":[{"a":"캐릭터A","b":"캐릭터B","label":"관계","memo":"메모"}],"stages":[{"name":"관계 단계 이름","at":0,"trust":-100,"unlock":"이 단계에서 새로 생기는 것 (호칭·말투·행동)","love":false}]}  (aff 호감, trust 신뢰: -100~100 · stages: 낮은 단계부터 4~7개, at = 필요한 호감, trust = 필요한 신뢰 · 연인(커플) 단계 하나는 꼭 넣고 "love": true)`,
     map: `{"name":"지도 이름","here":"현재 위치(장소 이름)","places":[{"name":"장소","desc":"설명","kind":"마을/건물/던전/자연 등","x":50,"y":50,"links":["이어진 장소 이름"],"known":true,"area":"속한 구역 (선택)","fare":0}]}  (x,y는 0~100 좌표, 겹치지 않게 퍼뜨림 · fare = 그곳까지 가는 요금, 보통 0)`,
     calendar: `{"era":"연호/기원(선택)","y":1,"m":1,"d":1,"time":"아침","months":[{"name":"1월","days":31}],"week":["월","화","수","목","금","토","일"],"times":["새벽","아침","낮","저녁","밤","심야"],"weather":"오늘 날씨 (맑음/비/눈 등)","events":[{"y":null,"m":3,"d":14,"title":"일정/기념일/축제","desc":"설명","repeat":"yearly|once"}]}`,
     contact: `{"mode":"phone|instant|letter","app":"연락 수단 이름(스마트폰 메신저 / 마법 통신구 / 편지 등)","contacts":[{"name":"연락 가능한 인물","handle":"아이디/주소(선택)","status":"상태 메시지 또는 사는 곳","courier":"(letter일 때) 이 인물이 주로 쓰는 배달 수단 이름"}],"couriers":[{"name":"배달 수단(배달부/갈매기/올빼미/강아지/전서구/마법 등 세계관에 맞게)","icon":"이모지 1개","min":1,"max":3,"fee":0,"note":"설명"}],"express":{"name":"급행 수단 이름(퀵·특급 파발 등)","fee":100}}  (min/max = 도착까지 걸리는 날 수, fee = 화폐 단위 요금)`,
@@ -602,9 +673,9 @@ export const EDIT = {
         { k: 'trash', label: '쓰레기통', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'date', label: '버린 날', type: 'text' }] },
     ],
     rel: [
-        { k: 'user', label: '{{user}}와의 관계', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'aff', label: '호감', type: 'num' }, { k: 'trust', label: '신뢰', type: 'num' }, { k: 'jealous', label: '질투 (0~100)', type: 'num' }, { k: 'met', label: '처음 만난 날', type: 'text' }, { k: 'memo', label: '메모', type: 'area' }] },
+        { k: 'user', label: '{{user}}와의 관계', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'aff', label: '호감', type: 'num' }, { k: 'trust', label: '신뢰', type: 'num' }, { k: 'jealous', label: '질투 (0~100)', type: 'num' }, { k: 'met', label: '처음 만난 날', type: 'text' }, { k: 'memo', label: '메모', type: 'area' }, { k: 'likes', label: '끌리는 것 (로맨스 보정)', type: 'text' }, { k: 'dislikes', label: '싫어하는 것 (로맨스 보정)', type: 'text' }, { k: 'concern', label: '요즘 신경 쓰는 것 (로맨스 보정)', type: 'text' }] },
         { k: 'pairs', label: '인물끼리의 관계', type: 'list', title: 'a', fields: [{ k: 'a', label: 'A', type: 'text' }, { k: 'b', label: 'B', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'memo', label: '메모', type: 'text' }] },
-        { k: 'stages', label: '관계 단계 (호감·신뢰가 넘으면 해금)', type: 'list', title: 'name', fields: [{ k: 'name', label: '단계 이름', type: 'text' }, { k: 'at', label: '필요한 호감', type: 'num' }, { k: 'trust', label: '필요한 신뢰', type: 'num' }, { k: 'unlock', label: '해금되는 것 (호칭·말투·행동)', type: 'text' }] },
+        { k: 'stages', label: '관계 단계 (호감·신뢰가 넘으면 해금)', type: 'list', title: 'name', fields: [{ k: 'name', label: '단계 이름', type: 'text' }, { k: 'at', label: '필요한 호감', type: 'num' }, { k: 'trust', label: '필요한 신뢰', type: 'num' }, { k: 'unlock', label: '해금되는 것 (호칭·말투·행동)', type: 'text' }, { k: 'love', label: '💞 연인 단계 (로맨스 보정 ①: 고백 후 💍 확정이 있어야 올라감)', type: 'bool' }] },
         { k: 'life', label: '화면 밖 소식', type: 'list', title: 'who', fields: [{ k: 'who', label: '누가', type: 'text' }, { k: 'text', label: '한 일', type: 'text' }, { k: 'date', label: '날짜', type: 'text' }] },
     ],
     map: [
@@ -720,7 +791,7 @@ export function parseDate(cal, v) {
     mm = t.match(/(\d+)\s*월\s*(\d+)\s*일?/) || t.match(/^(\d+)\s*[/.-]\s*(\d+)/);
     if (mm) return { y: null, m: +mm[1], d: +mm[2] };
     const name = cal.months.findIndex(x => t.includes(x.name));
-    const dn = t.match(/(\d+)\s*일/);
+    const dn = t.match(/(\d+)\s*일/) || (name >= 0 ? t.replace(cal.months[name].name, ' ').match(/\b(\d{1,2})\b/) : null); // 「April 14」 같은 영어 날짜도
     if (name >= 0 && dn) return { y: null, m: name + 1, d: +dn[1] };
     return null;
 }

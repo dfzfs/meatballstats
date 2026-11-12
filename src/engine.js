@@ -1,8 +1,8 @@
 // 상태 엔진: <meatball> 변화량 → 상태 재계산 · 직접 편집 기록 · 프롬프트 주입
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
-    signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2,
-    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser,
+    signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, trBack, viewTr, weekday,
+    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser,
 } from './core.js';
 import { P } from './prompts.js';
 
@@ -38,23 +38,53 @@ export const KEYMAP = {
     custom: 'custom', tab: 'custom', '내탭': 'custom', '탭': 'custom',
     life: 'life', offscreen: 'life', '근황': 'life', '화면밖': 'life',
     jealous: 'jealous', jealousy: 'jealous', '질투': 'jealous',
+    confess: 'confess', '고백': 'confess', concern: 'concern', '신경': 'concern', '고민': 'concern', taste: 'taste', '취향': 'taste',
     alert: '_alert', '알림': '_alert',
 };
 export const KEY_MOD = {
     stat: 'stats', attr: 'stats', cond: 'stats', cash: 'wallet', item: 'wallet', stock: 'shop', decor: 'home', room: 'home', loc: 'map', place: 'map',
     aff: 'rel', trust: 'rel', rel: 'rel', pair: 'rel', date: 'calendar', time: 'calendar', event: 'calendar', ach: 'ach', memo: 'memo', msg: 'contact',
     npc: 'profile', roll: 'dice', quest: 'quest', news: 'news', rumor: 'gossip', post: 'board', curse: 'fate', weather: 'calendar',
-    bgm: 'music', sns: 'sns', custom: 'custom', life: 'rel', jealous: 'rel',
+    bgm: 'music', sns: 'sns', custom: 'custom', life: 'rel', jealous: 'rel', confess: 'rel', concern: 'rel', taste: 'rel',
 };
 
 // 미트볼 블록 = <meatball> (v2.5.1~) · 예전 <status>.
 // 다른 프리셋도 <status>를 쓸 수 있어서(<summary>/<details>, 「| Physical:」 표 모양) 그런 블록은 읽지도 지우지도 않는다.
-const ANY_BLOCK_RE = /\s*<(meatball|status)>([\s\S]*?)(?:<\/\1>|(?=\s*<(?:meatball|status)>)|$)/gi;
 const FOREIGN_RE = /<summary\b|<details\b|\|\s*Physical\s*:|Relationship \(mutual/i;
-const isOurs = (tag, body) => tag.toLowerCase() === 'meatball' || !FOREIGN_RE.test(body);
-export const ourBlocks = (text) => [...String(text ?? '').matchAll(ANY_BLOCK_RE)].filter(m => isOurs(m[1], m[2]));
+// 옛 <status>도 미트볼 것으로 읽을지 (v2.5 이전 채팅 호환 · 다른 프리셋이 <status>를 쓰면 끄기)
+const legacyOn = () => { try { return settings().legacyStatus !== false; } catch { return true; } };
+// 블록 찾기 — 닫는 태그가 있으면 거기까지.
+// <meatball>을 안 닫았으면: 「키: 값」 모양의 줄이 이어지는 데까지만 (사이의 빈 줄은 허용). 태그로 시작하는 줄(</prose>, <tracker>)이나 이야기 문장에서 멈춘다.
+//   → 예전엔 글 끝까지 다 지웠음. 읽히는 변화(키: 값)는 예전과 같아서 옛 채팅의 숫자는 그대로.
+// 옛 <status>는 예전 규칙 그대로 (안 닫혔으면 글 끝·다음 블록까지) — 옛 채팅 호환. 다른 프리셋 모양(<details>·표)이면 건드리지 않는다.
+const KV_RUN = /^(?:\s*(?:[-*•]\s*|\d+[.)]\s*)?[^<:：\n]{1,24}[:：][^\n]*)*/;
+function scanBlocks(text) {
+    const t = String(text ?? '');
+    const out = [];
+    const open = /<(meatball|status)>/gi;
+    let m;
+    while ((m = open.exec(t))) {
+        const tag = m[1].toLowerCase(), from = m.index + m[0].length;
+        const close = t.toLowerCase().indexOf(`</${tag}>`, from);
+        open.lastIndex = from;
+        const nx = (() => { const r = /<(?:meatball|status)>/gi; r.lastIndex = from; const k = r.exec(t); return k ? k.index : -1; })();
+        let end, body, closed = close >= 0 && (nx < 0 || close < nx);
+        if (closed) { body = t.slice(from, close); end = close + tag.length + 3; }
+        else if (tag === 'meatball') {
+            const rest = nx < 0 ? t.slice(from) : t.slice(from, nx);
+            body = rest.match(KV_RUN)?.[0] ?? ''; end = from + body.length;
+        } else { body = nx < 0 ? t.slice(from) : t.slice(from, nx); end = from + body.length; } // 옛 <status>: 예전 그대로
+        let start = m.index; while (start > 0 && /\s/.test(t[start - 1])) start--;
+        const ours = tag === 'meatball' || (legacyOn() && !FOREIGN_RE.test(body));
+        out.push({ start, end, tag, body, ours, all: t.slice(start, end) });
+        open.lastIndex = end;
+    }
+    return out;
+}
+const cut = (text, spans) => { let t = String(text ?? ''); for (const b of [...spans].reverse()) t = t.slice(0, b.start) + t.slice(b.end); return t; };
+export const ourBlocks = (text) => scanBlocks(text).filter(b => b.ours).map(b => Object.assign([b.all, b.tag, b.body], { index: b.start }));
 export const hasStatus = (text) => ourBlocks(text).length > 0;
-export const removeStatus = (text) => String(text ?? '').replace(ANY_BLOCK_RE, (all, tag, body) => (isOurs(tag, body) ? '' : all));
+export const removeStatus = (text) => cut(text, scanBlocks(text).filter(b => b.ours));
 export function extractOps(text) {
     const ops = [];
     for (const m of ourBlocks(text)) {
@@ -68,7 +98,7 @@ export function extractOps(text) {
     return ops;
 }
 // 읽기용(요약·앨범·AI에게 보내는 최근 대화): 미트볼 블록과 다른 프리셋의 상태 블록을 모두 뺀 이야기 본문
-export const stripStatus = (t) => String(t ?? '').replace(ANY_BLOCK_RE, '').trim();
+export const stripStatus = (t) => cut(t, scanBlocks(t).filter(b => b.ours || (b.tag === 'status' && b.end > b.start))).trim();
 
 // ───── 서랍: <status>를 읽은 뒤 본문에서 떼어 메시지 숨은 칸(extra)에 보관 ─────
 // 본문엔 이야기만 남아서 다른 확장(요약·번역·로그 복사)이 변화량 줄을 보지 않는다.
@@ -382,10 +412,51 @@ export function stageIndex(stages, aff, trust) {
     stages.forEach((st, i) => { if (aff >= st.at && trust >= st.trust) k = i; });
     return k;
 }
+// ───── 로맨스 보정 (v2.6) — 설정에서 켠 뒤의 메시지에만 적용 (meta.romFrom) ─────
+const romLive = (s) => s.romActive === true;
+// 맨 위 단계(보통 「연인」)는 숫자만으론 못 감 — 「연인 확정」(r.bond)이 있어야. 확정이면 숫자와 상관없이 맨 위.
+// 💞 연인 단계(loveIndex)만 막는다. 연인 단계가 없는 세계관(우정·신뢰 단계뿐)이면 단계는 숫자대로 — 연인 확정은 따로 표시만.
+function bondCap(s, st, want, r) {
+    if (!settings().romBond || !romLive(s)) return want;
+    const L = loveIndex(st);
+    if (L < 1) return want;
+    if (r.bond) return Math.max(want, L);
+    if (want < L || (r.stage ?? -1) >= L) return want; // 켜기 전에 이미 연인 단계였던 사람은 그대로
+    return L - 1;
+}
+// AI 답 1번에 오를 수 있는 호감·신뢰 상한 + 연달아 오르면 점점 덜 오르게
+function romGain(s, info, name, key, gain) {
+    const set = settings();
+    if (!set.romCap && !set.romFatigue) return gain;
+    const k = `${key}:${norm(name)}`;
+    let g = gain;
+    if (set.romFatigue) { const run = s.romRun?.[k] ?? 0; if (run >= 2) g = Math.max(1, Math.round(g * (run >= 3 ? 0.34 : 0.6))); }
+    const used = (info.romUsed ??= {})[k] ?? 0;
+    const cap = set.romCap ? Math.max(1, Math.round(num(key === 'aff' ? set.romCapAff : set.romCapTrust, 5))) : Infinity;
+    g = Math.max(0, Math.min(g, cap - used));
+    info.romUsed[k] = used + g;
+    if (g < gain) info.labels.push(`⚖️ ${name} ${key === 'aff' ? '호감' : '신뢰'} +${gain}→+${g}`);
+    return g;
+}
+// 이 채팅에서 로맨스 보정을 처음 켠 지점 기록 (그 전 메시지는 예전 규칙 그대로 → 옛 채팅 숫자가 안 바뀜)
+function markRomFrom(meta, chat) {
+    const set = settings();
+    if (!meta || Number.isFinite(meta.romFrom)) return;
+    if (!(set.romBond || set.romCap || set.romFatigue)) return;
+    meta.romFrom = chat.length;
+    Promise.resolve().then(() => saveMeta()).catch(() => { /* ignore */ });
+}
 function updateStage(s, r, info, silent = false) {
     const rl = s.data.rel; if (!rl) return;
     const st = rl.stages?.length ? rl.stages : DEFAULT_STAGES;
-    const want = stageIndex(st, r.aff, r.trust);
+    const raw = stageIndex(st, r.aff, r.trust);
+    const want = bondCap(s, st, raw, r);
+    if (want < raw) {
+        if (!r.bondReady) {
+            r.bondReady = true;
+            if (!silent) { info.labels.push(`💌 ${r.name}: 「${st[raw].name}」 조건 충족 · 고백 전`); info.alerts.push(`💌 ${r.name} — 「${st[raw].name}」 단계 조건은 채웠어요. 고백이 오가면 관계 탭에서 「연인 확정」을 눌러 주세요.`); }
+        }
+    } else r.bondReady = false;
     if (r.stage < 0 || r.stage >= st.length) { r.stage = want; return; }
     if (want > r.stage) {
         r.stage = want;
@@ -406,11 +477,11 @@ function updateStage(s, r, info, silent = false) {
 function anniversary(s, r, k, st) {
     const cal = s.data.calendar; if (!cal || info0(s)) return;
     const add = (e) => { if (!cal.events.some(x => norm(x.title) === norm(e.title))) cal.events.push(e); };
-    if (k >= 2 && r.met) { const dt = parseDate(cal, r.met); if (dt) add({ y: null, m: dt.m, d: dt.d, title: `${r.name}와 처음 만난 날`, desc: '자동 기념일', repeat: 'yearly' }); }
+    if (k >= 2 && r.met) { const dt = parseDate(cal, r.met); if (dt) add({ y: null, m: dt.m, d: dt.d, title: viewTr() ? `The day {{user}} first met ${r.name}` : `${r.name}와 처음 만난 날`, desc: viewTr() ? 'automatic anniversary' : '자동 기념일', repeat: 'yearly' }); }
     if (k === st.length - 1) {
-        add({ y: null, m: cal.m, d: cal.d, title: `${r.name}와 ${st[k].name}이 된 날`, desc: '자동 기념일', repeat: 'yearly' });
+        add({ y: null, m: cal.m, d: cal.d, title: viewTr() ? `The day {{user}} and ${r.name} became ${st[k].name}` : `${r.name}와 ${st[k].name}이 된 날`, desc: viewTr() ? 'automatic anniversary' : '자동 기념일', repeat: 'yearly' });
         const t = { ...cal }; addDays(t, 99);
-        add({ y: t.y, m: t.m, d: t.d, title: `${r.name}와 100일`, desc: '자동 기념일', repeat: 'once' });
+        add({ y: t.y, m: t.m, d: t.d, title: viewTr() ? `100 days with ${r.name}` : `${r.name}와 100일`, desc: viewTr() ? 'automatic anniversary' : '자동 기념일', repeat: 'once' });
     }
 }
 const info0 = (s) => s.data.calendar?.noAuto === true;
@@ -532,6 +603,36 @@ export function applyOp(s, rawKey, rawVal, info) {
             const p = parseNum(m[2].replace(/\s+/g, '')); if (!p) return;
             const b = r.jealous; r.jealous = clamp(Math.round(p.mode === 'add' ? b + p.v : p.v), 0, 100);
             if (r.jealous !== b) L(`💢 ${r.name} ${signed(r.jealous - b)}`);
+            return;
+        }
+        case 'confess': { // 로맨스 보정: AI는 「고백이 오갔다」고 알리기만, 확정은 유저가
+            if (!settings().romBond) return;
+            const rl = ensure(s, 'rel');
+            const [nm] = splitBar(val);
+            const r = findBy(rl.user, nm.replace(/^[+]\s*/, ''));
+            if (!r || r.bond) return;
+            if (r.bondAsk && s.turn - (r.bondAskAt ?? 0) < 10) return; // 「아직」을 고른 뒤 10턴 안엔 다시 안 물어봄
+            r.bondAsk = true; r.bondAskAt = s.turn;
+            L(`💌 ${r.name}: 고백?`);
+            info.alerts.push({ kind: 'confess', who: r.name }); // index.js가 「연인으로 확정할까요?」 창을 띄운다
+            return;
+        }
+        case '_bond': case '_unbond': {
+            const rl = ensure(s, 'rel');
+            const r = findBy(rl.user, val); if (!r) return;
+            r.bond = key === '_bond'; r.bondAsk = false;
+            (s.bonds ??= {})[norm(r.name)] = r.bond; // 연인 확정은 따로 기억 → 나중에 관계 칸을 통째로 저장해도 안 풀림
+            if (r.bond) updateStage(s, r, info);
+            else { r.stage = -1; updateStage(s, r, info, true); }
+            return;
+        }
+        case 'concern': case 'taste': {
+            if (!settings().romDrive) return;
+            const rl = ensure(s, 'rel');
+            const [nm, a, b] = splitBar(val);
+            const r = findBy(rl.user, nm); if (!r) return;
+            if (key === 'concern') { const v = String(a ?? '').trim(); if (v === r.concern) return; r.concern = /^(없음|none|-)$/i.test(v) ? '' : v; L(`💭 ${r.name}`); }
+            else { if (a) r.likes = a; if (b) r.dislikes = b; }
             return;
         }
         case '_peekday': { s.peek = { day: today(s) ?? s.turn, n: ((s.peek?.day === (today(s) ?? s.turn)) ? s.peek.n : 0) + 1 }; return; }
@@ -764,7 +865,10 @@ export function applyOp(s, rawKey, rawVal, info) {
             if (!r) { r = { name: nm, label: '', aff: 0, trust: 0, memo: '', stage: -1, jealous: 0, met: s.data.calendar ? dateShort(s.data.calendar) : '' }; rl.user.push(r); }
             const p = parseNum(m[2].replace(/\s+/g, '')); if (!p) return;
             if (key === 'aff' && p.mode === 'add' && p.v > 0) p.v = p.v * affMul(s); // 저주·축복의 호감 % 효과
-            const b = r[key]; r[key] = clamp(Math.round(p.mode === 'add' ? b + p.v : p.v), -100, 100);
+            const b = r[key];
+            let nv = clamp(Math.round(p.mode === 'add' ? b + p.v : p.v), -100, 100);
+            if (nv > b && info.ai && romLive(s)) nv = b + romGain(s, info, r.name, key, nv - b); // 로맨스 보정: 상한
+            r[key] = nv;
             if (m[3]) r.memo = m[3];
             if (r[key] !== b) L(`${key === 'aff' ? '♥' : '🤝'} ${r.name} ${signed(r[key] - b)}`);
             if (key === 'aff' && r[key] > b) jealousyFrom(s, r.name, r[key] - b, info);
@@ -989,8 +1093,11 @@ function birthdays(s) {
     for (const p of pf.list) {
         const f = p.fields.find(x => /생일|탄생일|birthday/i.test(x.k)); if (!f) continue;
         const dt = parseDate(cal, f.v); if (!dt) continue;
-        const title = `🎂 ${p.name} 생일`;
-        if (!cal.events.some(e => norm(e.title) === norm(title))) cal.events.push({ y: null, m: clamp(dt.m, 1, cal.months.length), d: dt.d, title, desc: '프로필에서 자동', repeat: 'yearly', auto: 'bday' });
+        const title = viewTr() ? `🎂 ${p.name}'s birthday` : `🎂 ${p.name} 생일`;
+        const m = clamp(dt.m, 1, cal.months.length);
+        // 같은 날 같은 사람 생일이 이미 있으면 (번역된 제목이라도) 또 넣지 않는다
+        if (!cal.events.some(e => norm(e.title) === norm(title) || (e.m === m && e.d === dt.d && /🎂/.test(e.title) && norm(e.title).includes(norm(p.name)))))
+            cal.events.push({ y: null, m, d: dt.d, title, desc: viewTr() ? 'from profile' : '프로필에서 자동', repeat: 'yearly', auto: 'bday' });
     }
 }
 function resolveStart(meta, chat) {
@@ -1024,13 +1131,17 @@ export function compute(limit, opts = {}) {
     let lastAI = -1;
     for (let i = n - 1; i >= start; i--) if (isStoryAI(chat[i])) { lastAI = i; break; }
     let ai = 0;
+    markRomFrom(meta, chat);
+    const romFrom = Number.isFinite(meta.romFrom) ? meta.romFrom : Infinity;
+    const romRun = settings().romFatigue;
     const runAdjust = (a) => {
+        s.romActive = a.at >= romFrom;
         const info = { seed: `${seed}:adj:${a.t}`, labels: [], alerts: [], mods: meta.mods, meta, cut: 0 };
         if (a.set) {
             if (a.set.mod === 'core') s.core = clone(a.set.data);
             else if (MOD_IDS.includes(a.set.mod)) {
                 s.data[a.set.mod] = clone(a.set.data);
-                if (a.set.mod === 'rel') for (const r of s.data.rel.user) updateStage(s, r, info, true);
+                if (a.set.mod === 'rel') for (const r of s.data.rel.user) { if (s.bonds && Object.hasOwn(s.bonds, norm(r.name))) r.bond = s.bonds[norm(r.name)]; updateStage(s, r, info, true); }
                 if (a.set.mod === 'calendar' && s.day0 === null) s.day0 = dayIndex(s.data.calendar);
             }
         }
@@ -1047,8 +1158,10 @@ export function compute(limit, opts = {}) {
         s.turn++;
         const ops = msgOps(m);
         if (!ops.length) continue;
-        const info = { seed: `${seed}:${i}`, labels: [], alerts: [], mods: meta.mods, roll: null, meta, cut: 0 };
+        s.romActive = i >= romFrom;
+        const info = { seed: `${seed}:${i}`, labels: [], alerts: [], mods: meta.mods, roll: null, meta, cut: 0, ai: true };
         for (const [k, v] of ops) applyOp(s, k, v, info);
+        if (romRun && s.romActive) { const used = info.romUsed ?? {}; const run = (s.romRun ??= {}); for (const k of new Set([...Object.keys(run), ...Object.keys(used)])) run[k] = used[k] > 0 ? (run[k] ?? 0) + 1 : 0; }
         checkRules(s, info);
         s.dayBuf?.labels.push(...info.labels.slice(info.cut));
         snaps.set(i, { labels: info.labels, alerts: info.alerts, roll: info.roll, turn: s.turn });
@@ -1157,6 +1270,8 @@ export function tagKeysFor(meta) {
     if (on('dice')) K.push('roll (판정 이름 | 난이도 — ask {{user}} to roll instead of deciding a risky outcome yourself)');
     if (on('fate')) K.push('curse (이름 | 효과1, 효과2 | 일수 | 풀리는 조건 — only when the story truly curses or blesses {{user}}; -이름 lifts it)');
     if (on('rel') && settings().jealousy) K.push('jealous (이름 ±N — someone gets jealous of {{user}} with another, or is reassured)');
+    if (on('rel') && settings().romBond) K.push('confess (이름 — ONLY right after a real confession was made AND accepted in this reply; the user confirms it. Never for closeness or time spent together)');
+    if (on('rel') && settings().romDrive) K.push('concern (이름 | 요즘 신경 쓰는 것 — when what they are preoccupied with changes or gets resolved; 이름 | 없음 clears) · taste (이름 | 끌리는 것 | 싫어하는 것 — fill once if blank)');
     if (on('rel') && settings().offscreen) K.push('life (이름 | 화면 밖에서 한 일 — only right after days pass, 1-2 people not in the scene, small believable things)');
     if (on('sns')) K.push('sns (작성자 | 글 | 사진 묘사 | #태그 — a character posts on social media; rarely, when it fits)');
     if (on('music')) K.push(`bgm (곡 제목 - 가수 | 분위기 — ONLY when the scene's mood clearly shifts; a REAL existing song that fits${musicTaste() ? `, taste: ${musicTaste()}` : ''}; never quote lyrics)`);
@@ -1222,7 +1337,10 @@ export function sceneTester(set = settings(), s = null) {
         const nm = String(name ?? '').trim();
         if (!nm) return false;
         if (always.has(norm(nm)) || text.includes(nm)) return true;
-        return nm.split(/[\s·.]+/).some(part => part.length >= 2 && text.includes(part));
+        const ko = trLook(nm); // 화면만 번역: 한국어 본편엔 번역된 이름으로 나옴 (「트라팔가 로우」 → 「로우」만 불러도)
+        if (ko && text.includes(ko)) return true;
+        const parts = [...nm.split(/[\s·.]+/), ...(ko ? ko.split(/[\s·.]+/) : [])];
+        return parts.some(part => part.length >= 2 && text.includes(part));
     };
 }
 const MOD_SHORT = { easy: '이지', normal: '보통', hard: '하드' };
@@ -1293,6 +1411,47 @@ function fateText(s, ultra) {
 }
 
 // 초압축 모드: 기호·키워드만, 범례 1줄, 출력 규칙은 맨 끝 한 줄
+// ───── 화면만 번역 (enview): 프롬프트에 들어가는 고정 낱말도 영어로 ─────
+const SEASON_EN = { spring: 'spring', summer: 'summer', autumn: 'autumn', winter: 'winter' };
+function dateI(c) {
+    if (!viewTr()) return dateStr(c);
+    const mn = c.months[c.m - 1]?.name ?? '';
+    const named = mn && !/^\d+\s*월$/.test(mn) && !/[가-힣]/.test(mn);
+    return `${c.era ? `${c.era}, ` : ''}year ${c.y}, ${named ? `${mn} (month ${c.m})` : `month ${c.m}`}, day ${c.d}${weekday(c, c.y, c.m, c.d) ? ` (${weekday(c, c.y, c.m, c.d)})` : ''}`;
+}
+const seasonI = (c) => (viewTr() ? SEASON_EN : SEASON_NAME)[seasonOf(c)];
+// 상태창에서 한 일 기록: 같은 줄 연속은 하나로, 화면만 번역이면 자주 나오는 것은 영어로
+const MOD_EN = { profile: 'profile', stats: 'stats', dice: 'dice', wallet: 'wallet', shop: 'shop', home: 'home', rel: 'relationships', map: 'map', calendar: 'calendar', contact: 'contacts', quest: 'quests', news: 'news', gossip: 'gossip', board: 'board', ach: 'achievements', memo: 'notes', fate: 'fate', sns: 'SNS', music: 'music', custom: 'custom tab', core: 'world' };
+function recentLabelEn(l) {
+    const modEn = (name) => { const id = name === '세계' ? 'core' : Object.keys(MOD_EN).find(k => MOD[k]?.name === name); return id ? MOD_EN[id] : name; };
+    let m = l.match(/^🔄\s*(.+?)\s*생성$/);
+    if (m) return `🔄 regenerated the ${modEn(m[1])} panel`;
+    m = l.match(/^💬\s*(.+?)\s*수정:/);
+    if (m) return `💬 edited the ${modEn(m[1])} panel by instruction`;
+    m = l.match(/^(.+?)의 답장:\s*([\s\S]*)$/);
+    if (m) return `💬 reply from ${m[1]}: ${m[2]}`;
+    m = l.match(/^✏️\s*(.+?)\s*직접 편집$/);
+    if (m) { const id = Object.keys(MOD_EN).find(k => MOD[k]?.name === m[1]); return `✏️ edited the ${id ? MOD_EN[id] : m[1]} panel by hand`; }
+    m = l.match(/^💍\s*(.+?)와\(과\) 고백이 오가 연인이 되었다/);
+    if (m) return `💍 {{user}} and ${trBackName(m[1])} confessed and became lovers (confirmed by the user)`;
+    m = l.match(/^💔\s*(.+?)와\(과\)는 연인이 아니다/);
+    if (m) return `💔 {{user}} and ${trBackName(m[1])} are NOT lovers (the user cancelled it)`;
+    return l;
+}
+const trBackName = (n) => trBack(n) ?? n; // 기록 당시 한국어 이름이었어도, 지금 영어로 저장된 이름으로
+function recentI(s, n) {
+    const out = [];
+    for (const l of s.recent.slice(-n * 3)) { const x = viewTr() ? recentLabelEn(l) : l; if (out[out.length - 1] !== x) out.push(x); }
+    return out.slice(-n).join(' / ');
+}
+// 출력 규칙: 화면만 번역이면 「값은 영어로」 (예전 문구 「Values in Korean」을 바꾸거나 덧붙임)
+function outRule(text) {
+    if (!viewTr()) return text;
+    return /Values in Korean/i.test(text) ? text.replace(/Values in Korean/i, 'Values in English') : `${text} Values in English.`;
+}
+// 키 설명의 한국어 자리표시를 영어로 (화면만 번역일 때만 · 키 이름과 문법은 그대로)
+const KEY_WORDS = [['진행 내용', 'progress'], ['게이지이름', 'gauge'], ['관계 이름', 'relation name'], ['새 공간', 'new space'], ['이어진곳', 'linked places'], ['업적 이름', 'achievement'], ['판정 이름', 'check'], ['풀리는 조건', 'cure'], ['요즘 신경 쓰는 것', 'current concern'], ['끌리는 것', 'likes'], ['싫어하는 것', 'dislikes'], ['화면 밖에서 한 일', 'what they did off-screen'], ['사진 묘사', 'photo description'], ['곡 제목', 'song title'], ['한 줄 소개', 'one-line intro'], ['새/수락/완료/실패', 'new/active/done/failed'], ['관련 인물', 'people involved'], ['헤드라인', 'headline'], ['#태그', '#tags'], ['3월 14일', '3/14'], ['관계', 'relation'], ['효과1', 'effect1'], ['효과2', 'effect2'], ['체력', 'HP'], ['능력치', 'attribute'], ['이름', 'name'], ['효과', 'effect'], ['설명', 'description'], ['상점', 'shop'], ['상품', 'goods'], ['가격', 'price'], ['가구', 'furniture'], ['방', 'room'], ['장소', 'place'], ['날짜', 'date'], ['제목', 'title'], ['내용', 'text'], ['난이도', 'DC'], ['일수', 'days'], ['작성자', 'author'], ['가수', 'artist'], ['분위기', 'mood'], ['탭', 'tab'], ['항목', 'field'], ['글', 'text'], ['없음', 'none']];
+const keysI = (list) => (viewTr() ? list.map(k => KEY_WORDS.reduce((x, [ko, en]) => x.split(ko).join(en), k)) : list);
 function buildUltra(r, opt = {}) {
     const s = r.state, d = s.data, meta = getMeta(), set = settings();
     const due = dueTester(set, s);
@@ -1309,7 +1468,7 @@ function buildUltra(r, opt = {}) {
         const ev = eventsOn(c, c.y, c.m, c.d).map(e => e.title);
         const soon = []; const tmp = { ...c };
         for (let k = 1; k <= 7; k++) { addDays(tmp, 1); for (const e of eventsOn(c, tmp.y, tmp.m, tmp.d)) soon.push(`${e.title}D-${k}`); }
-        L.push(`📅${dateStr(c)} ${c.time}${c.weather ? ` ${c.weather}` : ''}${ev.length ? `|오늘:${ev.join(',')}` : ''}${soon.length ? `|${soon.slice(0, 3).join(',')}` : ''}`);
+        L.push(`📅${dateI(c)} ${c.time}${c.weather ? ` ${c.weather}` : ''}${ev.length ? `|${viewTr() ? 'today' : '오늘'}:${ev.join(',')}` : ''}${soon.length ? `|${soon.slice(0, 3).join(',')}` : ''}`);
     }
     if (on('map') && d.map.here) {
         const p = findBy(d.map.places, d.map.here);
@@ -1362,10 +1521,10 @@ function buildUltra(r, opt = {}) {
     if (on('sns') && d.sns.posts.length && due('sns')) L.push(`#${d.sns.posts.slice(-2).map(p => `${p.author}:${short(p.text || p.pic, 30)}`).join(' / ')}`);
     if (on('rel') && s.newDay && set.offscreen && lastDayChanged(r)) L.push('🌙날이 지남: 장면 밖 1~2명의 근황을 life 키로 (선택)');
     if (on('dice')) L.push('🎲[판정·…]=시스템 결과 그대로 서술 · 위험한 행동은 roll 키로 판정 요청');
-    if (s.recent.length) L.push(`UI행동:${s.recent.slice(-5).join(' / ')}`);
+    if (s.recent.length) L.push(`${viewTr() ? 'UI:' : 'UI행동:'}${recentI(s, 5)}`);
     if (!opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus')) {
         const keys = tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ');
-        L.push(P('inj.ultra.output', { keys }));
+        L.push(outRule(P('inj.ultra.output', { keys })));
     }
     return { main: L.filter(Boolean).join('\n'), people: '' };
 }
@@ -1381,23 +1540,73 @@ function buildDelta(r, plan, opt = {}) {
     const on = (id) => modOn(id, meta) && d[id];
     const inScene = sceneTester(set, s);
     const L = [P('inj.delta', { left: plan.left })];
-    if (on('calendar')) { const c = d.calendar; L.push(`📅${dateStr(c)} ${c.time}${c.weather ? ` ${c.weather}` : ''}`); }
+    if (on('calendar')) { const c = d.calendar; L.push(`📅${dateI(c)} ${c.time}${c.weather ? ` ${c.weather}` : ''}`); }
     if (on('map') && d.map.here) L.push(`@${d.map.here}`);
     if (on('stats') && d.stats.bars.length) L.push(d.stats.bars.map(b => `${b.name}${fmtNum(b.cur)}/${fmtNum(b.max)}`).join(' ') + (d.stats.conds.length ? ` ⚠${d.stats.conds.map(c => c.name).join(',')}` : ''));
     if (on('wallet')) L.push(`$${fmtNum(d.wallet.cash)}${d.wallet.currency}`);
     if (on('rel')) { const here = d.rel.user.filter(x => inScene(x.name)); if (here.length) L.push(`♥${here.slice(0, 8).map(x => `${x.name}${x.aff}/${x.trust}<${stageOf(d.rel, x).name}>${x.jealous >= 30 ? `💢${x.jealous}` : ''}`).join(' ')}`); }
     if (on('fate')) L.push(...fateText(s, true));
-    if (plan.changes.length) L.push(`변화:${plan.changes.slice(-14).join(' / ')}`);
-    if (s.recent.length) L.push(`UI행동:${s.recent.slice(-5).join(' / ')}`);
+    if (plan.changes.length) L.push(`${viewTr() ? 'changes:' : '변화:'}${plan.changes.slice(-14).join(' / ')}`);
+    if (s.recent.length) L.push(`${viewTr() ? 'UI:' : 'UI행동:'}${recentI(s, 5)}`);
     if (!opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus')) {
         const keys = tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ');
-        L.push(P('inj.ultra.output', { keys }));
+        L.push(outRule(P('inj.ultra.output', { keys })));
     }
     return { main: L.filter(Boolean).join('\n'), people: '' };
 }
 
 // 플레이 방식: 다인봇·풀사칭이면 머리에 한 줄, 풀사칭이면 {{user}} → 주인공
 export function buildInjection(r, opt = {}) {
+    const inj = buildInjection1(r, opt);
+    if (r && !opt.noOutput) { try { inj.romance = swapUser(romanceBlock(r)); } catch (e) { console.warn(LOG, 'romance', e); } }
+    return inj;
+}
+// ───── 로맨스 보정 주입 (v2.6 · 따로 주입 · 깊이 따로) ─────
+function romanceBlock(r) {
+    const set = settings(), s = r.state, d = s.data, meta = getMeta();
+    const L = [];
+    let tester = null;
+    const inScene = (n) => (tester ??= sceneTester(set, s))(n); // 필요할 때 한 번만 만든다
+    if (modOn('rel', meta) && d.rel && (set.romFacts || set.romDrive)) {
+        const rl = d.rel, st = rl.stages?.length ? rl.stages : DEFAULT_STAGES, top = st.length - 1;
+        for (const x of rl.user.filter(y => inScene(y.name)).slice(0, 8)) {
+            const k = clamp(x.stage ?? 0, 0, top), g = st[k], nx = st[k + 1];
+            if (set.romFacts) {
+                const allowed = g.unlock || ''; // 지금 단계의 모습만 (세계관마다 단계 설명이 「그 단계 전체 모습」이라, 앞 단계의 「차갑고 적대적」이 섞이면 안 됨)
+                L.push(P('inj.rom.facts', {
+                    who: x.name, stage: g.name,
+                    reached: (() => {
+                        const L = loveIndex(st);
+                        if (set.romBond && x.bond) return 'They ARE lovers: a confession was made and accepted (confirmed by the user).';
+                        if (L >= 0 && k >= L) return `They have reached 「${st[L].name}」.`;
+                        if (set.romBond) return `They are NOT lovers${L >= 0 ? ` (「${st[L].name}」 not reached)` : ''} — no confession has been made and accepted.`;
+                        return '';
+                    })(),
+                    allowed: allowed || 'only what people at this distance would do',
+                    next: nx ? `「${nx.name}」${nx.unlock ? ` (${nx.unlock})` : ''}` : 'nothing — they are at the top',
+                }));
+            }
+            if (set.romDrive) {
+                const det = [x.likes && `drawn to: ${short(x.likes, 80)}`, x.dislikes && `put off by: ${short(x.dislikes, 80)}`, x.concern && `currently preoccupied with: ${short(x.concern, 100)}`].filter(Boolean).join('; ');
+                L.push(P('inj.rom.drive', { who: x.name, details: det || 'not recorded yet — infer from the character and keep it consistent' }));
+            }
+        }
+    }
+    if (set.romIntent) L.push(P('inj.rom.intent'));
+    if (set.romInit) { // 먼저 움직이기: 답 1번마다 주사위 (같은 턴엔 같은 결과 → 프롬프트 창과 실제가 같다)
+        const rng = seeded(`${ctx().getCurrentChatId?.() ?? MODULE}:init:${s.turn}:${(ctx().chat ?? []).length}`);
+        if (rng() * 100 < clamp(num(set.romInitPct, 25), 0, 100)) {
+            const cand = (modOn('rel', meta) && d.rel ? d.rel.user.filter(y => inScene(y.name)).map(y => y.name) : []);
+            L.push(P('inj.rom.init', { who: cand.length ? cand[Math.floor(rng() * cand.length)] : 'one of the characters present' }));
+        }
+    }
+    const hasFacts = L.some(l => !l.startsWith(P('inj.rom.intent').slice(0, 30)) && !l.startsWith(P('inj.rom.init', { who: '' }).slice(0, 12)));
+    const out = L.length ? [...(hasFacts ? [P('inj.rom.header')] : []), ...L] : []; // 장면에 사람이 없으면 「아래가 사실」 머리말은 빼기
+    const mine = String(set.romInject ?? '').trim();
+    if (mine) out.push(mine);
+    return out.join('\n');
+}
+function buildInjection1(r, opt = {}) {
     const inj = buildInjection0(r, opt);
     if (!inj.main && !inj.people) return inj;
     const p = playOf();
@@ -1432,8 +1641,8 @@ function buildInjection0(r, opt = {}) {
         const ev = eventsOn(c, c.y, c.m, c.d);
         const soon = [];
         const tmp = { ...c };
-        for (let k = 1; k <= 7; k++) { addDays(tmp, 1); for (const e of eventsOn(c, tmp.y, tmp.m, tmp.d)) soon.push(`${e.title}(${k}일 후)`); }
-        L.push(`Date: ${dateStr(c)} · ${c.time}${c.weather ? ` · weather: ${c.weather} (${SEASON_NAME[seasonOf(c)]})` : ''}${ev.length ? ` · TODAY: ${ev.map(e => e.title + (e.desc ? ` — ${e.desc}` : '')).join('; ')}` : ''}${soon.length ? ` · coming: ${soon.slice(0, 4).join(', ')}` : ''}`);
+        for (let k = 1; k <= 7; k++) { addDays(tmp, 1); for (const e of eventsOn(c, tmp.y, tmp.m, tmp.d)) soon.push(viewTr() ? `${e.title} (in ${k}d)` : `${e.title}(${k}일 후)`); }
+        L.push(`Date: ${dateI(c)} · ${c.time}${c.weather ? ` · weather: ${c.weather} (${seasonI(c)})` : ''}${ev.length ? ` · TODAY: ${ev.map(e => e.title + (e.desc ? ` — ${e.desc}` : '')).join('; ')}` : ''}${soon.length ? ` · coming: ${soon.slice(0, 4).join(', ')}` : ''}`);
     }
     if (on('map')) {
         const m = d.map, p = findBy(m.places, m.here);
@@ -1473,8 +1682,9 @@ function buildInjection0(r, opt = {}) {
     if (on('rel')) {
         const rl = d.rel;
         const here = rl.user.filter(x => inScene(x.name)), away = rl.user.filter(x => !inScene(x.name));
-        for (const x of here.slice(0, 12)) { const g = stageOf(rl, x); PP.push(`${x.name}${x.label ? ` [${x.label}]` : ''} → {{user}}: 호감 ${x.aff} · 신뢰 ${x.trust} · 단계 「${g.name}」${g.unlock && !lite ? ` (unlocked: ${short(g.unlock, 60)}${set.stageLock ? " — don't act beyond this stage yet" : ''})` : set.stageLock ? ' (stay within this stage)' : ''}${x.jealous >= 30 ? ` · 질투 ${x.jealous}/100 (show it subtly when they meet)` : ''}${x.memo && !lite ? ` — ${short(x.memo, 90)}` : ''}`); }
-        if (away.length) PP.push(`Not in this scene (호감/신뢰): ${away.slice(0, 15).map(x => `${x.name} ${x.aff}/${x.trust}`).join(', ')}`);
+        const W = viewTr() ? { aff: 'affection', trust: 'trust', stage: 'stage', jealous: 'jealousy' } : { aff: '호감', trust: '신뢰', stage: '단계', jealous: '질투' }; // 화면만 번역: 고정 낱말도 영어로
+        for (const x of here.slice(0, 12)) { const g = stageOf(rl, x); PP.push(`${x.name}${x.label ? ` [${x.label}]` : ''} → {{user}}: ${W.aff} ${x.aff} · ${W.trust} ${x.trust} · ${W.stage} 「${g.name}」${set.romBond && x.bond ? ' · 💞 lovers (confirmed)' : ''}${g.unlock && !lite ? ` (unlocked: ${short(g.unlock, 60)}${set.stageLock && !set.romFacts ? " — don't act beyond this stage yet" : ''})` : set.stageLock && !set.romFacts ? ' (stay within this stage)' : ''}${x.jealous >= 30 ? ` · ${W.jealous} ${x.jealous}/100 (show it subtly when they meet)` : ''}${x.memo && !lite ? ` — ${short(x.memo, 90)}` : ''}`); }
+        if (away.length) PP.push(`Not in this scene (${W.aff}/${W.trust}): ${away.slice(0, 15).map(x => `${x.name} ${x.aff}/${x.trust}`).join(', ')}`);
         const pairs = rl.pairs.filter(p => inScene(p.a) || inScene(p.b));
         if (pairs.length && !lite) PP.push(`Between others: ${pairs.slice(0, 10).map(p => `${p.a}↔${p.b} ${p.label}`).join(' · ')}`);
         const life = rl.life.filter(x => inScene(x.who)).slice(-2);
@@ -1482,7 +1692,7 @@ function buildInjection0(r, opt = {}) {
         if (s.newDay && set.offscreen && lastDayChanged(r)) L.push(P('inj.life'));
     }
     if (on('custom')) L.push(...customLines(s, false));
-    if (on('sns') && d.sns.posts.length && !lite) L.push(`Recent posts on ${d.sns.name || 'SNS'}: ${d.sns.posts.slice(-3).map(p => `${p.author}: ${short(p.text || `[사진] ${p.pic}`, 50)}`).join(' / ')}`);
+    if (on('sns') && d.sns.posts.length && !lite) L.push(`Recent posts on ${d.sns.name || 'SNS'}: ${d.sns.posts.slice(-3).map(p => `${p.author}: ${short(p.text || `${viewTr() ? '[photo]' : '[사진]'} ${p.pic}`, 50)}`).join(' / ')}`);
     if (on('music') && d.music.now && !lite) L.push(`Current BGM: ${d.music.now.title}${d.music.now.artist ? ` - ${d.music.now.artist}` : ''} (change it with bgm only when the mood shifts)`);
     if (on('profile')) {
         const pf = d.profile;
@@ -1515,11 +1725,11 @@ function buildInjection0(r, opt = {}) {
         if (dc.rules && !lite) L.push(`Dice rules: ${short(dc.rules, 300)}`);
         L.push(P('inj.dice'));
     }
-    if (s.recent.length) L.push(`Since the last reply {{user}} did (via the status UI): ${s.recent.slice(-8).join(' / ')}`);
+    if (s.recent.length) L.push(`Since the last reply {{user}} did (via the status UI): ${recentI(s, 8)}`);
     if (!opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus')) {
-        L.push(P('inj.output'));
-        L.push(lite ? `Keys (key: value, ±N for numbers, +/-name for lists, name | detail): ${tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ')}` : `Keys: ${tagKeysFor(meta).join(' · ')}`);
-        if (!lite) L.push(P('inj.example'));
+        L.push(outRule(P('inj.output')));
+        L.push(lite ? `Keys (key: value, ±N for numbers, +/-name for lists, name | detail): ${keysI(tagKeysFor(meta)).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ')}` : `Keys: ${keysI(tagKeysFor(meta)).join(' · ')}`);
+        if (!lite) L.push(viewTr() ? P('inj.example.en') : P('inj.example'));
     }
     return { main: L.filter(Boolean).join('\n'), people: PP.length ? `[STATUS SIM — PEOPLE (part of the state above)]\n${PP.join('\n')}` : '' };
 }
@@ -1529,6 +1739,8 @@ export function setInjection(inj) {
     const depth = clamp(parseInt(settings().injectDepth, 10) || 0, 0, 20);
     c.setExtensionPrompt(INJECT_KEY, inj?.main ?? '', PROMPT_IN_CHAT, depth, true, ROLE_SYSTEM);
     c.setExtensionPrompt(INJECT_KEY2, inj?.people ?? '', PROMPT_IN_CHAT, depth, false, ROLE_SYSTEM);
+    const rd = clamp(parseInt(settings().romDepth, 10) || 0, 0, 20);
+    c.setExtensionPrompt(INJECT_KEY3, inj?.romance ?? '', PROMPT_IN_CHAT, rd, false, ROLE_SYSTEM);
 }
 
 // ───── 생성 재료 ─────
@@ -1559,20 +1771,39 @@ export async function loreNames() {
 export async function loreText(limit) {
     const c = ctx();
     if (!c.loadWorldInfo || limit <= 0) return '';
-    let out = '';
+    const items = [];
     for (const name of await loreNames()) {
         try {
             const book = await c.loadWorldInfo(name);
             const entries = Object.values(book?.entries ?? {}).filter(e => !e.disable).sort((a, b) => (b.constant ? 1 : 0) - (a.constant ? 1 : 0) || (a.order ?? 0) - (b.order ?? 0));
             for (const e of entries) {
-                const head = e.comment || (Array.isArray(e.key) ? e.key.slice(0, 3).join(', ') : '');
-                const piece = `• ${head}: ${String(e.content ?? '').replace(/\s+/g, ' ').trim()}\n`;
-                if (out.length + piece.length > limit) return out + '…(생략)';
-                out += piece;
+                const head = String(e.comment || (Array.isArray(e.key) ? e.key.slice(0, 3).join(', ') : '')).trim();
+                const body = String(e.content ?? '').replace(/\s+/g, ' ').trim();
+                if (head || body) items.push({ head, body });
             }
         } catch (e) { console.warn(LOG, 'lore', name, e); }
     }
-    return out;
+    if (!items.length) return '';
+    // 넘치면 뒤 항목을 통째로 버리지 않고, 모든 항목을 조금씩 줄인다 (뒤쪽 캐릭터가 사라지던 문제)
+    const total = items.reduce((n, x) => n + x.head.length + x.body.length + 4, 0);
+    let budget = Infinity;
+    if (total > limit) {
+        const sorted = items.map(x => x.body.length).sort((a, b) => a - b);
+        let lo = 0, hi = sorted.at(-1) ?? 0; // 항목당 상한을 이분 탐색으로 맞춘다
+        const fits = (cap) => items.reduce((n, x) => n + x.head.length + Math.min(x.body.length, cap) + 5, 0) <= limit;
+        while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (fits(mid)) lo = mid; else hi = mid - 1; }
+        budget = Math.max(120, lo);
+    }
+    let out = '';
+    for (const x of items) {
+        const piece = `• ${x.head}: ${x.body.length > budget ? `${x.body.slice(0, budget)}…` : x.body}\n`;
+        if (out.length + piece.length > limit * 1.15) break;
+        out += piece;
+    }
+    // 항목 이름 목록은 늘 전부 (내용이 잘려도 「이런 인물·장소가 있다」는 알게)
+    const index = [...new Set(items.map(x => x.head).filter(Boolean))];
+    const shown = out.split('\n').length - 1;
+    return `${out}${shown < items.length ? `…(${items.length - shown}개 항목은 내용 생략)\n` : ''}[LOREBOOK INDEX — every entry title, ${index.length}] ${short(index.join(' · '), 4000)}`;
 }
 export function recentChat(n) {
     return (ctx().chat ?? []).filter(m => !m.is_system).slice(-n).map(m => `${m.name}: ${short(stripStatus(m.mes), 700)}`).join('\n');

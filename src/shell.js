@@ -1,7 +1,7 @@
 // 틀: 상태창 패널 · HUD · 사이드(미니) · 떠 있는 버튼 · 만들기 · 프롬프트/토큰 창 · 꾸미기 창
 import {
     DATA_V, app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, isActive, ready, MODS, MOD, MOD_IDS, EMPTY, NORM, normalize, DIFFS, diffOf, GENRES, CONTACT_MODES,
-    esc, short, clone, clamp, fmtNum, h, dateShort, userName, TITLE, LOG, VERSION, MODULE, sub, PLAY_MODES, normPlay, playOf, mascotUrl,
+    esc, short, clone, clamp, fmtNum, h, dateShort, userName, TITLE, LOG, VERSION, MODULE, sub, PLAY_MODES, normPlay, playOf, mascotUrl, relFromProfiles,
 } from './core.js';
 import { compute, buildInjection, setInjection, commit, addAdjust, gatherSources, loreNames, chatCharacters, unreadCount, dueLetters, inTransit } from './engine.js';
 import { genModule, instructModule, genGroup, GEN_GROUPS } from './ai.js';
@@ -122,6 +122,7 @@ export function renderPanel(el) {
                 <button class="ss-ib" data-act="search" title="검색"><i class="fa-solid fa-magnifying-glass"></i></button>
                 <button class="ss-ib ${meta.paused ? 'on' : ''}" data-act="pause" title="${meta.paused ? '재개' : '일시정지 (AI에게 상태를 보내지 않음)'}"><i class="fa-solid ${meta.paused ? 'fa-play' : 'fa-pause'}"></i></button>
                 <button class="ss-ib" data-act="prompts" title="프롬프트 · 토큰"><i class="fa-solid fa-scroll"></i></button>
+                <button class="ss-ib" data-act="help" title="미트볼 도우미 — 모르는 기능 물어보기 (AI)"><i class="fa-solid fa-circle-question"></i></button>
                 <button class="ss-ib" data-act="fullscreen" title="${!inSide && settings().sheetFull ? '전체화면 끄기' : '전체화면'}"><i class="fa-solid ${!inSide && settings().sheetFull ? 'fa-compress' : 'fa-expand'}"></i></button>
                 ${inSide ? `<button class="ss-ib" data-act="sidemini" title="작게"><i class="fa-solid fa-down-left-and-up-right-to-center"></i></button>` : ''}
             </div>
@@ -161,6 +162,7 @@ async function onPanelAction(el, act, arg, btn) {
         case 'favtog': { const set = settings(); const f = new Set(set.favTabs ?? []); if (f.has(tab)) f.delete(tab); else f.add(tab); set.favTabs = [...f]; saveSettings(); if (!f.has(tab) && st.group === 'fav') st.group = null; return rerenderPanels(true); }
         case 'inbox': return app.openInbox?.();
         case 'search': return app.openSearch?.();
+        case 'help': return app.openHelp?.();
         case 'cardload': return loadFromCard(setBase, false);
         case 'carrystart': return startCarry(setBase);
         case 'filerestore': return restoreFile(setBase);
@@ -182,6 +184,7 @@ async function onPanelAction(el, act, arg, btn) {
             try {
                 const sources = await gatherSources({});
                 const data = await genModule(mod, { sources, core: s.core, profileMode: s.data.profile?.mode, instruction: st.ui.instructText, contactMode: s.data.contact?.mode });
+                if (mod === 'rel' && s.data.profile) relFromProfiles(data, s.data.profile); // 다시 생성해도 프로필의 사람은 빠지지 않게
                 await commit(mod, data, `🔄 ${mname} 생성`);
                 toastr.success('채웠어요.', TITLE);
             } catch (e) { console.error(LOG, e); toastr.error(`생성 실패: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
@@ -616,6 +619,7 @@ export async function openWizard() {
         const b = h(`<div class="ss-w-apply"><button class="ss-btn pri big"><i class="fa-solid fa-check"></i> 적용하기 (${Object.keys(results.data).length}칸)</button><small class="ss-hint">실패한 칸은 비워 두고, 나중에 그 칸에서 다시 채울 수 있어요.</small></div>`);
         b.querySelector('button').addEventListener('click', async () => {
             if (getMeta()?.base && !(await askConfirm('지금 이 채팅의 상태창을 새로 만든 것으로 바꿀까요?'))) return;
+            if (results.data.rel && results.data.profile) relFromProfiles(results.data.rel, results.data.profile); // 프로필에 있는 사람은 관계에도 꼭
             await setBase({ core: results.core, data: results.data }, mods, W.diff, results.play);
             toastr.success('상태창을 만들었어요!', TITLE);
             el.closest('dialog')?.querySelector('.popup-button-ok')?.click();
@@ -677,7 +681,7 @@ export async function openPromptWindow(tab = 'when') {
         const set = settings();
         const meta = getMeta();
         const inj = app.current && !meta?.paused ? buildInjection(app.current) : null;
-        const injText = inj ? sub(`${inj.main}\n\n${inj.people}`).trim() : '';
+        const injText = inj ? sub([inj.main, inj.people, inj.romance].filter(Boolean).join('\n\n')).trim() : '';
         let body = '';
         if (cur === 'when') {
             const injTok = injText ? await countTokens(injText) : 0;
@@ -687,7 +691,8 @@ export async function openPromptWindow(tab = 'when') {
             body = `<div class="ss-callout"><i class="fa-solid fa-circle-info"></i><div><b>토큰은 두 군데서 들어요</b><span>① 본편(메인 AI)을 부를 때마다 붙는 상태 주입문 ② 확장이 따로 AI를 부르는 버튼 (<span class="ss-ai"><i class="fa-solid fa-wand-magic-sparkles"></i>AI</span> 표시)</span></div></div>
             ${sec('① 매 턴 — 본편 생성마다 자동', `
                 ${row('fa-arrow-right-to-bracket', `상태 주입문 (입력) ≈ <b>${fmtNum(injTok)}</b> 토큰`, `본 답 · 다시 생성 · 스와이프 · 이어 쓰기마다 요청에 붙어요. 깊이 ${set.injectDepth} · 규칙 ${{ full: '전체', lite: '간결', ultra: '초압축' }[set.injectMode] ?? '전체'}${set.deltaMode ? ` · 변화 위주 (${set.deltaEvery}턴마다 전체)` : ''}${Object.keys(set.injEvery ?? {}).length ? ' · 칸별 보내는 때 설정됨' : ''}`, '매 턴', !!injText)}
-                ${row('fa-arrow-right-from-bracket', 'AI가 응답 끝에 쓰는 &lt;status&gt; (출력)', '바뀐 것만 적어서 보통 20~80 토큰. 화면에선 숨겨지고, 2턴 지난 것은 프롬프트에서도 지워져요.', '매 턴', set.sync === 'tag' || set.sync === 'tagPlus')}
+                ${inj?.romance ? row('fa-heart', `그중 로맨스 보정 · 내 주입문 ≈ <b>${fmtNum(await countTokens(sub(inj.romance)))}</b> 토큰`, `따로 주입돼요 (깊이 ${set.romDepth}). 확장 설정 › 로맨스 보정에서 켠 것만 들어가요.`, '매 턴') : ''}
+                ${row('fa-arrow-right-from-bracket', 'AI가 응답 끝에 쓰는 &lt;meatball&gt; (출력)', '바뀐 것만 적어서 보통 20~80 토큰. 화면에선 숨겨지고, 2턴 지난 것은 프롬프트에서도 지워져요.', '매 턴', set.sync === 'tag' || set.sync === 'tagPlus')}
                 <p class="ss-hint">0 토큰이 되는 때: ⏸ 일시정지 · 「다음 1번 건너뛰기」 · OOC 메시지${set.oocDetect ? ' (자동 감지 켬)' : ' (자동 감지 꺼짐)'} · 조용한 생성/퀵리플라이 /gen${set.skipQuiet ? ' (자동 제외 켬)' : ' (꺼짐)'} · 이 채팅에서 끔</p>`)}
             ${sec('② 버튼을 누를 때만 — 확장 AI 1회씩', `
                 ${row('fa-wand-magic-sparkles', '상태창 만들기', `세계 핵심 1 + 켠 기능 ${nMods}개 = AI ${nMods + 1}회. 재료(카드·로어북 최대 ${fmtNum(set.loreChars)}자·최근 채팅 ${set.recentForGen}개)가 매번 들어가요.`, `${nMods + 1}회`)}
@@ -699,9 +704,9 @@ export async function openPromptWindow(tab = 'when') {
                 ${row('fa-newspaper', '새 소식 발행 · 새 호 발행 · 새 글 불러오기 · 댓글 달리기 · 의뢰 찾기', '누를 때', '각 1회')}
                 ${row('fa-hashtag', 'SNS 새 게시물 · 반응 받기 · 추천 곡 3개 · 속마음 엿보기', '누를 때', '각 1회')}
                 ${row('fa-screwdriver-wrench', `깨진 답 다시 받기 — ${set.retryJSON ? '켬' : '꺼짐'}`, '확장 AI 답(JSON)이 고쳐도 안 될 때만 한 번 더', set.retryJSON ? '가끔 +1' : '꺼짐', set.retryJSON)}
-                ${row('fa-language', `상태창 번역 — ${set.ssGenLang === 'en' ? '켬 (영어로 생성 → 번역)' : '꺼짐 (한국어로 바로 생성)'}`, `켜면 위의 AI 호출마다 번역 모델(${set.trProfile ? '고른 연결 프로필' : '확장 AI 모델'})이 1회 더. 「상태창 전체 번역」은 칸 1개 = 1회`, set.ssGenLang === 'en' ? '+1회씩' : '꺼짐', set.ssGenLang === 'en')}`)}
+                ${row('fa-language', `상태창 번역 — ${set.ssGenLang === 'enview' ? '켬 (영어로 저장 · 화면만 번역)' : set.ssGenLang === 'en' ? '켬 (영어로 생성 → 번역본 저장)' : '꺼짐 (한국어로 바로 생성)'}`, `켜면 위의 AI 호출마다 번역 모델(${set.trProfile ? '고른 연결 프로필' : '확장 AI 모델'})이 1회 더. 「상태창 전체 번역」은 칸 1개 = 1회`, set.ssGenLang === 'en' ? '+1회씩' : '꺼짐', set.ssGenLang === 'en')}`)}
             ${sec('③ 설정에 따라 자동', `
-                ${row('fa-magnifying-glass', `별도 분석 — 지금: ${syncTxt}`, 'B: 매 AI 응답마다 1회 · A+B: 응답에 &lt;status&gt;가 빠졌을 때만', set.sync === 'analyze' ? '매 응답' : set.sync === 'tagPlus' ? '가끔' : '꺼짐', set.sync === 'analyze' || set.sync === 'tagPlus')}
+                ${row('fa-magnifying-glass', `별도 분석 — 지금: ${syncTxt}`, 'B: 매 AI 응답마다 1회 · A+B: 응답에 &lt;meatball&gt;가 빠졌을 때만', set.sync === 'analyze' ? '매 응답' : set.sync === 'tagPlus' ? '가끔' : '꺼짐', set.sync === 'analyze' || set.sync === 'tagPlus')}
                 ${row('fa-bell', `자동 선톡 — ${set.autoPing ? `켬 (${set.autoPingEvery}턴마다 확률)` : '꺼짐'}`, '켜 두면 가끔 누군가 먼저 연락해요', set.autoPing ? '가끔' : '꺼짐', set.autoPing)}`)}
             ${sec('토큰 0', '<p class="ss-hint">주사위 · 구매/판매 · 직접 편집 · 이동 · 달력 · 메모 · 업적 · 퀘스트 수락/완료 · 편지 부치기 · 메시지 수정/삭제 · HUD · 사이드 · 꾸미기</p>')}
             ${set.aiProfile ? `<p class="ss-hint">확장 AI는 연결 프로필 「${esc(set.aiProfile)}」로 보내요 (본편은 메인 연결).</p>` : ''}`;

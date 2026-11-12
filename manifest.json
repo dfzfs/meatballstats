@@ -7,7 +7,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "Meatball Stats",
-    "version": "2.5.1",
-    "homePage": "https://github.com/YOUR-ID/ST-StatusSim",
+    "version": "2.6.1",
+    "homePage": "https://github.com/dfzfs/meatballstats",
     "auto_update": true
 }

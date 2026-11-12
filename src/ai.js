@@ -1,5 +1,5 @@
 // 확장 AI가 하는 일 (모두 토큰이 드는 호출)
-import { app, ctx, settings, getMeta, MOD, NORM, normalize, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay } from './core.js';
+import { app, ctx, settings, getMeta, MOD, NORM, normalize, ensureLove, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay } from './core.js';
 import { P, aiGenerate, parseJSON, aiJSON } from './prompts.js';
 import { SCHEMA } from './core.js';
 import { compute, buildInjection, tagKeysFor, extractOps, stripStatus, recentChat, chatCharacters } from './engine.js';
@@ -29,7 +29,8 @@ export async function genModule(mod, { sources, core, instruction, profileMode, 
     if (mod === 'core') { const c = NORM.core(obj); if (detectPlay && obj.play) Object.defineProperty(c, 'play', { value: normPlay(obj.play), enumerable: false }); return c; }
     if (mod === 'profile' && profileMode) obj.mode = profileMode;
     if (mod === 'contact' && contactMode && contactMode !== 'auto') obj.mode = contactMode;
-    return mod === 'core' ? NORM.core(obj) : normalize(mod, obj);
+    const out = mod === 'core' ? NORM.core(obj) : normalize(mod, obj);
+    return mod === 'rel' ? ensureLove(out) : out; // 연인 단계는 늘 있게
 }
 
 // 묶음 생성: 관련 칸 여러 개를 한 번에 (재료를 한 번만 보내서 입력 토큰↓, 칸끼리 일관성↑)
@@ -62,7 +63,7 @@ export async function genGroup(mods, { sources, core, instruction, profileMode, 
         if (!d || typeof d !== 'object' || Array.isArray(d)) continue;
         if (mod === 'profile' && profileMode) d.mode = profileMode;
         if (mod === 'contact' && contactMode && contactMode !== 'auto') d.mode = contactMode;
-        try { out[mod] = normalize(mod, d); } catch (e) { console.warn(LOG, 'group normalize', mod, e); }
+        try { out[mod] = normalize(mod, d); if (mod === 'rel') ensureLove(out[mod]); } catch (e) { console.warn(LOG, 'group normalize', mod, e); }
     }
     return out;
 }
@@ -184,6 +185,20 @@ async function freshItems(mod, feature, state, extra = '') {
     return finJSON((await aiJSON(feature, P('gen.system'), L.join('\n\n'))));
 }
 // 플레이 방식 알아보기 (카드 · 페르소나 · 첫 메시지 · 최근 채팅을 보고)
+// 로맨스 보정 ⑤: 관계 인물들의 끌리는 것 · 싫어하는 것 · 요즘 신경 쓰는 것을 한 번에 채운다
+export async function fillWants(state) {
+    const d = state.data;
+    const people = (d.rel?.user ?? []).slice(0, 16);
+    if (!people.length) return [];
+    const L = [
+        `World: ${state.core.title} — ${short(state.core.summary, 500)}`,
+        ...people.map(r => { const prof = d.profile ? findBy(d.profile.list, r.name) : null; const card = chatCharacters().find(ch => norm(ch.name) === norm(r.name));
+            return `- ${r.name}${r.label ? ` [${r.label}]` : ''}: ${prof ? short(`${prof.summary} ${prof.fields.map(f => `${f.k}: ${f.v}`).join(' / ')}`, 500) : card ? short(card.description, 700) : short(r.memo, 200) || '(no profile)'}${r.likes || r.dislikes || r.concern ? ` | existing — likes: ${r.likes || '-'}; dislikes: ${r.dislikes || '-'}; concern: ${r.concern || '-'}` : ''}`; }),
+        `Recent story (for context):\n${recentChat(8)}`,
+    ];
+    const o = await finJSON(await aiJSON('wants', P('ai.wants'), L.join('\n\n'), 1500));
+    return Array.isArray(o?.list) ? o.list.filter(x => x?.name) : [];
+}
 export const PLAY_SHAPE = '{"mode":"rp|multi|director","cardIsWorld":false,"hero":"","cast":["이름"]}';
 export async function detectPlay() {
     const c = ctx();
