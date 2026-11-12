@@ -151,7 +151,7 @@ function peekLeft(s) {
     return Math.max(0, per - (s.peek?.day === day ? s.peek.n : 0));
 }
 export const REL_ACTIONS = {
-    bond: async (el, arg) => { await addAdjust({ ops: [['_bond', arg]], label: `💍 ${arg}와(과) 고백이 오가 연인이 되었다 (확정)` }); },
+    bond: async (el, arg, btn, s) => { if (s?.data?.rel?.user?.find(x => x.name === arg)?.bond) return; await addAdjust({ ops: [['_bond', arg]], label: `💍 ${arg}와(과) 고백이 오가 연인이 되었다 (확정)` }); },
     fillwants: async (el, arg, btn, s) => {
         busyBtn(btn, true, '채우는 중…');
         try {

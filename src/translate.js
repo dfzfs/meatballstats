@@ -79,21 +79,41 @@ function rebuild(o, map, k = '', rev = false) {
     return o;
 }
 export const hasHangul = (o) => leaves(o, new Set(), '', true).size > 0;
+// 번역 결과를 원본 모양에 덮어씌운다: 숫자·참거짓·빠진 칸은 원본 그대로, 같은 자리의 글자만 바꾼다 (모델이 칸을 빼먹어도 데이터가 안 사라짐)
+export function overlay(orig, out, k = '') {
+    if (typeof orig === 'string') return typeof out === 'string' && out.trim() && !isCode(k, orig, true) ? out : orig;
+    if (Array.isArray(orig)) return orig.map((v, i) => overlay(v, Array.isArray(out) ? out[i] : undefined, k));
+    if (orig && typeof orig === 'object') return Object.fromEntries(Object.entries(orig).map(([kk, v]) => [kk, overlay(v, out && typeof out === 'object' ? out[kk] : undefined, kk)]));
+    return orig;
+}
+// 영어 → 원본으로 짝지을 때, 원본에서 한글이 든 칸만
+const pairsKo = (en, ko, acc = []) => { for (const [a, b] of pairsOf(en, ko)) if (/[가-힣]/.test(String(b))) acc.push([a, b]); return acc; };
 // 한국어로 저장된 칸 → 영어 (화면만 번역으로 옮길 때 1번). 실패하면 원본 그대로.
 // known = 앞 칸에서 이미 정해진 이름 (한국어 → 영어): 칸마다 따로 번역해도 같은 이름은 같은 영어로
 export async function trJSONToEnglish(obj, known = new Map()) {
     if (engineST()) {
         const fixed = new Map([...known, ...rulePairs().map(([en, ko]) => [ko, en])]);
+        const names = [...fixed].filter(([ko]) => ko.length >= 2).sort((a, b) => b[0].length - a[0].length);
         const all = [...leaves(obj, new Set(), '', true)];
-        const map = await stMany(all.filter(s => !fixed.has(s.trim())), true);
-        for (const s of all) if (fixed.has(s.trim())) map.set(s, fixed.get(s.trim()));
+        const map = new Map(), send = new Map(); // 원문 → 이름을 영어로 미리 바꾼 글
+        for (const s of all) {
+            if (fixed.has(s.trim())) { map.set(s, fixed.get(s.trim())); continue; }
+            let x = s; for (const [ko, en] of names) x = x.split(ko).join(en);
+            if (!/[가-힣]/.test(x)) map.set(s, x); else send.set(s, x);
+        }
+        const got = await stMany([...new Set(send.values())], true);
+        for (const [s, x] of send) if (got.has(x)) map.set(s, got.get(x));
         return rebuild(obj, map, '', true);
     }
     const src = JSON.stringify(obj);
     const fix = [...new Map([...[...known].map(([ko, en]) => [en, ko]), ...rulePairs()])].slice(-80);
     const rules = fix.length ? `\nFixed names (English = Korean; whenever the Korean side appears, use exactly the English side): ${fix.map(([a, b]) => `${a} = ${b}`).join('; ')}` : '';
-    const out = await aiGenerate('translate', P('ai.translate', { lang: 'English', glossary: '' }) + rules, src, Math.min(16000, Math.max(1000, Math.ceil(src.length * 1.3))), trOpts());
-    return parseJSON(out);
+    const sys = P('ai.translate', { lang: 'English', glossary: '' }) + rules;
+    const max = Math.min(16000, Math.max(1000, Math.ceil(src.length * 1.4)));
+    let out;
+    try { out = parseJSON(await aiGenerate('translate', sys, src, max, trOpts())); }
+    catch { out = parseJSON(await aiGenerate('translate', `${sys}\n\nIMPORTANT: Output ONLY one complete, valid JSON object with exactly the same structure.`, src, max, trOpts())); } // 깨지면 1번 더
+    return overlay(obj, out);
 }
 
 export async function trJSON(obj, extra) {
@@ -244,6 +264,7 @@ export function startViewTr() {
 let running = false, stop = false;
 export async function translateSheet(btn) {
     if (running) { stop = true; return; }
+    if (viewTr() && koPanels().length) return convertToEnglish(btn); // 화면만 번역인데 한국어로 저장된 칸이 있으면 → 그걸 먼저 영어 저장으로
     const s = app.current?.state;
     if (!s) return;
     const meta = getMeta();
@@ -266,6 +287,55 @@ export async function translateSheet(btn) {
     if (viewTr()) { app.refreshNow?.(); translateView(); }
     toastr.success(`${k}칸 번역했어요${stop ? ' (멈춤)' : ''}.${viewTr() ? ' 데이터는 영어 그대로고, 화면에만 번역이 보여요.' : ''}`, TITLE);
 }
+// 이 채팅에서 한국어로 저장된 칸 (화면만 번역 모드에서 AI에게 한국어가 새는 곳)
+export function koPanels() {
+    const s = app.current?.state; if (!s) return [];
+    const meta = getMeta();
+    return ['core', ...MOD_IDS.filter(id => modOn(id, meta) && s.data[id])].filter(id => hasHangul(id === 'core' ? s.core : s.data[id]));
+}
+// 채팅을 열었을 때 한 번: 한국어로 저장된 칸이 있으면 알려 주고, 누르면 바로 바꾼다
+let lastKoCheck = '';
+export function checkKorean() {
+    if (!viewTr() || running) return;
+    const id = String(ctx().getCurrentChatId?.() ?? '');
+    if (!id || lastKoCheck === id) return;
+    lastKoCheck = id;
+    const ko = koPanels();
+    if (!ko.length) return;
+    const names = ko.map(x => (x === 'core' ? '세계 핵심' : MOD[x]?.name ?? x)).join(', ');
+    toastr.warning(`이 채팅엔 <b>한국어로 저장된 칸</b>이 ${ko.length}개 있어서 AI에게 한국어로 가요: ${esc(names)}<br><b>👉 여기를 누르면 영어 저장으로 바꿔요</b> (보이는 한국어는 그대로)`, TITLE, { timeOut: 15000, extendedTimeOut: 5000, onclick: () => convertToEnglish(null) });
+}
+// 본편 AI가 새로 쓴 영어 글(새 아이템·메모·퀘스트 등)도 화면에선 번역돼 보이게 — 모르는 글만 모아서 가끔 한 번
+let filling = false, fillTimer = null;
+const tried = new Set();
+export function scheduleFill() {
+    if (!viewTr() || settings().trAuto === false) return;
+    clearTimeout(fillTimer);
+    fillTimer = setTimeout(() => { fillNew().catch(e => console.warn(LOG, 'fill', e)); }, 2500);
+}
+async function fillNew() {
+    if (filling || running || !viewTr()) return;
+    const s = app.current?.state; if (!s) return;
+    const d = trDict() ?? {};
+    const meta = getMeta();
+    const need = [];
+    for (const o of [s.core, ...MOD_IDS.filter(id => modOn(id, meta) && s.data[id]).map(id => s.data[id])]) {
+        for (const x of leaves(o)) {
+            const k = x.trim();
+            if (!k || k.length > 600 || /[가-힣]/.test(k) || Object.hasOwn(d, k) || tried.has(k)) continue;
+            need.push(k); tried.add(k);
+            if (need.length >= 60) break;
+        }
+        if (need.length >= 60) break;
+    }
+    if (!need.length) return;
+    filling = true;
+    try {
+        const src = { list: need };
+        const out = await trJSON(src);
+        if (out !== src && Array.isArray(out?.list)) { addPairs(pairsOf(src, out)); addPairs(rulePairs()); translateView(); }
+    } finally { filling = false; }
+}
 // 「한국어로 저장된 칸을 영어 저장으로 바꾸기」: 예전 방식(번역본 저장)이나 한국어 생성으로 만든 상태창을
 // 화면만 번역으로 옮긴다. 원래 있던 한국어는 화면 번역(사전)으로 그대로 남는다.
 export async function convertToEnglish(btn) {
@@ -274,13 +344,14 @@ export async function convertToEnglish(btn) {
     if (!s) { toastr.info('이 채팅에 상태창이 없어요.', TITLE); return; }
     if (!viewTr()) { toastr.info('먼저 「상태창 생성 언어」를 「영어로 저장 · 화면만 번역」으로 바꿔 주세요.', TITLE); return; }
     const meta = getMeta();
-    const ids = ['core', ...MOD_IDS.filter(id => modOn(id, meta) && s.data[id])].filter(id => hasHangul(id === 'core' ? s.core : s.data[id]));
+    const ids = koPanels();
     if (!ids.length) { toastr.success('한국어로 저장된 칸이 없어요. 이미 영어로 저장돼 있어요.', TITLE); return; }
     const who = settings().trEngine === 'st' ? '실리 기본 번역 (토큰 0)' : `번역 모델 ${ids.length}회`;
     if (!(await SillyTavern.getContext().Popup.show.confirm(TITLE, `한국어로 저장된 ${ids.length}칸을 영어 저장으로 바꿔요 (${esc(who)}).<br><br>• 지금 보이는 한국어는 <b>화면 번역으로 그대로 남아요</b> — 화면은 거의 그대로고, AI에게만 영어로 가요.<br>• 칸마다 「되돌리기」(<code>/ss-undo</code>)로 되돌릴 수 있어요. 걱정되면 먼저 관리 탭 › 세이브나 전체 백업을 해 두세요.<br>• 다시 누르면 멈춰요.`))) return;
     running = true; stop = false;
     const old = btn?.innerHTML;
     let k = 0, fail = 0;
+    const failed = [];
     const known = new Map(); // 짧은 이름들: 한국어 → 영어
     try {
         for (const id of ids) {
@@ -289,16 +360,18 @@ export async function convertToEnglish(btn) {
             const cur = id === 'core' ? app.current.state.core : app.current.state.data[id];
             try {
                 const out = await trJSONToEnglish(cur, known);
-                const pairs = pairsOf(out, cur);
+                if (hasHangul(out) && JSON.stringify(out) === JSON.stringify(cur)) throw new Error('번역 결과가 비었어요');
+                const pairs = pairsKo(out, cur);
                 for (const [en, ko] of pairs) { const a = String(ko ?? '').trim(), b = String(en ?? '').trim(); if (a && b && a !== b && a.length <= 30 && !known.has(a)) known.set(a, b); }
                 addPairs(pairs); // 영어 → 원래 있던 한국어
                 await commit(id, out, '');
                 k++;
-            } catch (e) { fail++; console.warn(LOG, 'to english', id, e); }
+            } catch (e) { fail++; failed.push(id === 'core' ? '세계 핵심' : MOD[id]?.name ?? id); console.warn(LOG, 'to english', id, e); }
         }
         addPairs(rulePairs());
     } finally { running = false; if (btn) btn.innerHTML = old; }
     app.refreshNow?.(); translateView();
-    toastr[fail ? 'warning' : 'success'](`${k}칸을 영어 저장으로 바꿨어요${fail ? ` · ${fail}칸은 실패해서 그대로 뒀어요` : ''}${stop ? ' (멈춤)' : ''}.`, TITLE);
+    toastr[fail ? 'warning' : 'success'](`${k}칸을 영어 저장으로 바꿨어요${fail ? ` · <b>${esc(failed.join(', '))}</b>은(는) 실패해서 한국어 그대로예요. 한 번 더 누르면 실패한 칸만 다시 해요` : ''}${stop ? ' (멈춤)' : ''}.`, TITLE, fail ? { timeOut: 12000 } : {});
+    lastKoCheck = '';
 }
 export { MOD };

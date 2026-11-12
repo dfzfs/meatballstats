@@ -7,7 +7,7 @@ import { listProfiles } from './src/prompts.js';
 import { diffHTML, confirmPopup, applyTheme, askInput, mascot, popup } from './src/kit.js';
 import { ensureUI, rerenderPanels, openSheet, openWizard, openRoll, openPromptWindow, openThemeWindow, panels, renderHud } from './src/shell.js';
 import { receivePing } from './src/contact.js';
-import { translateSheet, startViewTr, translateView, convertToEnglish } from './src/translate.js';
+import { translateSheet, startViewTr, translateView, convertToEnglish, scheduleFill, checkKorean } from './src/translate.js';
 import { openHelp } from './src/help.js';
 import { notify } from './src/notify.js';
 import { offerCard, followBranch, saveSlot, fullBackup, diagnose } from './src/safe.js';
@@ -98,6 +98,8 @@ function notifyLatest() {
 let bondAsking = false;
 async function askBond(who) {
     if (!settings().romBond || bondAsking) return;
+    const r0 = app.current?.state?.data?.rel?.user?.find(x => x.name === who);
+    if (r0?.bond) return; // 이미 연인 (스와이프·다시 생성으로 같은 알림이 또 와도 다시 안 물어봄)
     notify({ kind: 'text', icon: '💌', title: `${who}와(과) 고백이 오갔어요`, text: '관계 탭에서 언제든 「연인 확정」', tab: 'rel' }); // 알림함에도 남김
     bondAsking = true;
     try {
@@ -122,6 +124,7 @@ const CHANGELOG = [
         ['🌐 영어로 저장 · 화면만 번역', '상태창 생성 언어의 새 선택지. 상태창은 영어로 저장되어 AI에게도 영어로 가고, 화면에서만 번역돼 보여요.'],
         ['🆓 실리 기본 번역', '번역 담당을 「실리 기본 번역」(Chat Translation의 Google·DeepL 등)으로 바꾸면 토큰 없이 번역해요.'],
         ['📝 번역 지침', '「Rob Lucci = 로브 루치」처럼 적으면 이름·용어가 늘 그렇게 번역돼요. 번역 모델(LLM)에는 문장 지침도 그대로 전달돼요.'],
+        ['🔧 화면만 번역 보완', '본편 AI가 쓰는 값도 영어로(출력 규칙) · 날짜·계절·UI 기록도 영어로 · 새로 생긴 영어 글은 화면에서 자동 번역 · 한국어로 저장된 칸이 있으면 채팅을 열 때 알려 주고 누르면 바로 바꿔요.'],
         ['🔁 옛 채팅도 영어 저장으로', '「한국어로 저장된 칸을 영어 저장으로 바꾸기」 버튼 — 지금 보이는 한국어는 화면 번역으로 그대로 남아요.'],
         ['🐱 미트볼 도우미', '상태창 머리의 ❓ 버튼이나 /ss-help 로 모르는 기능을 물어보세요. 답할 모델을 따로 고를 수 있어요.'],
         ['🌱 인물의 욕구 · 먼저 움직이기', '관계 탭 「욕구 AI로 채우기」, 가끔 인물이 스스로 일을 벌이는 「먼저 움직이기」(로맨스 보정 ⑧).'],
@@ -191,6 +194,7 @@ function refreshNow() {
             app.current = compute();
             try { setInjection(getMeta()?.paused ? null : buildInjection(app.current)); } catch (e) { console.error(LOG, 'inject', e); }
             try { decorateAll(); } catch (e) { console.error(LOG, 'decorate', e); }
+            try { scheduleFill(); checkKorean(); } catch (e) { console.warn(LOG, 'viewtr', e); }
         }
     } catch (e) { console.error(LOG, e); }
     // 계산이 어디서 실패해도 상태창 화면은 그린다 (안 그리면 '창이 안 떠요'가 됨)
@@ -245,7 +249,8 @@ function renderSettings() {
                 <small>실리 기본 번역은 확장 메뉴 › <b>Chat Translation</b>에서 고른 번역기를 써요.</small></label>
             <label>실리 기본 번역 언어 코드<input class="text_pole" data-s="trCode" value="${esc(s.trCode)}" placeholder="ko"></label>
             <label>번역 지침<textarea class="text_pole" rows="4" data-s="trRules" placeholder="Rob Lucci = 로브 루치&#10;Kaku = 카쿠&#10;편지는 반말로 옮길 것">${esc(s.trRules ?? '')}</textarea>
-                <small><b>번역 모델</b>: 적은 글이 그대로 지침으로 가요. <b>실리 기본 번역</b>: 지침을 읽지 못해서 <code>원문 = 번역</code> 모양의 줄만 써요 (이름·용어 고정). 다른 줄은 무시돼요.</small></label>
+                <label class="checkbox_label"><input type="checkbox" data-s="trAuto" ${s.trAuto !== false ? 'checked' : ''}> 화면만 번역: 본편 AI가 새로 쓴 영어 글도 자동 번역 <small>(모르는 글만 모아서 · 실리 기본 번역이면 무료 · 번역 모델이면 새 글이 생길 때 가끔 1회)</small></label>
+            <small><b>번역 모델</b>: 적은 글이 그대로 지침으로 가요. <b>실리 기본 번역</b>: 지침을 읽지 못해서 <code>원문 = 번역</code> 모양의 줄만 써요 (이름·용어 고정). 다른 줄은 무시돼요.</small></label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="trsheet"><i class="fa-solid fa-language"></i> 상태창 전체 번역</button><button class="menu_button" data-s-act="toenglish" title="예전에 한국어로 저장된 칸을 영어 저장으로 바꿔요. 지금 보이는 한국어는 화면 번역으로 남아요."><i class="fa-solid fa-right-left"></i> 한국어로 저장된 칸을 영어 저장으로 바꾸기</button></div>
             <small>「화면만 번역」으로 바꿔도 <b>이미 한국어로 저장된 칸</b>은 그대로 한국어로 AI에게 가요. 위 오른쪽 버튼을 한 번 누르면 이 채팅의 칸들이 영어 저장으로 바뀌고, 지금 보이는 한국어는 화면 번역으로 그대로 남아요. (채팅마다 한 번)</small>
             <b class="ss-set-h">일시정지 · OOC</b>

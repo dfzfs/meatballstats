@@ -1,7 +1,7 @@
 // 상태 엔진: <meatball> 변화량 → 상태 재계산 · 직접 편집 기록 · 프롬프트 주입
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
-    signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, viewTr,
+    signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, trBack, viewTr, weekday,
     PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser,
 } from './core.js';
 import { P } from './prompts.js';
@@ -447,11 +447,11 @@ function updateStage(s, r, info, silent = false) {
 function anniversary(s, r, k, st) {
     const cal = s.data.calendar; if (!cal || info0(s)) return;
     const add = (e) => { if (!cal.events.some(x => norm(x.title) === norm(e.title))) cal.events.push(e); };
-    if (k >= 2 && r.met) { const dt = parseDate(cal, r.met); if (dt) add({ y: null, m: dt.m, d: dt.d, title: `${r.name}와 처음 만난 날`, desc: '자동 기념일', repeat: 'yearly' }); }
+    if (k >= 2 && r.met) { const dt = parseDate(cal, r.met); if (dt) add({ y: null, m: dt.m, d: dt.d, title: viewTr() ? `The day {{user}} first met ${r.name}` : `${r.name}와 처음 만난 날`, desc: viewTr() ? 'automatic anniversary' : '자동 기념일', repeat: 'yearly' }); }
     if (k === st.length - 1) {
-        add({ y: null, m: cal.m, d: cal.d, title: `${r.name}와 ${st[k].name}이 된 날`, desc: '자동 기념일', repeat: 'yearly' });
+        add({ y: null, m: cal.m, d: cal.d, title: viewTr() ? `The day {{user}} and ${r.name} became ${st[k].name}` : `${r.name}와 ${st[k].name}이 된 날`, desc: viewTr() ? 'automatic anniversary' : '자동 기념일', repeat: 'yearly' });
         const t = { ...cal }; addDays(t, 99);
-        add({ y: t.y, m: t.m, d: t.d, title: `${r.name}와 100일`, desc: '자동 기념일', repeat: 'once' });
+        add({ y: t.y, m: t.m, d: t.d, title: viewTr() ? `100 days with ${r.name}` : `${r.name}와 100일`, desc: viewTr() ? 'automatic anniversary' : '자동 기념일', repeat: 'once' });
     }
 }
 const info0 = (s) => s.data.calendar?.noAuto === true;
@@ -591,6 +591,7 @@ export function applyOp(s, rawKey, rawVal, info) {
             const rl = ensure(s, 'rel');
             const r = findBy(rl.user, val); if (!r) return;
             r.bond = key === '_bond'; r.bondAsk = false;
+            (s.bonds ??= {})[norm(r.name)] = r.bond; // 연인 확정은 따로 기억 → 나중에 관계 칸을 통째로 저장해도 안 풀림
             if (r.bond) updateStage(s, r, info);
             else { r.stage = -1; updateStage(s, r, info, true); }
             return;
@@ -1062,8 +1063,11 @@ function birthdays(s) {
     for (const p of pf.list) {
         const f = p.fields.find(x => /생일|탄생일|birthday/i.test(x.k)); if (!f) continue;
         const dt = parseDate(cal, f.v); if (!dt) continue;
-        const title = `🎂 ${p.name} 생일`;
-        if (!cal.events.some(e => norm(e.title) === norm(title))) cal.events.push({ y: null, m: clamp(dt.m, 1, cal.months.length), d: dt.d, title, desc: '프로필에서 자동', repeat: 'yearly', auto: 'bday' });
+        const title = viewTr() ? `🎂 ${p.name}'s birthday` : `🎂 ${p.name} 생일`;
+        const m = clamp(dt.m, 1, cal.months.length);
+        // 같은 날 같은 사람 생일이 이미 있으면 (번역된 제목이라도) 또 넣지 않는다
+        if (!cal.events.some(e => norm(e.title) === norm(title) || (e.m === m && e.d === dt.d && /🎂/.test(e.title) && norm(e.title).includes(norm(p.name)))))
+            cal.events.push({ y: null, m, d: dt.d, title, desc: viewTr() ? 'from profile' : '프로필에서 자동', repeat: 'yearly', auto: 'bday' });
     }
 }
 function resolveStart(meta, chat) {
@@ -1107,7 +1111,7 @@ export function compute(limit, opts = {}) {
             if (a.set.mod === 'core') s.core = clone(a.set.data);
             else if (MOD_IDS.includes(a.set.mod)) {
                 s.data[a.set.mod] = clone(a.set.data);
-                if (a.set.mod === 'rel') for (const r of s.data.rel.user) updateStage(s, r, info, true);
+                if (a.set.mod === 'rel') for (const r of s.data.rel.user) { if (s.bonds && Object.hasOwn(s.bonds, norm(r.name))) r.bond = s.bonds[norm(r.name)]; updateStage(s, r, info, true); }
                 if (a.set.mod === 'calendar' && s.day0 === null) s.day0 = dayIndex(s.data.calendar);
             }
         }
@@ -1376,6 +1380,40 @@ function fateText(s, ultra) {
 }
 
 // 초압축 모드: 기호·키워드만, 범례 1줄, 출력 규칙은 맨 끝 한 줄
+// ───── 화면만 번역 (enview): 프롬프트에 들어가는 고정 낱말도 영어로 ─────
+const SEASON_EN = { spring: 'spring', summer: 'summer', autumn: 'autumn', winter: 'winter' };
+function dateI(c) {
+    if (!viewTr()) return dateStr(c);
+    const mn = c.months[c.m - 1]?.name ?? '';
+    const named = mn && !/^\d+\s*월$/.test(mn) && !/[가-힣]/.test(mn);
+    return `${c.era ? `${c.era}, ` : ''}year ${c.y}, ${named ? `${mn} (month ${c.m})` : `month ${c.m}`}, day ${c.d}${weekday(c, c.y, c.m, c.d) ? ` (${weekday(c, c.y, c.m, c.d)})` : ''}`;
+}
+const seasonI = (c) => (viewTr() ? SEASON_EN : SEASON_NAME)[seasonOf(c)];
+// 상태창에서 한 일 기록: 같은 줄 연속은 하나로, 화면만 번역이면 자주 나오는 것은 영어로
+const MOD_EN = { profile: 'profile', stats: 'stats', dice: 'dice', wallet: 'wallet', shop: 'shop', home: 'home', rel: 'relationships', map: 'map', calendar: 'calendar', contact: 'contacts', quest: 'quests', news: 'news', gossip: 'gossip', board: 'board', ach: 'achievements', memo: 'notes', fate: 'fate', sns: 'SNS', music: 'music', custom: 'custom tab', core: 'world' };
+function recentLabelEn(l) {
+    let m = l.match(/^✏️\s*(.+?)\s*직접 편집$/);
+    if (m) { const id = Object.keys(MOD_EN).find(k => MOD[k]?.name === m[1]); return `✏️ edited the ${id ? MOD_EN[id] : m[1]} panel by hand`; }
+    m = l.match(/^💍\s*(.+?)와\(과\) 고백이 오가 연인이 되었다/);
+    if (m) return `💍 {{user}} and ${trBackName(m[1])} confessed and became lovers (confirmed by the user)`;
+    m = l.match(/^💔\s*(.+?)와\(과\)는 연인이 아니다/);
+    if (m) return `💔 {{user}} and ${trBackName(m[1])} are NOT lovers (the user cancelled it)`;
+    return l;
+}
+const trBackName = (n) => trBack(n) ?? n; // 기록 당시 한국어 이름이었어도, 지금 영어로 저장된 이름으로
+function recentI(s, n) {
+    const out = [];
+    for (const l of s.recent.slice(-n * 3)) { const x = viewTr() ? recentLabelEn(l) : l; if (out[out.length - 1] !== x) out.push(x); }
+    return out.slice(-n).join(' / ');
+}
+// 출력 규칙: 화면만 번역이면 「값은 영어로」 (예전 문구 「Values in Korean」을 바꾸거나 덧붙임)
+function outRule(text) {
+    if (!viewTr()) return text;
+    return /Values in Korean/i.test(text) ? text.replace(/Values in Korean/i, 'Values in English') : `${text} Values in English.`;
+}
+// 키 설명의 한국어 자리표시를 영어로 (화면만 번역일 때만 · 키 이름과 문법은 그대로)
+const KEY_WORDS = [['진행 내용', 'progress'], ['게이지이름', 'gauge'], ['관계 이름', 'relation name'], ['새 공간', 'new space'], ['이어진곳', 'linked places'], ['업적 이름', 'achievement'], ['판정 이름', 'check'], ['풀리는 조건', 'cure'], ['요즘 신경 쓰는 것', 'current concern'], ['끌리는 것', 'likes'], ['싫어하는 것', 'dislikes'], ['화면 밖에서 한 일', 'what they did off-screen'], ['사진 묘사', 'photo description'], ['곡 제목', 'song title'], ['한 줄 소개', 'one-line intro'], ['새/수락/완료/실패', 'new/active/done/failed'], ['관련 인물', 'people involved'], ['헤드라인', 'headline'], ['#태그', '#tags'], ['3월 14일', '3/14'], ['관계', 'relation'], ['효과1', 'effect1'], ['효과2', 'effect2'], ['체력', 'HP'], ['능력치', 'attribute'], ['이름', 'name'], ['효과', 'effect'], ['설명', 'description'], ['상점', 'shop'], ['상품', 'goods'], ['가격', 'price'], ['가구', 'furniture'], ['방', 'room'], ['장소', 'place'], ['날짜', 'date'], ['제목', 'title'], ['내용', 'text'], ['난이도', 'DC'], ['일수', 'days'], ['작성자', 'author'], ['가수', 'artist'], ['분위기', 'mood'], ['탭', 'tab'], ['항목', 'field'], ['글', 'text'], ['없음', 'none']];
+const keysI = (list) => (viewTr() ? list.map(k => KEY_WORDS.reduce((x, [ko, en]) => x.split(ko).join(en), k)) : list);
 function buildUltra(r, opt = {}) {
     const s = r.state, d = s.data, meta = getMeta(), set = settings();
     const due = dueTester(set, s);
@@ -1392,7 +1430,7 @@ function buildUltra(r, opt = {}) {
         const ev = eventsOn(c, c.y, c.m, c.d).map(e => e.title);
         const soon = []; const tmp = { ...c };
         for (let k = 1; k <= 7; k++) { addDays(tmp, 1); for (const e of eventsOn(c, tmp.y, tmp.m, tmp.d)) soon.push(`${e.title}D-${k}`); }
-        L.push(`📅${dateStr(c)} ${c.time}${c.weather ? ` ${c.weather}` : ''}${ev.length ? `|오늘:${ev.join(',')}` : ''}${soon.length ? `|${soon.slice(0, 3).join(',')}` : ''}`);
+        L.push(`📅${dateI(c)} ${c.time}${c.weather ? ` ${c.weather}` : ''}${ev.length ? `|${viewTr() ? 'today' : '오늘'}:${ev.join(',')}` : ''}${soon.length ? `|${soon.slice(0, 3).join(',')}` : ''}`);
     }
     if (on('map') && d.map.here) {
         const p = findBy(d.map.places, d.map.here);
@@ -1445,10 +1483,10 @@ function buildUltra(r, opt = {}) {
     if (on('sns') && d.sns.posts.length && due('sns')) L.push(`#${d.sns.posts.slice(-2).map(p => `${p.author}:${short(p.text || p.pic, 30)}`).join(' / ')}`);
     if (on('rel') && s.newDay && set.offscreen && lastDayChanged(r)) L.push('🌙날이 지남: 장면 밖 1~2명의 근황을 life 키로 (선택)');
     if (on('dice')) L.push('🎲[판정·…]=시스템 결과 그대로 서술 · 위험한 행동은 roll 키로 판정 요청');
-    if (s.recent.length) L.push(`UI행동:${s.recent.slice(-5).join(' / ')}`);
+    if (s.recent.length) L.push(`${viewTr() ? 'UI:' : 'UI행동:'}${recentI(s, 5)}`);
     if (!opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus')) {
         const keys = tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ');
-        L.push(P('inj.ultra.output', { keys }));
+        L.push(outRule(P('inj.ultra.output', { keys })));
     }
     return { main: L.filter(Boolean).join('\n'), people: '' };
 }
@@ -1464,17 +1502,17 @@ function buildDelta(r, plan, opt = {}) {
     const on = (id) => modOn(id, meta) && d[id];
     const inScene = sceneTester(set, s);
     const L = [P('inj.delta', { left: plan.left })];
-    if (on('calendar')) { const c = d.calendar; L.push(`📅${dateStr(c)} ${c.time}${c.weather ? ` ${c.weather}` : ''}`); }
+    if (on('calendar')) { const c = d.calendar; L.push(`📅${dateI(c)} ${c.time}${c.weather ? ` ${c.weather}` : ''}`); }
     if (on('map') && d.map.here) L.push(`@${d.map.here}`);
     if (on('stats') && d.stats.bars.length) L.push(d.stats.bars.map(b => `${b.name}${fmtNum(b.cur)}/${fmtNum(b.max)}`).join(' ') + (d.stats.conds.length ? ` ⚠${d.stats.conds.map(c => c.name).join(',')}` : ''));
     if (on('wallet')) L.push(`$${fmtNum(d.wallet.cash)}${d.wallet.currency}`);
     if (on('rel')) { const here = d.rel.user.filter(x => inScene(x.name)); if (here.length) L.push(`♥${here.slice(0, 8).map(x => `${x.name}${x.aff}/${x.trust}<${stageOf(d.rel, x).name}>${x.jealous >= 30 ? `💢${x.jealous}` : ''}`).join(' ')}`); }
     if (on('fate')) L.push(...fateText(s, true));
-    if (plan.changes.length) L.push(`변화:${plan.changes.slice(-14).join(' / ')}`);
-    if (s.recent.length) L.push(`UI행동:${s.recent.slice(-5).join(' / ')}`);
+    if (plan.changes.length) L.push(`${viewTr() ? 'changes:' : '변화:'}${plan.changes.slice(-14).join(' / ')}`);
+    if (s.recent.length) L.push(`${viewTr() ? 'UI:' : 'UI행동:'}${recentI(s, 5)}`);
     if (!opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus')) {
         const keys = tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ');
-        L.push(P('inj.ultra.output', { keys }));
+        L.push(outRule(P('inj.ultra.output', { keys })));
     }
     return { main: L.filter(Boolean).join('\n'), people: '' };
 }
@@ -1495,7 +1533,7 @@ function romanceBlock(r) {
         for (const x of rl.user.filter(y => inScene(y.name)).slice(0, 8)) {
             const k = clamp(x.stage ?? 0, 0, top), g = st[k], nx = st[k + 1];
             if (set.romFacts) {
-                const allowed = st.slice(0, k + 1).map(y => y.unlock).filter(Boolean).join('; ');
+                const allowed = g.unlock || ''; // 지금 단계의 모습만 (세계관마다 단계 설명이 「그 단계 전체 모습」이라, 앞 단계의 「차갑고 적대적」이 섞이면 안 됨)
                 L.push(P('inj.rom.facts', {
                     who: x.name, stage: g.name,
                     reached: k === top ? `They have reached the highest stage 「${g.name}」.` : `They have NOT reached 「${st[top].name}」${set.romBond ? ' — no confession has been made and accepted' : ''}.`,
@@ -1559,7 +1597,7 @@ function buildInjection0(r, opt = {}) {
         const soon = [];
         const tmp = { ...c };
         for (let k = 1; k <= 7; k++) { addDays(tmp, 1); for (const e of eventsOn(c, tmp.y, tmp.m, tmp.d)) soon.push(viewTr() ? `${e.title} (in ${k}d)` : `${e.title}(${k}일 후)`); }
-        L.push(`Date: ${dateStr(c)} · ${c.time}${c.weather ? ` · weather: ${c.weather} (${SEASON_NAME[seasonOf(c)]})` : ''}${ev.length ? ` · TODAY: ${ev.map(e => e.title + (e.desc ? ` — ${e.desc}` : '')).join('; ')}` : ''}${soon.length ? ` · coming: ${soon.slice(0, 4).join(', ')}` : ''}`);
+        L.push(`Date: ${dateI(c)} · ${c.time}${c.weather ? ` · weather: ${c.weather} (${seasonI(c)})` : ''}${ev.length ? ` · TODAY: ${ev.map(e => e.title + (e.desc ? ` — ${e.desc}` : '')).join('; ')}` : ''}${soon.length ? ` · coming: ${soon.slice(0, 4).join(', ')}` : ''}`);
     }
     if (on('map')) {
         const m = d.map, p = findBy(m.places, m.here);
@@ -1609,7 +1647,7 @@ function buildInjection0(r, opt = {}) {
         if (s.newDay && set.offscreen && lastDayChanged(r)) L.push(P('inj.life'));
     }
     if (on('custom')) L.push(...customLines(s, false));
-    if (on('sns') && d.sns.posts.length && !lite) L.push(`Recent posts on ${d.sns.name || 'SNS'}: ${d.sns.posts.slice(-3).map(p => `${p.author}: ${short(p.text || `[사진] ${p.pic}`, 50)}`).join(' / ')}`);
+    if (on('sns') && d.sns.posts.length && !lite) L.push(`Recent posts on ${d.sns.name || 'SNS'}: ${d.sns.posts.slice(-3).map(p => `${p.author}: ${short(p.text || `${viewTr() ? '[photo]' : '[사진]'} ${p.pic}`, 50)}`).join(' / ')}`);
     if (on('music') && d.music.now && !lite) L.push(`Current BGM: ${d.music.now.title}${d.music.now.artist ? ` - ${d.music.now.artist}` : ''} (change it with bgm only when the mood shifts)`);
     if (on('profile')) {
         const pf = d.profile;
@@ -1642,11 +1680,11 @@ function buildInjection0(r, opt = {}) {
         if (dc.rules && !lite) L.push(`Dice rules: ${short(dc.rules, 300)}`);
         L.push(P('inj.dice'));
     }
-    if (s.recent.length) L.push(`Since the last reply {{user}} did (via the status UI): ${s.recent.slice(-8).join(' / ')}`);
+    if (s.recent.length) L.push(`Since the last reply {{user}} did (via the status UI): ${recentI(s, 8)}`);
     if (!opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus')) {
-        L.push(P('inj.output'));
-        L.push(lite ? `Keys (key: value, ±N for numbers, +/-name for lists, name | detail): ${tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ')}` : `Keys: ${tagKeysFor(meta).join(' · ')}`);
-        if (!lite) L.push(P('inj.example'));
+        L.push(outRule(P('inj.output')));
+        L.push(lite ? `Keys (key: value, ±N for numbers, +/-name for lists, name | detail): ${keysI(tagKeysFor(meta)).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ')}` : `Keys: ${keysI(tagKeysFor(meta)).join(' · ')}`);
+        if (!lite) L.push(viewTr() ? P('inj.example.en') : P('inj.example'));
     }
     return { main: L.filter(Boolean).join('\n'), people: PP.length ? `[STATUS SIM — PEOPLE (part of the state above)]\n${PP.join('\n')}` : '' };
 }
