@@ -1010,7 +1010,7 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
     dialog.ss-dlg .ss-root.navbottom .ss-groups { position: sticky; bottom: 0; left: auto; right: auto; order: 99; margin-top: 10px; }
 }
 
-/* ───────── 마스코트 고양이 ───────── */
+/* ───────── 마스코트 미트볼 ───────── */
 .ss-scope .ss-mascot { display: block; object-fit: contain; pointer-events: none; user-select: none; -webkit-user-drag: none; flex: none; }
 .ss-scope .ss-mascot.xs { width: 26px; height: 26px; display: inline-block; vertical-align: -7px; }
 .ss-scope .ss-mascot.sm { width: 44px; height: 44px; }
@@ -1030,3 +1030,11 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-toast.k-day .ss-t-ico.cat img, .ss-toast.k-ending .ss-t-ico.cat img, .ss-toast.k-stage .ss-t-ico.cat img { width: 44px; height: 44px; }
 .ss-scope .ss-mempty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; }
 .ss-scope .ss-pausebar .ss-mascot.xs { margin-right: 2px; }
+
+/* 미트볼 누르기 · 버튼 눌림 효과 */
+.ss-scope .ss-mascot.pet { pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ss-scope .ss-mascot.ss-hop { animation: ss-hop .55s cubic-bezier(.3, 1.6, .5, 1) !important; }
+@keyframes ss-hop { 0% { transform: translateY(0) scale(1, 1); } 20% { transform: translateY(2px) scale(1.08, .9); } 50% { transform: translateY(-16px) scale(.96, 1.06); } 80% { transform: translateY(0) scale(1.04, .96); } 100% { transform: translateY(0) scale(1, 1); } }
+.ss-scope .ss-tap, .ss-tap.ss-scope { animation: ss-tap .3s ease-out; }
+@keyframes ss-tap { 0% { transform: scale(1); } 35% { transform: scale(.92); } 70% { transform: scale(1.04); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .ss-scope .ss-tap, .ss-scope .ss-mascot.ss-hop { animation: none !important; } }

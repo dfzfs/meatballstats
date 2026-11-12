@@ -13,6 +13,7 @@ import { offerCard, followBranch, saveSlot, fullBackup, diagnose } from './src/s
 import { starred, toggleStar, PRESETS, applyPreset } from './src/extra.js';
 import { FREQ_MODS } from './src/engine.js';
 import { setBase } from './src/shell.js';
+import { initFx, play } from './src/fx.js';
 
 const REGEX_IDS = { show: 'b7c1a0e2-5a1d-4f0e-9a51-55a1a0c05501', strip: 'b7c1a0e2-5a1d-4f0e-9a51-55a1a0c05502' };
 
@@ -153,7 +154,7 @@ function renderSettings() {
     el.id = 'ss-settings';
     el.className = 'ss-settings';
     el.innerHTML = `<div class="inline-drawer">
-        <div class="inline-drawer-toggle inline-drawer-header"><b>🍝 미트볼 상태창 <small>v${VERSION}</small></b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>
+        <div class="inline-drawer-toggle inline-drawer-header"><b>😼 미트볼 상태창 <small>v${VERSION}</small></b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>
         <div class="inline-drawer-content">
             <label class="checkbox_label"><input type="checkbox" data-s="enabled" ${s.enabled ? 'checked' : ''}> 사용</label>
             <div class="ss-set-btns">
@@ -237,7 +238,10 @@ function renderSettings() {
             <label class="checkbox_label"><input type="checkbox" data-s="cardOffer" ${s.cardOffer ? 'checked' : ''}> 카드에 상태창이 들어 있으면 새 채팅에서 불러올지 물어보기</label>
             <label class="checkbox_label"><input type="checkbox" data-s="autoSave" ${s.autoSave ? 'checked' : ''}> 자동 세이브 (오래된 기록을 정리하기 전에 · 분기 대비)</label>
             <label class="checkbox_label"><input type="checkbox" data-s="bottomNav" ${s.bottomNav ? 'checked' : ''}> 폰 한 손 모드 — 탭 바를 아래로</label>
-            <label class="checkbox_label"><input type="checkbox" data-s="showMascot" ${s.showMascot !== false ? 'checked' : ''}> 🐱 마스코트 고양이 보이기 (빈 화면 · 만들기 · 알림 · 일시정지)</label>
+            <label class="checkbox_label"><input type="checkbox" data-s="showMascot" ${s.showMascot !== false ? 'checked' : ''}> 😼 마스코트 미트볼 보이기 (빈 화면 · 만들기 · 알림 · 일시정지 · 누르면 폴짝)</label>
+            <label class="checkbox_label"><input type="checkbox" data-s="clickAnim" ${s.clickAnim !== false ? 'checked' : ''}> 버튼을 누를 때 살짝 눌리는 효과</label>
+            <label class="checkbox_label"><input type="checkbox" data-s="clickSound" ${s.clickSound ? 'checked' : ''}> 누를 때 소리 (뿅 · 톡 · 미트볼은 냥)</label>
+            <label>소리 크기 <input type="range" min="5" max="100" step="5" data-s="clickVol" value="${s.clickVol ?? 40}"></label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="diag"><i class="fa-solid fa-stethoscope"></i> 자가 진단 · 고치기</button><button class="menu_button" data-s-act="backup"><i class="fa-solid fa-box-archive"></i> 이 채팅 전체 백업</button></div>
             <b class="ss-set-h">다른 확장과 같이 쓰기</b>
             <label class="checkbox_label"><input type="checkbox" data-s="stashTags" ${s.stashTags ? 'checked' : ''}> &lt;status&gt;를 읽은 뒤 본문에서 떼어 보관 <small>(추천 · 요약·번역·로그 복사 확장에 변화량 줄이 안 보여요. 고칠 땐 변동 칩의 ✏️)</small></label>
@@ -256,6 +260,7 @@ function renderSettings() {
         settings()[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.type === 'number' ? Number(e.target.value) : e.target.value;
         saveSettings();
         if (k === 'autoRegex' && e.target.checked) installRegex();
+        if (k === 'clickSound' || k === 'clickVol') play('tap');
         refreshNow();
     });
     el.addEventListener('click', async (e) => {
@@ -487,6 +492,7 @@ function init() {
     const { eventSource, event_types: E } = ctx();
     settings();
     applyTheme();
+    initFx();
     renderSettings();
     registerCommands();
     registerMacros();

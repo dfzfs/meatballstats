@@ -1,7 +1,7 @@
 // 화면 공통 도구: 팝업 · 편집기 · 비교 · 작은 부품 · 테마
 import { ctx, settings, esc, short, arr, sub, clamp, fmtNum, mascotUrl } from './core.js';
 // 마스코트 그림 한 장 (설정에서 끄면 빈칸) — size: xs · sm · md · lg
-export const mascot = (name, size = 'md', cls = '') => (settings().showMascot === false ? '' : `<img class="ss-mascot ${size} m-${name} ${cls}" src="${mascotUrl(name)}" alt="" draggable="false" loading="lazy">`);
+export const mascot = (name, size = 'md', cls = '') => (settings().showMascot === false ? '' : `<img class="ss-mascot ${size} m-${name} ${size === 'lg' || size === 'md' ? 'pet' : ''} ${cls}" src="${mascotUrl(name)}" alt="미트볼" title="미트볼" draggable="false" loading="lazy">`);
 
 // ───── 팝업 ─────
 export async function popup(el, opts = {}) {
