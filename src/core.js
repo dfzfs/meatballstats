@@ -54,6 +54,7 @@ export const DEFAULTS = Object.freeze({
     trEngine: 'llm',         // 번역 담당: llm = 번역 모델 (지침 이해) | st = 실리 기본 번역 (Chat Translation의 Google·DeepL 등 · 무료) (v2.6)
     trCode: 'ko',            // 실리 기본 번역에 넘길 언어 코드
     trRules: '',
+    legacyStatus: true,      // 옛 <status>도 미트볼 것으로 읽기 (v2.5 이전 채팅 호환 · 다른 프리셋이 <status>를 쓰면 끄기)
     trAuto: true,            // 화면만 번역: 본편 AI가 새로 쓴 영어 글도 자동으로 화면 번역 (모르는 글만 · LLM이면 가끔 1회)             // 번역 지침 — LLM: 그대로 전달 · 실리 기본 번역: 「원문 = 번역」 줄만 (이름 고정)
     prompts: {},             // 사용자 수정 프롬프트
     stashTags: true,         // <meatball>을 읽은 뒤 본문에서 떼어 메시지 숨은 칸에 보관 (다른 확장·요약에 안 보임)
@@ -162,6 +163,15 @@ export function loveIndex(st) {
     const k = st.findIndex(x => x?.love === true);
     if (k >= 0) return k;
     return st.findIndex(x => x?.love !== false && LOVE_RE.test(String(x?.name ?? '')));
+}
+// 연인 단계가 없으면 맨 위에 하나 붙인다 (세계관이 동료·사제 단계로만 만들어도 연애 루트는 늘 있게)
+export function ensureLove(rel) {
+    if (!rel || !Array.isArray(rel.stages) || !rel.stages.length || loveIndex(rel.stages) >= 0) return rel;
+    const top = rel.stages[rel.stages.length - 1];
+    const en = settings().ssGenLang === 'enview';
+    // 맨 위 단계보다 조금 높게 (같으면 그 단계를 건너뜀)
+    rel.stages.push({ name: en ? 'Lovers' : '연인', at: Math.min(100, Math.max(85, top.at + 5)), trust: Math.min(100, Math.max(55, top.trust + 5)), unlock: en ? 'after a confession · romantic affection and touch' : '고백 이후 · 연인다운 행동', love: true });
+    return rel;
 }
 export const MOD = Object.fromEntries(MODS.map(m => [m.id, m]));
 export const MOD_IDS = MODS.map(m => m.id);
@@ -586,7 +596,7 @@ export const SCHEMA = {
     wallet: `{"currency":"화폐 단위","cash":1000,"items":[{"name":"소지품","qty":1,"desc":"설명","effect":"(쓰면 바뀌는 것, 예: 체력 +20 / 없으면 빈칸)"}],"prices":[{"name":"흔한 물건·서비스 (빵 한 개, 한 끼 식사, 여관 1박, 말 한 필, 한 달 월세 등)","price":10}],"jobs":[{"name":"{{user}}가 할 수 있는 일거리","pay":50,"effect":"일하면 바뀌는 것 (예: 기력 -20)"}],"regular":[{"name":"정기 수입·지출 (월급, 월세 등)","amount":-300,"every":"day|week|month"}],"fx":{"unit":"현실 화폐 (예: 원)","rate":0}}  (fx.rate = 이 화폐 1의 현실 가치, 모르면 0)`,
     shop: `{"shops":[{"name":"상점 이름","desc":"설명","place":"있는 장소","items":[{"name":"상품","price":100,"desc":"설명","kind":"item|deco (deco = 본거지에 놓는 가구·장식)","stock":-1}]}]}`,
     home: `{"name":"본거지 이름","desc":"설명","rooms":[{"name":"방/구역","desc":"지금 모습","decor":["놓여 있는 가구·장식 이름"]}],"storage":["창고에 있는 미배치 가구"]}`,
-    rel: `{"user":[{"name":"캐릭터","label":"{{user}}와의 관계 이름","aff":0,"trust":0,"memo":"관계 메모","met":"처음 만난 날 (예: 3월 2일 · 모르면 빈칸)"}],"pairs":[{"a":"캐릭터A","b":"캐릭터B","label":"관계","memo":"메모"}],"stages":[{"name":"관계 단계 이름","at":0,"trust":-100,"unlock":"이 단계에서 새로 생기는 것 (호칭·말투·행동)"}]}  (aff 호감, trust 신뢰: -100~100 · stages: 낮은 단계부터 4~7개, at = 필요한 호감, trust = 필요한 신뢰)`,
+    rel: `{"user":[{"name":"캐릭터","label":"{{user}}와의 관계 이름","aff":0,"trust":0,"memo":"관계 메모","met":"처음 만난 날 (예: 3월 2일 · 모르면 빈칸)"}],"pairs":[{"a":"캐릭터A","b":"캐릭터B","label":"관계","memo":"메모"}],"stages":[{"name":"관계 단계 이름","at":0,"trust":-100,"unlock":"이 단계에서 새로 생기는 것 (호칭·말투·행동)","love":false}]}  (aff 호감, trust 신뢰: -100~100 · stages: 낮은 단계부터 4~7개, at = 필요한 호감, trust = 필요한 신뢰 · 연인(커플) 단계 하나는 꼭 넣고 "love": true)`,
     map: `{"name":"지도 이름","here":"현재 위치(장소 이름)","places":[{"name":"장소","desc":"설명","kind":"마을/건물/던전/자연 등","x":50,"y":50,"links":["이어진 장소 이름"],"known":true,"area":"속한 구역 (선택)","fare":0}]}  (x,y는 0~100 좌표, 겹치지 않게 퍼뜨림 · fare = 그곳까지 가는 요금, 보통 0)`,
     calendar: `{"era":"연호/기원(선택)","y":1,"m":1,"d":1,"time":"아침","months":[{"name":"1월","days":31}],"week":["월","화","수","목","금","토","일"],"times":["새벽","아침","낮","저녁","밤","심야"],"weather":"오늘 날씨 (맑음/비/눈 등)","events":[{"y":null,"m":3,"d":14,"title":"일정/기념일/축제","desc":"설명","repeat":"yearly|once"}]}`,
     contact: `{"mode":"phone|instant|letter","app":"연락 수단 이름(스마트폰 메신저 / 마법 통신구 / 편지 등)","contacts":[{"name":"연락 가능한 인물","handle":"아이디/주소(선택)","status":"상태 메시지 또는 사는 곳","courier":"(letter일 때) 이 인물이 주로 쓰는 배달 수단 이름"}],"couriers":[{"name":"배달 수단(배달부/갈매기/올빼미/강아지/전서구/마법 등 세계관에 맞게)","icon":"이모지 1개","min":1,"max":3,"fee":0,"note":"설명"}],"express":{"name":"급행 수단 이름(퀵·특급 파발 등)","fee":100}}  (min/max = 도착까지 걸리는 날 수, fee = 화폐 단위 요금)`,

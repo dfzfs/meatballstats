@@ -1,5 +1,5 @@
 // 확장 AI가 하는 일 (모두 토큰이 드는 호출)
-import { app, ctx, settings, getMeta, MOD, NORM, normalize, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay } from './core.js';
+import { app, ctx, settings, getMeta, MOD, NORM, normalize, ensureLove, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay } from './core.js';
 import { P, aiGenerate, parseJSON, aiJSON } from './prompts.js';
 import { SCHEMA } from './core.js';
 import { compute, buildInjection, tagKeysFor, extractOps, stripStatus, recentChat, chatCharacters } from './engine.js';
@@ -29,7 +29,8 @@ export async function genModule(mod, { sources, core, instruction, profileMode, 
     if (mod === 'core') { const c = NORM.core(obj); if (detectPlay && obj.play) Object.defineProperty(c, 'play', { value: normPlay(obj.play), enumerable: false }); return c; }
     if (mod === 'profile' && profileMode) obj.mode = profileMode;
     if (mod === 'contact' && contactMode && contactMode !== 'auto') obj.mode = contactMode;
-    return mod === 'core' ? NORM.core(obj) : normalize(mod, obj);
+    const out = mod === 'core' ? NORM.core(obj) : normalize(mod, obj);
+    return mod === 'rel' ? ensureLove(out) : out; // 연인 단계는 늘 있게
 }
 
 // 묶음 생성: 관련 칸 여러 개를 한 번에 (재료를 한 번만 보내서 입력 토큰↓, 칸끼리 일관성↑)
@@ -62,7 +63,7 @@ export async function genGroup(mods, { sources, core, instruction, profileMode, 
         if (!d || typeof d !== 'object' || Array.isArray(d)) continue;
         if (mod === 'profile' && profileMode) d.mode = profileMode;
         if (mod === 'contact' && contactMode && contactMode !== 'auto') d.mode = contactMode;
-        try { out[mod] = normalize(mod, d); } catch (e) { console.warn(LOG, 'group normalize', mod, e); }
+        try { out[mod] = normalize(mod, d); if (mod === 'rel') ensureLove(out[mod]); } catch (e) { console.warn(LOG, 'group normalize', mod, e); }
     }
     return out;
 }

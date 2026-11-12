@@ -206,8 +206,9 @@ export const finLines = async (lines) => {
 };
 
 // ───── 화면 번역기: 상태창 UI의 글자(텍스트 노드)만 바꾼다. 데이터·입력칸·속성(data-arg 등)·본편 메시지는 그대로 ─────
-const SCOPE = '.ss-scope, .ss-root, [class^="ss-"], [class*=" ss-"], [id^="ss-"]';
-const SKIP = 'input, textarea, select, option, script, style, code, pre, .ss-pw, .mes_text, [contenteditable="true"], .ss-notr';
+// 미트볼이 직접 그린 화면만 (body에도 ss-nohud 같은 이름이 붙으므로 「ss-로 시작하는 아무거나」는 안 됨 → 실리 화면 전체가 번역됐었음)
+const SCOPE = '.ss-scope, .ss-root, .ss-panel, .ss-msgcard, .ss-slot, #ss-hud, #ss-side, #ss-float, #ss-settings, #ss-toasts, .ss-toasts';
+const SKIP = 'input, textarea, select, option, script, style, code, pre, .ss-pw, [contenteditable="true"], .ss-notr';
 let sorted = { d: null, n: -1, ver: -1, list: [] };
 function entries(d) {
     const n = Object.keys(d).length;
@@ -224,9 +225,10 @@ export function trString(v, d = trDict()) {
 }
 // 본편 메시지 글(.mes_text)은 절대 안 건드리되, 그 안에 붙는 미트볼 변동 칩(.ss-slot)만은 번역한다
 function eligible(p) {
-    const sk = p.closest(SKIP);
-    if (sk) { if (!sk.matches('.mes_text')) return false; const slot = p.closest('.ss-slot, .ss-msgcard'); return !!slot && sk.contains(slot); }
-    return !!p.closest(SCOPE);
+    if (p.closest(SKIP)) return false;
+    if (p.closest('#chat, .mes')) return !!p.closest('.ss-slot, .ss-msgcard'); // 채팅 안: 이름표·본문은 절대 안 건드리고, 미트볼 변동 칩만
+    const sc = p.closest(SCOPE);
+    return !!sc && sc !== document.body && sc !== document.documentElement;
 }
 function trNode(node, d) {
     const p = node.parentElement;

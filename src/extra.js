@@ -1,6 +1,6 @@
 // v2.5 화면: SNS · 추천 음악 · 내 탭 · 추억 앨범 · 플레이 기록 · 검색 · 속마음 · 엔딩 · 모델 맞춤 설정
 import { app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, esc, short, clone, clamp, num, fmtNum, signed, uid, findBy, norm, stamp, userName, TITLE, LOG, MOD, dayIndex, msgText, DEFAULT_STAGES } from './core.js';
-import { loveIndex } from './core.js';
+import { loveIndex, ensureLove } from './core.js';
 import { addAdjust, commit, stageIndex, stripStatus } from './engine.js';
 import { newSns, snsReactions, musicPicks, peekMind, fillWants } from './ai.js';
 import { sec, emptyBox, chip, avatar, ai1, seg, gauge, meter, askInput, askConfirm, busyBtn, insertInput, closeIfPopup, mascot } from './kit.js';
@@ -145,7 +145,7 @@ export function relView(s, d, ui) {
     return `${romBar}<div class="ss-stack">${d.user.map(card).join('') || emptyBox('관계가 없어요', 'fa-people-arrows')}</div>
         ${life.length ? sec('🌙 화면 밖 소식', `<div class="ss-stack">${life.map(x => `<div class="ss-ev"><b>${esc(x.who)}</b><small>${esc(x.text)}${x.date ? ` · ${esc(x.date)}` : ''}</small></div>`).join('')}</div>`) : ''}
         ${d.pairs.length ? sec('인물끼리', `<div class="ss-pairs">${d.pairs.map(p => `<div><b>${esc(p.a)}</b><i class="fa-solid fa-arrows-left-right"></i><b>${esc(p.b)}</b>${chip(esc(p.label))}${p.memo ? `<small>${esc(p.memo)}</small>` : ''}</div>`).join('')}</div>`) : ''}
-        <details class="ss-more"><summary>관계 단계 ${st.length}개</summary><ol class="ss-stages">${st.map((x, i) => `<li><b>${i === L ? '💞 ' : ''}${esc(x.name)}</b> <small>호감 ${x.at}+${x.trust > -100 ? ` · 신뢰 ${x.trust}+` : ''}${x.unlock ? ` — ${esc(x.unlock)}` : ''}</small></li>`).join('')}</ol><p class="ss-hint">${L >= 0 ? `💞 표시가 <b>연인 단계</b>예요${set.romBond ? ' — 숫자만으론 안 올라가고, 고백 후 💍 확정해야 올라가요' : ''}.` : '이 세계관의 단계엔 <b>연인 단계가 없어요</b> (우정·신뢰 단계). 고백 후 💍 확정하면 단계와 따로 「💞 연인」으로 표시돼요.'} 연인 단계를 바꾸려면 ✏️ 편집 › 관계 단계에서 「💞 연인 단계」를 체크하세요.</p></details>`;
+        <details class="ss-more"><summary>관계 단계 ${st.length}개</summary><ol class="ss-stages">${st.map((x, i) => `<li><b>${i === L ? '💞 ' : ''}${esc(x.name)}</b> <small>호감 ${x.at}+${x.trust > -100 ? ` · 신뢰 ${x.trust}+` : ''}${x.unlock ? ` — ${esc(x.unlock)}` : ''}</small></li>`).join('')}</ol><p class="ss-hint">${L >= 0 ? `💞 표시가 <b>연인 단계</b>예요${set.romBond ? ' — 숫자만으론 안 올라가고, 고백 후 💍 확정해야 올라가요' : ''}.` : '이 세계관의 단계엔 <b>연인 단계가 없어요</b>. 아래 버튼으로 맨 위에 붙일 수 있어요.'} 다른 단계를 연인 단계로 쓰려면 ✏️ 편집 › 관계 단계에서 「💞 연인 단계」를 체크하세요.</p>${L < 0 ? '<div class="ss-row-btns"><button class="ss-btn sm pri" data-act="addlove"><i class="fa-solid fa-heart"></i> 💞 연인 단계 추가</button></div>' : ''}</details>`;
 }
 function peekLeft(s) {
     const per = Number(settings().peekPerDay) || 0;
@@ -154,6 +154,12 @@ function peekLeft(s) {
     return Math.max(0, per - (s.peek?.day === day ? s.peek.n : 0));
 }
 export const REL_ACTIONS = {
+    addlove: async (el, arg, btn, s) => {
+        const nd = ensureLove(clone(s.data.rel));
+        if (loveIndex(nd.stages) < 0) return;
+        await commit('rel', nd, '💞 관계 단계에 연인 단계 추가');
+        toastr.success(`맨 위에 「${esc(nd.stages.at(-1).name)}」 단계를 붙였어요. 이름·조건은 ✏️ 편집에서 바꿀 수 있어요.`, TITLE);
+    },
     bond: async (el, arg, btn, s) => { if (s?.data?.rel?.user?.find(x => x.name === arg)?.bond) return; await addAdjust({ ops: [['_bond', arg]], label: `💍 ${arg}와(과) 고백이 오가 연인이 되었다 (확정)` }); },
     fillwants: async (el, arg, btn, s) => {
         busyBtn(btn, true, '채우는 중…');

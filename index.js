@@ -126,6 +126,8 @@ const CHANGELOG = [
         ['💗 관계 사실: 앞 단계 행동이 섞이던 문제', '④가 이전 단계(예: 「차갑고 적대적」)의 행동까지 이어 붙여 보내던 것을 고쳤어요. 이제 지금 단계의 모습만 보내요.'],
         ['💍 연인 확정이 풀리던 문제', '편집 창을 확정 전에 열어 두고 저장하면 확정이 풀리던 것을 고쳤어요. 확정은 관계 탭 버튼으로만 해요. 풀린 채팅은 「💍 연인 확정」을 한 번 다시 눌러 주세요.'],
         ['💞 연인 표시가 분명해졌어요', '연인 단계는 💞로 표시돼요. 우정·신뢰 단계뿐인 세계관에선 고백 후 💍 확정하면 단계 옆에 「💞 연인」이 따로 붙고, AI에게도 연인이라고 알려 줘요. 편집 › 관계 단계에서 「💞 연인 단계」를 직접 고를 수도 있어요.'],
+        ['💞 연인 단계는 기본으로', '세계관에 맞게 단계를 지어도 연인 단계 하나는 꼭 넣어요. 이미 만든 채팅에 없으면 관계 탭 › 관계 단계 › 「💞 연인 단계 추가」 버튼 한 번이면 돼요.'],
+        ['🏷️ 태그 지우기를 더 안전하게', '<meatball>을 안 닫아도 이제 본문 끝까지 지우지 않아요 (빈 줄이나 다음 태그 전까지만). 옛 <status>를 미트볼 것으로 볼지 설정에서 고를 수 있어요.'],
         ['💍 연인 확정 버튼은 필요할 때만', '고백이 감지됐거나 연인 단계 조건을 채운 사람에게만 떠요.'],
         ['📣 업데이트 알림', '화면을 막는 창 대신 팝업 알림 한 장으로 떠요. 누르면 자세히 볼 수 있어요.'],
     ] },
@@ -179,9 +181,13 @@ app.decorate = decorateAll;
 
 // ───── 정규식 ─────
 function regexScripts() {
+    // 닫힌 <meatball> · 안 닫혔으면 빈 줄/태그 줄/다음 블록 전까지만 (본문을 끝까지 지우지 않게) · 옛 <status>는 설정이 켜져 있고 닫혀 있을 때만
+    const MB = '<meatball>(?:(?!<\\/?meatball>)[\\s\\S])*?<\\/meatball>|<meatball>(?:(?!<\\/?meatball>|<status>|\\n[ \\t]*\\n|\\n[ \\t]*<)[\\s\\S])*';
+    const ST = '<status>(?:(?!<\\/?status>|<summary|<details|\\|\\s*Physical\\s*:|Relationship \\(mutual)[\\s\\S])*?<\\/status>';
+    const any = settings().legacyStatus !== false ? `${MB}|${ST}` : MB;
     return [
-        { id: REGEX_IDS.show, scriptName: '미트볼 상태창 ① <meatball> 블록 → 변동 칩', findRegex: '/<meatball>[\\s\\S]*?(?:<\\/meatball>|$)|<status>(?:(?!<\\/status>|<summary|<details|\\|\\s*Physical\\s*:)[\\s\\S])*?(?:<\\/status>|$)/gi', replaceString: '<div class="ss-slot"></div>', trimStrings: [], placement: [2], disabled: false, markdownOnly: true, promptOnly: false, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null },
-        { id: REGEX_IDS.strip, scriptName: '미트볼 상태창 ② 오래된 <meatball> 프롬프트에서 제거', findRegex: '/\\s*(?:<meatball>[\\s\\S]*?(?:<\\/meatball>|$)|<status>(?:(?!<\\/status>|<summary|<details|\\|\\s*Physical\\s*:)[\\s\\S])*?(?:<\\/status>|$))/gi', replaceString: '', trimStrings: [], placement: [2], disabled: false, markdownOnly: false, promptOnly: true, runOnEdit: false, substituteRegex: 0, minDepth: 3, maxDepth: null },
+        { id: REGEX_IDS.show, scriptName: '미트볼 상태창 ① <meatball> 블록 → 변동 칩', findRegex: `/${any}/gi`, replaceString: '<div class="ss-slot"></div>', trimStrings: [], placement: [2], disabled: false, markdownOnly: true, promptOnly: false, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null },
+        { id: REGEX_IDS.strip, scriptName: '미트볼 상태창 ② 오래된 <meatball> 프롬프트에서 제거', findRegex: `/\\s*(?:${any})/gi`, replaceString: '', trimStrings: [], placement: [2], disabled: false, markdownOnly: false, promptOnly: true, runOnEdit: false, substituteRegex: 0, minDepth: 3, maxDepth: null },
     ];
 }
 app.installRegex = (reload) => installRegex(reload);
@@ -361,6 +367,7 @@ function renderSettings() {
             <div class="ss-set-btns"><button class="menu_button" data-s-act="diag"><i class="fa-solid fa-stethoscope"></i> 자가 진단 · 고치기</button><button class="menu_button" data-s-act="backup"><i class="fa-solid fa-box-archive"></i> 이 채팅 전체 백업</button></div>
             <b class="ss-set-h">다른 확장과 같이 쓰기</b>
             <label class="checkbox_label"><input type="checkbox" data-s="stashTags" ${s.stashTags ? 'checked' : ''}> &lt;meatball&gt;을 읽은 뒤 본문에서 떼어 보관 <small>(추천 · 요약·번역·로그 복사 확장에 변화량 줄이 안 보여요. 고칠 땐 변동 칩의 ✏️)</small></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="legacyStatus" ${s.legacyStatus !== false ? 'checked' : ''}> 옛 &lt;status&gt; 태그도 미트볼 것으로 읽고 숨기기 <small>(v2.5 이전 채팅용 · <b>다른 프리셋이 &lt;status&gt;를 쓰면 끄세요</b> — 끄면 &lt;meatball&gt;만 건드려요)</small></label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="stashall"><i class="fa-solid fa-box-archive"></i> 이 채팅의 옛 태그도 모두 보관</button></div>
             <div class="ss-set-btns">
                 <button class="menu_button" data-s-act="defmods">지금 기능 구성을 새 채팅 기본값으로</button>
@@ -391,6 +398,7 @@ function renderSettings() {
         settings()[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.type === 'number' || e.target.type === 'range' ? Number(e.target.value) : e.target.value;
         saveSettings();
         if (k === 'autoRegex' && e.target.checked) installRegex();
+        if (k === 'legacyStatus') installRegex(); // 정규식도 같이 바꾼다
         if (k === 'ssGenLang' && e.target.value === 'enview') toastr.info('이제부터 만드는 상태창은 영어로 저장되고 화면에만 번역돼요. 이미 한국어로 저장된 칸은 그대로예요.', TITLE);
         if (k === 'mascotSound' && e.target.value === 'custom' && !settings().mascotSoundFile) toastr.info('아래 「파일 고르기」로 소리 파일을 넣어 주세요. 넣기 전엔 냥냥으로 나요.', TITLE);
         if (k === 'mascotSound' || k === 'mascotVolume') playMascotSound(); // 고르면 바로 들려주기

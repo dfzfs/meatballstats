@@ -50,12 +50,40 @@ export const KEY_MOD = {
 
 // 미트볼 블록 = <meatball> (v2.5.1~) · 예전 <status>.
 // 다른 프리셋도 <status>를 쓸 수 있어서(<summary>/<details>, 「| Physical:」 표 모양) 그런 블록은 읽지도 지우지도 않는다.
-const ANY_BLOCK_RE = /\s*<(meatball|status)>([\s\S]*?)(?:<\/\1>|(?=\s*<(?:meatball|status)>)|$)/gi;
 const FOREIGN_RE = /<summary\b|<details\b|\|\s*Physical\s*:|Relationship \(mutual/i;
-const isOurs = (tag, body) => tag.toLowerCase() === 'meatball' || !FOREIGN_RE.test(body);
-export const ourBlocks = (text) => [...String(text ?? '').matchAll(ANY_BLOCK_RE)].filter(m => isOurs(m[1], m[2]));
+// 옛 <status>도 미트볼 것으로 읽을지 (v2.5 이전 채팅 호환 · 다른 프리셋이 <status>를 쓰면 끄기)
+const legacyOn = () => { try { return settings().legacyStatus !== false; } catch { return true; } };
+// 블록 찾기 — 닫는 태그가 있으면 거기까지.
+// <meatball>을 안 닫았으면: 빈 줄 · 태그로 시작하는 줄(</prose>, <tracker> 등) · 다음 블록 · 글 끝 중 먼저 오는 곳까지만 (예전엔 글 끝까지 다 지웠음)
+// <status>는 닫혀 있을 때만, 그리고 다른 프리셋 모양(<details>·표)이 아닐 때만 미트볼 것.
+function scanBlocks(text) {
+    const t = String(text ?? '');
+    const out = [];
+    const open = /<(meatball|status)>/gi;
+    let m;
+    while ((m = open.exec(t))) {
+        const tag = m[1].toLowerCase(), from = m.index + m[0].length;
+        const close = t.toLowerCase().indexOf(`</${tag}>`, from);
+        open.lastIndex = from;
+        const nx = (() => { const r = /<(?:meatball|status)>/gi; r.lastIndex = from; const k = r.exec(t); return k ? k.index : -1; })();
+        let end, body, closed = close >= 0 && (nx < 0 || close < nx);
+        if (closed) { body = t.slice(from, close); end = close + tag.length + 3; }
+        else if (tag === 'meatball') {
+            const rest = t.slice(from);
+            const stop = rest.search(/\n[ \t]*\n|\n[ \t]*<|<(?:meatball|status)>/i);
+            body = stop < 0 ? rest : rest.slice(0, stop); end = from + body.length;
+        } else continue; // 안 닫힌 <status>는 건드리지 않는다
+        let start = m.index; while (start > 0 && /\s/.test(t[start - 1])) start--;
+        const ours = tag === 'meatball' || (legacyOn() && !FOREIGN_RE.test(body));
+        out.push({ start, end, tag, body, ours, all: t.slice(start, end) });
+        open.lastIndex = end;
+    }
+    return out;
+}
+const cut = (text, spans) => { let t = String(text ?? ''); for (const b of [...spans].reverse()) t = t.slice(0, b.start) + t.slice(b.end); return t; };
+export const ourBlocks = (text) => scanBlocks(text).filter(b => b.ours).map(b => Object.assign([b.all, b.tag, b.body], { index: b.start }));
 export const hasStatus = (text) => ourBlocks(text).length > 0;
-export const removeStatus = (text) => String(text ?? '').replace(ANY_BLOCK_RE, (all, tag, body) => (isOurs(tag, body) ? '' : all));
+export const removeStatus = (text) => cut(text, scanBlocks(text).filter(b => b.ours));
 export function extractOps(text) {
     const ops = [];
     for (const m of ourBlocks(text)) {
@@ -69,7 +97,7 @@ export function extractOps(text) {
     return ops;
 }
 // 읽기용(요약·앨범·AI에게 보내는 최근 대화): 미트볼 블록과 다른 프리셋의 상태 블록을 모두 뺀 이야기 본문
-export const stripStatus = (t) => String(t ?? '').replace(ANY_BLOCK_RE, '').trim();
+export const stripStatus = (t) => cut(t, scanBlocks(t).filter(b => b.ours || (b.tag === 'status' && b.end > b.start))).trim();
 
 // ───── 서랍: <status>를 읽은 뒤 본문에서 떼어 메시지 숨은 칸(extra)에 보관 ─────
 // 본문엔 이야기만 남아서 다른 확장(요약·번역·로그 복사)이 변화량 줄을 보지 않는다.
