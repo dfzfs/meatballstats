@@ -13,7 +13,7 @@ import { offerCard, followBranch, saveSlot, fullBackup, diagnose } from './src/s
 import { starred, toggleStar, PRESETS, applyPreset } from './src/extra.js';
 import { FREQ_MODS } from './src/engine.js';
 import { setBase } from './src/shell.js';
-import { initMascot, MASCOT_SOUNDS, playMascotSound } from './src/mascot.js';
+import { initMascot, MASCOT_SOUNDS, playMascotSound, clearSoundCache } from './src/mascot.js';
 
 const REGEX_IDS = { show: 'b7c1a0e2-5a1d-4f0e-9a51-55a1a0c05501', strip: 'b7c1a0e2-5a1d-4f0e-9a51-55a1a0c05502' };
 
@@ -241,6 +241,8 @@ function renderSettings() {
             <label class="checkbox_label"><input type="checkbox" data-s="showMascot" ${s.showMascot !== false ? 'checked' : ''}> 🐱 마스코트 고양이 보이기 (빈 화면 · 만들기 · 알림 · 일시정지)</label>
             <label class="checkbox_label"><input type="checkbox" data-s="mascotBuddy" ${s.mascotBuddy !== false ? 'checked' : ''}> 상태창 제목 옆에 마스코트 항상 두기 <small>(누르면 뾱! · 여러 번 빠르게 누르면 신나요)</small></label>
             <label>마스코트 누르면 나는 소리<select class="text_pole" data-s="mascotSound">${MASCOT_SOUNDS.map(([v, t]) => o('mascotSound', v, t)).join('')}</select></label>
+            <div class="ss-set-file"><small>🐱 내 소리 파일: <b class="ss-mfile">${s.mascotSoundFile ? esc(s.mascotSoundName || '넣어 둔 파일') : '없음'}</b> — mp3 · ogg · wav, 500KB까지 (1초 안팎 짧은 소리 추천)</small>
+                <div class="ss-set-btns"><label class="menu_button"><i class="fa-solid fa-folder-open"></i> 파일 고르기<input type="file" accept="audio/*" data-s-file="1" hidden></label><button class="menu_button" data-s-act="mascotfileclear"><i class="fa-solid fa-trash-can"></i> 지우기</button></div></div>
             <label>효과음 크기 <small class="ss-mvol">${s.mascotVolume}</small><input type="range" min="0" max="100" step="5" data-s="mascotVolume" value="${s.mascotVolume}"></label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="mascotsound"><i class="fa-solid fa-volume-high"></i> 소리 미리 듣기</button></div>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="diag"><i class="fa-solid fa-stethoscope"></i> 자가 진단 · 고치기</button><button class="menu_button" data-s-act="backup"><i class="fa-solid fa-box-archive"></i> 이 채팅 전체 백업</button></div>
@@ -255,6 +257,20 @@ function renderSettings() {
         </div></div>`;
     el.addEventListener('input', (e) => { if (e.target.dataset.s === 'mascotVolume') { const lb = el.querySelector('.ss-mvol'); if (lb) lb.textContent = e.target.value; } });
     el.addEventListener('change', (e) => {
+        if (e.target.dataset.sFile) {
+            const f = e.target.files?.[0]; e.target.value = '';
+            if (!f) return;
+            if (f.size > 500 * 1024) { toastr.warning('500KB보다 작은 파일로 골라 주세요. (1초 안팎의 짧은 소리면 충분해요)', TITLE); return; }
+            const rd = new FileReader();
+            rd.onload = () => {
+                const set = settings(); set.mascotSoundFile = String(rd.result); set.mascotSoundName = f.name; set.mascotSound = 'custom';
+                saveSettings(); clearSoundCache();
+                el.querySelector('.ss-mfile').textContent = f.name; el.querySelector('[data-s="mascotSound"]').value = 'custom';
+                playMascotSound('custom'); toastr.success('미트볼 소리로 넣었어요.', TITLE);
+            };
+            rd.readAsDataURL(f);
+            return;
+        }
         const ev = e.target.dataset.sEvery;
         if (ev) { const set = settings(); set.injEvery = { ...(set.injEvery ?? {}), [ev]: e.target.value }; if (e.target.value === 'always') delete set.injEvery[ev]; saveSettings(); refreshNow(); return; }
         const k = e.target.dataset.s;
@@ -262,6 +278,7 @@ function renderSettings() {
         settings()[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.type === 'number' || e.target.type === 'range' ? Number(e.target.value) : e.target.value;
         saveSettings();
         if (k === 'autoRegex' && e.target.checked) installRegex();
+        if (k === 'mascotSound' && e.target.value === 'custom' && !settings().mascotSoundFile) toastr.info('아래 「파일 고르기」로 소리 파일을 넣어 주세요. 넣기 전엔 냥냥으로 나요.', TITLE);
         if (k === 'mascotSound' || k === 'mascotVolume') playMascotSound(); // 고르면 바로 들려주기
         refreshNow();
     });
@@ -278,6 +295,7 @@ function renderSettings() {
         if (!a) return;
         if (a === 'diag') return diagnose();
         if (a === 'mascotsound') { playMascotSound(); return; }
+        if (a === 'mascotfileclear') { const set = settings(); delete set.mascotSoundFile; delete set.mascotSoundName; if (set.mascotSound === 'custom') set.mascotSound = 'meow'; saveSettings(); clearSoundCache(); el.querySelector('.ss-mfile').textContent = '없음'; el.querySelector('[data-s="mascotSound"]').value = set.mascotSound; return; }
         if (a === 'backup') return fullBackup();
         if (a === 'open') openSheet();
         if (a === 'wizard') openWizard();

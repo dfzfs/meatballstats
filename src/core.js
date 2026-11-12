@@ -88,7 +88,9 @@ export const DEFAULTS = Object.freeze({
     carry: {},               // 2회차 이어받기 (캐릭터별)
     showMascot: true,        // 마스코트 고양이 보이기
     mascotBuddy: true,       // 상태창 머리에 마스코트 항상 (누르면 반응)
-    mascotSound: 'mix',      // 누르면 나는 소리: mix · squeak · meow · kitten · pop · purr · bell · off
+    mascotSound: 'mix',      // 누르면 나는 소리: mix · squeak · meow · kitten · custom · pop · purr · bell · off
+    mascotSoundFile: '',     // 내 소리 파일 (data URL)
+    mascotSoundName: '',
     mascotVolume: 60,        // 효과음 크기 0~100
 });
 

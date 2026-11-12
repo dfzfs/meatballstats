@@ -1051,3 +1051,4 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 @keyframes ss-sniff { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(2px) scale(1.03, .94); } }
 .ss-mbubble.long { border-color: #8fb3e6; background: #f2f7ff; color: #2b3a55; }
 @media (max-width: 480px) { .ss-scope .ss-mascot.head { width: 34px; height: 34px; } }
+#extensions_settings .ss-set-file small b { font-weight: 700; }

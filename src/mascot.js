@@ -7,6 +7,7 @@ export const MASCOT_SOUNDS = [
     ['squeak', '🧸 뾱뾱 (삑삑이 장난감)'],
     ['meow', '🐱 냥냥 (고양이)'],
     ['kitten', '🐾 냐앙~ (아기 고양이)'],
+    ['custom', '📂 내 소리 파일'],
     ['pop', '🫧 뽁 (방울 터지는 소리)'],
     ['purr', '💤 그르릉 (골골송)'],
     ['bell', '🔔 딸랑 (방울)'],
@@ -16,6 +17,7 @@ const LINES = {
     squeak: ['뾱!', '뾱뾱!', '뾰옥~'],
     meow: ['냥!', '냥냥!', '냐옹?'],
     kitten: ['냐앙~', '먀아…', '냥?'],
+    custom: ['냥!', '냥냥!', '냐옹?', '냐앙~'],
     pop: ['뽁!', '퐁!'],
     purr: ['그르릉…', '골골골…'],
     bell: ['딸랑~', '띠링!'],
@@ -40,6 +42,58 @@ function outBus(a, level) {
 }
 const jit = (x, r = 0.08) => x * (1 + (Math.random() * 2 - 1) * r);
 
+// ───── 진짜 고양이 녹음을 짧게 다듬은 소리 (snd/ 폴더) — level: 다른 효과음과 크기 맞춤 ─────
+const CLIPS = {
+    short: { file: 'nyang_short.mp3', level: 0.38 },
+    arc: { file: 'nyang_arc.mp3', level: 0.13 },
+    adult: { file: 'nyang_adult.mp3', level: 0.46 },
+    kitten: { file: 'nyaang_kitten.mp3', level: 0.41 },
+};
+const CLIP_SET = { meow: ['short', 'arc', 'adult'], kitten: ['kitten', 'kitten', 'arc'] };
+const clipRaw = {}, clipBuf = {};
+function fetchClips() { for (const [k, c] of Object.entries(CLIPS)) clipRaw[k] ??= fetch(new URL(`../snd/${c.file}`, import.meta.url)).then(r => r.arrayBuffer()).catch(() => null); }
+function decodeClip(a, k) {
+    if (clipBuf[k]) return Promise.resolve(clipBuf[k]);
+    fetchClips();
+    return clipBuf[`_${k}`] ??= clipRaw[k].then(ab => (ab ? a.decodeAudioData(ab.slice(0)) : null)).then(b => (clipBuf[k] = b)).catch(() => null);
+}
+function playClip(a, t0, k, rate = 1) {
+    const b = clipBuf[k]; if (!b) return 0;
+    const s = a.createBufferSource(); s.buffer = b; s.playbackRate.value = rate;
+    s.connect(outBus(a, CLIPS[k].level)); s.start(t0);
+    return b.duration / rate;
+}
+// 고른 소리(meow · kitten)에서 클립 하나 고르고, 아직 안 풀렸으면 풀고 나서 재생
+function withClip(a, kind, fn) {
+    const k = CLIP_SET[kind][Math.floor(Math.random() * CLIP_SET[kind].length)];
+    if (clipBuf[k]) fn(k); else decodeClip(a, k).then(b => b && fn(k));
+    for (const x of new Set(CLIP_SET[kind])) decodeClip(a, x); // 나머지도 미리
+}
+
+// ───── 내 소리 파일 (설정에 data URL로 저장 → 한 번 풀어서 재사용) ─────
+let fileBuf = null, fileKey = '', fileLoading = null;
+export const hasCustomSound = () => !!settings().mascotSoundFile;
+function loadFile(a) {
+    const src = settings().mascotSoundFile;
+    if (!src) { fileBuf = null; fileKey = ''; return Promise.resolve(null); }
+    const key = `${src.length}:${src.slice(-64)}`;
+    if (key === fileKey && (fileBuf || fileLoading)) return fileBuf ? Promise.resolve(fileBuf) : fileLoading;
+    fileKey = key; fileBuf = null;
+    const toBytes = () => { const bin = atob(src.slice(src.indexOf(',') + 1)), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }; // fetch(data:) 대신 직접 풀기 (보안 설정에 막히지 않게)
+    fileLoading = Promise.resolve().then(toBytes).then(ab => a.decodeAudioData(ab)).then(b => (fileBuf = b))
+        .catch(err => { console.warn('[미트볼 상태창] 소리 파일을 읽지 못했어요', err); fileKey = ''; return null; })
+        .finally(() => { fileLoading = null; });
+    return fileLoading;
+}
+// rate: 1 = 원래 높이, 낮을수록 낮고 느리게 (우는 소리)
+function playFile(a, t0, rate = 1, level = 1) {
+    if (!fileBuf) return 0;
+    const s = a.createBufferSource(); s.buffer = fileBuf; s.playbackRate.value = rate;
+    s.connect(outBus(a, level)); s.start(t0);
+    return fileBuf.duration / rate;
+}
+export const clearSoundCache = () => { fileBuf = null; fileKey = ''; };
+
 // 삑삑이 장난감: 빠르게 올라갔다 내려오는 높은 음 두 번
 function squeak(a, t0) {
     const bus = outBus(a, 0.22);
@@ -60,38 +114,6 @@ function squeak(a, t0) {
         o.start(t); lfo.start(t); o.stop(t + 0.14); lfo.stop(t + 0.14);
     }
     return 0.15 * n;
-}
-// 고양이 울음: 톱니파 + 포먼트 필터 두 개 (이 → 야 → 옹)
-function meow(a, t0, kitten = false, sad = false) {
-    const bus = outBus(a, kitten ? 0.35 : 0.42);
-    const dur = sad ? jit(0.85, 0.1) : kitten ? 0.6 : jit(0.42, 0.1), f0 = jit(sad ? 700 : kitten ? 780 : 520, 0.1);
-    const o = a.createOscillator(); o.type = 'sawtooth';
-    if (sad) { // 냐아아앙ㅠ — 높게 시작해서 길게 떨며 내려감
-        o.frequency.setValueAtTime(f0, t0);
-        o.frequency.linearRampToValueAtTime(f0 * 1.15, t0 + dur * 0.2);
-        o.frequency.exponentialRampToValueAtTime(f0 * 0.5, t0 + dur);
-    } else {
-        o.frequency.setValueAtTime(f0 * 0.85, t0);
-        o.frequency.linearRampToValueAtTime(f0 * 1.35, t0 + dur * 0.35);
-        o.frequency.linearRampToValueAtTime(f0 * 0.8, t0 + dur);
-    }
-    const vib = a.createOscillator(), vg = a.createGain(); vib.frequency.value = sad ? 7.5 : 6; vg.gain.value = f0 * (sad ? 0.05 : 0.02); vib.connect(vg).connect(o.frequency);
-    const mix = a.createGain(); mix.gain.value = 1;
-    const formant = (from, mid, to, q, lvl) => {
-        const f = a.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = q;
-        f.frequency.setValueAtTime(from, t0); f.frequency.linearRampToValueAtTime(mid, t0 + dur * 0.4); f.frequency.linearRampToValueAtTime(to, t0 + dur);
-        const g = a.createGain(); g.gain.value = lvl; o.connect(f).connect(g).connect(mix);
-    };
-    formant(350, 950, 500, 6, 1.0);   // F1: 이 → 아 → 오
-    formant(2300, 1600, 900, 8, 0.6); // F2
-    const env = a.createGain();
-    env.gain.setValueAtTime(0.0001, t0);
-    env.gain.exponentialRampToValueAtTime(1, t0 + 0.04);
-    env.gain.setValueAtTime(1, t0 + dur * 0.6);
-    env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    mix.connect(env).connect(bus);
-    o.start(t0); vib.start(t0); o.stop(t0 + dur + 0.02); vib.stop(t0 + dur + 0.02);
-    return dur;
 }
 function pop(a, t0) {
     const bus = outBus(a, 0.5);
@@ -147,27 +169,49 @@ function sadSqueak(a, t0) {
     o.connect(lp).connect(g).connect(bus); o.start(t0); lfo.start(t0); o.stop(t0 + dur); lfo.stop(t0 + dur);
     return dur;
 }
+// 고른 소리 이름 정리: 내 소리 파일이 없으면 냥냥으로
+function pickKind(kind = settings().mascotSound ?? 'mix') {
+    if (kind === 'custom' && !hasCustomSound()) kind = 'meow';
+    if (kind === 'mix') kind = Math.random() < 0.5 ? 'squeak' : 'meow';
+    return kind;
+}
 function cry(a, t0, kind) {
     let t = t0;
     t += sniff(a, t) + 0.08; t += sniff(a, t) + 0.1;
-    t += kind === 'squeak' ? sadSqueak(a, t) : meow(a, t, kind === 'kitten', true);
+    if (kind === 'custom' && fileBuf) t += playFile(a, t, 0.72); // 냥 소리는 낮고 느리게 → 우는 소리
+    else if (CLIP_SET[kind]) { const k = CLIP_SET[kind][0]; t += clipBuf[k] ? playClip(a, t, k, 0.7) : sadSqueak(a, t); }
+    else t += sadSqueak(a, t);
     return t - t0;
 }
 export function playCry() {
-    let kind = settings().mascotSound ?? 'mix';
+    const kind = pickKind();
     if (kind === 'off' || vol() <= 0) return;
-    if (kind === 'mix') kind = Math.random() < 0.5 ? 'squeak' : 'meow';
-    try { const a = audio(); if (a) cry(a, a.currentTime + 0.01, kind); } catch (err) { console.warn('[미트볼 상태창] mascot cry', err); }
+    try {
+        const a = audio(); if (!a) return;
+        if (kind === 'custom' && !fileBuf) { loadFile(a).then(() => cry(a, a.currentTime + 0.01, kind)); return; }
+        if (CLIP_SET[kind] && !clipBuf[CLIP_SET[kind][0]]) { decodeClip(a, CLIP_SET[kind][0]).then(() => cry(a, a.currentTime + 0.01, kind)); return; }
+        cry(a, a.currentTime + 0.01, kind);
+    } catch (err) { console.warn('[미트볼 상태창] mascot cry', err); }
 }
 
-const SYNTH = { squeak, meow: (a, t) => meow(a, t), kitten: (a, t) => meow(a, t, true), pop, purr, bell };
+const SYNTH = { squeak, pop, purr, bell };
 
 // 소리 하나 재생 — 실제로 난 소리 이름을 돌려줌 (말풍선 글에 씀)
-export function playMascotSound(kind = settings().mascotSound ?? 'mix', times = 1) {
-    if (kind === 'mix') kind = Math.random() < 0.5 ? 'squeak' : 'meow';
-    if (kind === 'off' || !SYNTH[kind] || vol() <= 0) return kind in LINES ? kind : 'off';
+export function playMascotSound(kind, times = 1) {
+    kind = pickKind(kind);
+    if (kind === 'off' || vol() <= 0) return kind in LINES ? kind : 'off';
     try {
         const a = audio(); if (!a) return kind;
+        if (kind === 'custom') {
+            const go = () => { let t = a.currentTime + 0.01; for (let i = 0; i < times; i++) t += playFile(a, t, jit(1, 0.05) * (1 + i * 0.08)) * 0.55; }; // 연타면 겹치며 점점 높게
+            if (fileBuf && fileKey) go(); else loadFile(a).then(b => b && go());
+            return kind;
+        }
+        if (CLIP_SET[kind]) {
+            withClip(a, kind, (k) => { let t = a.currentTime + 0.01; for (let i = 0; i < times; i++) t += playClip(a, t, k, jit(1, 0.04) * (1 + i * 0.08)) * 0.6; });
+            return kind;
+        }
+        if (!SYNTH[kind]) return 'off';
         let t = a.currentTime + 0.01;
         for (let i = 0; i < times; i++) t += SYNTH[kind](a, t) + 0.04;
     } catch (err) { console.warn('[미트볼 상태창] mascot sound', err); }
@@ -232,12 +276,13 @@ function poke(img) {
     anim(img, big ? 'poke-big' : 'poke');
     const kind = playMascotSound(undefined, big ? 3 : 1);
     const lines = LINES[kind] ?? LINES.off;
-    bubble(img, big ? (kind === 'squeak' ? '뾱뾱뾱!!' : kind === 'meow' || kind === 'kitten' ? '냥냥냥!!' : '♡♡♡') : lines[Math.floor(Math.random() * lines.length)]);
+    bubble(img, big ? (kind === 'squeak' ? '뾱뾱뾱!!' : kind === 'custom' || kind === 'meow' || kind === 'kitten' ? '냥냥냥!!' : '♡♡♡') : lines[Math.floor(Math.random() * lines.length)]);
 }
 
 let bound = false;
 export function initMascot() {
     if (bound) return; bound = true;
+    fetchClips(); // 냥 소리 파일 미리 받아 두기 (작아요, 4개 합쳐 17KB)
     // 이미지 미리 받아 두기 (처음 뜰 때 빈칸 방지)
     for (const n of MASCOTS) { const i = new Image(); i.src = mascotUrl(n); }
     document.addEventListener('click', (e) => {
