@@ -2,7 +2,7 @@
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.6.0';
+export const VERSION = '2.6.1';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
 export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
@@ -107,6 +107,7 @@ export const DEFAULTS = Object.freeze({
     carry: {},               // 2회차 이어받기 (캐릭터별)
     updateNotice: true,      // 업데이트하면 「바뀐 점」을 한 번 알려 줌 (v2.6)
     lastSeenVersion: '',     // 마지막으로 「바뀐 점」을 본 버전
+    lastSeenNote: '',        // 그때 본 내역의 지문 (같은 버전이라도 내역이 바뀌면 다시 알림)
     showMascot: true,        // 마스코트 고양이 보이기
     mascotBuddy: true,       // 상태창 머리에 마스코트 항상 (누르면 반응)
     mascotSound: 'mix',      // 누르면 나는 소리: mix · squeak · meow · kitten · custom · pop · purr · bell · off

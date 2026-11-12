@@ -119,6 +119,13 @@ app.askBond = askBond;
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.6.1', title: '고친 것 모음', items: [
+        ['🔧 화면만 번역: AI에게 한국어가 새던 곳 막음', '본편 AI가 쓰는 값도 영어로 받고(출력 규칙), 날짜·계절·기념일·UI 기록도 영어로 보내요. 새로 생긴 영어 글은 화면에서 자동 번역돼요.'],
+        ['🔔 한국어로 저장된 칸 알림', '「화면만 번역」인데 한국어로 저장된 칸이 남아 있으면 채팅을 열 때 알려 줘요. 알림을 누르거나 「상태창 전체 번역」을 누르면 바로 영어 저장으로 바뀌어요.'],
+        ['💗 관계 사실: 앞 단계 행동이 섞이던 문제', '④가 이전 단계(예: 「차갑고 적대적」)의 행동까지 이어 붙여 보내던 것을 고쳤어요. 이제 지금 단계의 모습만 보내요.'],
+        ['💍 연인 확정이 풀리던 문제', '편집 창을 확정 전에 열어 두고 저장하면 확정이 풀리던 것을 고쳤어요. 확정은 관계 탭 버튼으로만 해요. 풀린 채팅은 「💍 연인 확정」을 한 번 다시 눌러 주세요.'],
+        ['📣 업데이트 알림', '같은 버전 안에서 내용이 바뀌어도 다시 알려 주고, 창이 제대로 떴을 때만 「봤음」으로 처리해요.'],
+    ] },
     { v: '2.6.0', title: '로맨스 보정 · 화면만 번역 · 업데이트 알림', items: [
         ['💗 로맨스 보정 (전부 선택 · 기본 꺼짐)', '확장 설정 › 로맨스 보정. 연인은 고백으로만(확정 창이 떠요) · 한 번에 확 못 오르게 · 연달아 꼬시면 덜 오르게 · 관계를 사실로 알려 주기 · 인물의 욕구 · 의도 먼저 · 내 추가 주입문. 「추천 세트 켜기」 버튼 하나로 시작할 수 있어요.'],
         ['🌐 영어로 저장 · 화면만 번역', '상태창 생성 언어의 새 선택지. 상태창은 영어로 저장되어 AI에게도 영어로 가고, 화면에서만 번역돼 보여요.'],
@@ -133,9 +140,9 @@ const CHANGELOG = [
 ];
 const verNum = (v) => String(v ?? '').split('.').map(x => parseInt(x, 10) || 0);
 const verGt = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0); } return false; };
-async function showWhatsNew(all = false) {
+async function showWhatsNew(all = false, latestOnly = false) {
     const seen = settings().lastSeenVersion || '';
-    const list = CHANGELOG.filter(c => all || !seen || verGt(c.v, seen));
+    const list = latestOnly ? CHANGELOG.slice(0, 1) : CHANGELOG.filter(c => all || !seen || verGt(c.v, seen));
     if (!list.length) { if (all) toastr.info('기록된 업데이트 내역이 없어요.', TITLE); return; }
     const el = document.createElement('div');
     el.className = 'ss-root ss-scope ss-whatsnew';
@@ -144,13 +151,19 @@ async function showWhatsNew(all = false) {
         <p class="ss-hint">새 기능은 모두 선택 사항이라, 켜지 않으면 예전과 똑같이 동작해요. 다시 보려면 확장 설정 › 데이터 · 화면 › 「업데이트 내역」.</p>`;
     await popup(el, { okButton: '확인' });
 }
+// 내역 지문: 같은 버전이라도 내역이 바뀌면 다시 알린다
+const noteKey = () => { const s = JSON.stringify(CHANGELOG[0] ?? ''); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return `${VERSION}#${(h >>> 0).toString(36)}`; };
 function whatsNewOnLoad(fresh) {
     const s = settings();
-    if (s.lastSeenVersion === VERSION) return;
-    const show = !fresh && s.updateNotice !== false && CHANGELOG.some(c => !s.lastSeenVersion || verGt(c.v, s.lastSeenVersion));
-    const done = () => { s.lastSeenVersion = VERSION; saveSettings(); };
-    if (!show) { done(); return; }
-    setTimeout(() => { showWhatsNew().catch(e => console.error(LOG, 'whatsnew', e)).finally(done); }, 1500);
+    const key = noteKey();
+    if (s.lastSeenNote === key) return;
+    const done = () => { s.lastSeenVersion = VERSION; s.lastSeenNote = key; saveSettings(); };
+    if (fresh || s.updateNotice === false) { done(); return; } // 처음 설치 · 알림 끔
+    const sameVer = s.lastSeenVersion === VERSION; // 버전은 같은데 내역만 바뀜 → 맨 위 내역만
+    setTimeout(async () => {
+        try { await showWhatsNew(false, sameVer); done(); } // 창이 제대로 떴을 때만 「봤음」
+        catch (e) { console.error(LOG, 'whatsnew', e); }
+    }, 2000);
 }
 app.notifyLatest = notifyLatest;
 app.decorate = decorateAll;
