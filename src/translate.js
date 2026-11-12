@@ -155,7 +155,8 @@ export async function trText(text) {
     } catch (e) { console.warn(LOG, 'translate text', e); return text; }
 }
 // ───── 화면만 번역 (enview): 번역본은 저장하지 않고 사전(meta.tr)에만 남긴다 ─────
-const TR_MAX = 4000;
+const TR_MAX = 3000;
+const TR_CHARS = 300000; // 사전 전체 글자 수 상한 (약 300KB)
 let trVer = 0; // 사전이 바뀔 때마다 +1 (화면 번역기 캐시 갱신)
 const hasLatin = (x) => /[A-Za-z]/.test(x);
 export function addPairs(pairs) {
@@ -171,6 +172,9 @@ export function addPairs(pairs) {
     }
     const keys = Object.keys(d);
     for (const k of keys.slice(0, Math.max(0, keys.length - TR_MAX))) delete d[k];
+    // 채팅 파일이 커지지 않게: 사전 전체 글자 수에 상한 (오래된 것부터 지움 · 지워진 건 다음에 다시 번역)
+    let size = 0; for (const k of Object.keys(d)) size += k.length + d[k].length;
+    if (size > TR_CHARS) for (const k of Object.keys(d)) { if (size <= TR_CHARS * 0.9) break; size -= k.length + d[k].length; delete d[k]; }
     if (n) { trVer++; Promise.resolve().then(() => saveMeta()).catch(() => { /* ignore */ }); }
     return n;
 }
@@ -210,17 +214,27 @@ export const finLines = async (lines) => {
 const SCOPE = '.ss-scope, .ss-root, .ss-panel, .ss-msgcard, .ss-slot, #ss-hud, #ss-side, #ss-float, #ss-settings, #ss-toasts, .ss-toasts';
 const SKIP = 'input, textarea, select, option, script, style, code, pre, .ss-pw, [contenteditable="true"], .ss-notr';
 let sorted = { d: null, n: -1, ver: -1, list: [] };
+const memo = new Map(); // 같은 글자는 한 번만 계산 (상태창을 다시 그릴 때마다 사전 전체를 돌지 않게)
 function entries(d) {
     const n = Object.keys(d).length;
-    if (sorted.d !== d || sorted.n !== n || sorted.ver !== trVer) sorted = { d, n, ver: trVer, list: Object.entries(d).filter(([e]) => e.length >= 3).sort((a, b) => b[0].length - a[0].length).map(([e, k]) => [e, k, new RegExp(`(?<![A-Za-z])${e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z])`, 'g')]) };
+    if (sorted.d !== d || sorted.n !== n || sorted.ver !== trVer) {
+        // (^|글자 아님)단어(?!글자) — 뒤돌아보기(lookbehind)는 구형 사파리에서 오류라 쓰지 않는다
+        sorted = { d, n, ver: trVer, list: Object.entries(d).filter(([e]) => e.length >= 3).sort((a, b) => b[0].length - a[0].length).map(([e, k]) => [e, k, new RegExp(`(^|[^A-Za-z])${e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z])`, 'g')]) };
+        memo.clear();
+    }
     return sorted.list;
 }
 export function trString(v, d = trDict()) {
     if (!d || !v || !hasLatin(v)) return v;
     const k = v.trim();
     if (Object.hasOwn(d, k)) return v.replace(k, () => d[k]);
+    const list = entries(d); // (사전이 바뀌었으면 여기서 memo가 비워진다)
+    const hit = memo.get(v);
+    if (hit !== undefined) return hit;
     let out = v;
-    for (const [en, ko, re] of entries(d)) if (out.includes(en)) out = out.replace(re, () => ko);
+    for (const [en, ko, re] of list) if (out.includes(en)) out = out.replace(re, (m, pre) => pre + ko);
+    if (memo.size > 4000) memo.clear();
+    memo.set(v, out);
     return out;
 }
 // 본편 메시지 글(.mes_text)은 절대 안 건드리되, 그 안에 붙는 미트볼 변동 칩(.ss-slot)만은 번역한다
@@ -247,9 +261,11 @@ function walk(root, d) {
     while (tw.nextNode()) nodes.push(tw.currentNode);
     for (const n of nodes) trNode(n, d);
 }
-export function translateView(root = document.body) {
+export function translateView(root = null) {
     const d = trDict();
-    if (d) walk(root, d);
+    if (!d) return;
+    if (root) return walk(root, d);
+    for (const el of document.querySelectorAll(SCOPE)) walk(el, d); // 미트볼 화면만 훑는다 (채팅 전체를 돌지 않게)
 }
 let observer = null;
 export function startViewTr() {
@@ -300,23 +316,26 @@ let lastKoCheck = '';
 export function checkKorean() {
     if (!viewTr() || running) return;
     const id = String(ctx().getCurrentChatId?.() ?? '');
-    if (!id || lastKoCheck === id) return;
+    if (!id || lastKoCheck === id || !app.current?.state) return; // 상태가 계산된 뒤에 한 번
     lastKoCheck = id;
     const ko = koPanels();
     if (!ko.length) return;
     const names = ko.map(x => (x === 'core' ? '세계 핵심' : MOD[x]?.name ?? x)).join(', ');
-    toastr.warning(`이 채팅엔 <b>한국어로 저장된 칸</b>이 ${ko.length}개 있어서 AI에게 한국어로 가요: ${esc(names)}<br><b>👉 여기를 누르면 영어 저장으로 바꿔요</b> (보이는 한국어는 그대로)`, TITLE, { timeOut: 15000, extendedTimeOut: 5000, onclick: () => convertToEnglish(null) });
+    toastr.warning(`이 채팅엔 <b>한국어로 저장된 칸</b>이 ${ko.length}개 있어서 AI에게 한국어로 가요: ${esc(names)}<br><b>👉 여기를 누르면 영어 저장으로 바꿔요</b> (보이는 한국어는 그대로)`, TITLE, { timeOut: 15000, extendedTimeOut: 5000, escapeHtml: false, onclick: () => convertToEnglish(null) });
 }
 // 본편 AI가 새로 쓴 영어 글(새 아이템·메모·퀘스트 등)도 화면에선 번역돼 보이게 — 모르는 글만 모아서 가끔 한 번
 let filling = false, fillTimer = null;
 const tried = new Set();
 export function scheduleFill() {
-    if (!viewTr() || settings().trAuto === false) return;
+    if (!viewTr()) return;
+    const mode = settings().trAuto === true ? 'st' : settings().trAuto === false ? 'off' : (settings().trAuto || 'st');
+    if (mode === 'off' || (mode === 'st' && !engineST())) return; // 토큰이 드는 번역 모델은 「항상」을 골랐을 때만
     clearTimeout(fillTimer);
     fillTimer = setTimeout(() => { fillNew().catch(e => console.warn(LOG, 'fill', e)); }, 2500);
 }
 async function fillNew() {
     if (filling || running || !viewTr()) return;
+    if (app.generatingAt && Date.now() - app.generatingAt < 300000) return scheduleFill(); // 본편 AI가 답을 쓰는 동안엔 부르지 않는다 (끝난 뒤 다시 · 5분 넘으면 끝난 걸로 봄)
     const s = app.current?.state; if (!s) return;
     const d = trDict() ?? {};
     const meta = getMeta();
@@ -335,7 +354,8 @@ async function fillNew() {
     try {
         const src = { list: need };
         const out = await trJSON(src);
-        if (out !== src && Array.isArray(out?.list)) { addPairs(pairsOf(src, out)); addPairs(rulePairs()); translateView(); }
+        // 개수가 다르면(모델이 줄을 합치거나 뺐으면) 짝이 어긋나므로 버린다
+        if (out !== src && Array.isArray(out?.list) && out.list.length === need.length) { addPairs(pairsOf(src, out)); addPairs(rulePairs()); translateView(); }
     } finally { filling = false; }
 }
 // 「한국어로 저장된 칸을 영어 저장으로 바꾸기」: 예전 방식(번역본 저장)이나 한국어 생성으로 만든 상태창을
@@ -373,7 +393,7 @@ export async function convertToEnglish(btn) {
         addPairs(rulePairs());
     } finally { running = false; if (btn) btn.innerHTML = old; }
     app.refreshNow?.(); translateView();
-    toastr[fail ? 'warning' : 'success'](`${k}칸을 영어 저장으로 바꿨어요${fail ? ` · <b>${esc(failed.join(', '))}</b>은(는) 실패해서 한국어 그대로예요. 한 번 더 누르면 실패한 칸만 다시 해요` : ''}${stop ? ' (멈춤)' : ''}.`, TITLE, fail ? { timeOut: 12000 } : {});
+    toastr[fail ? 'warning' : 'success'](`${k}칸을 영어 저장으로 바꿨어요${fail ? ` · <b>${esc(failed.join(', '))}</b>은(는) 실패해서 한국어 그대로예요. 한 번 더 누르면 실패한 칸만 다시 해요` : ''}${stop ? ' (멈춤)' : ''}.`, TITLE, fail ? { timeOut: 12000, escapeHtml: false } : {});
     lastKoCheck = '';
 }
 export { MOD };

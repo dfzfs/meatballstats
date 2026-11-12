@@ -54,8 +54,10 @@ const FOREIGN_RE = /<summary\b|<details\b|\|\s*Physical\s*:|Relationship \(mutua
 // 옛 <status>도 미트볼 것으로 읽을지 (v2.5 이전 채팅 호환 · 다른 프리셋이 <status>를 쓰면 끄기)
 const legacyOn = () => { try { return settings().legacyStatus !== false; } catch { return true; } };
 // 블록 찾기 — 닫는 태그가 있으면 거기까지.
-// <meatball>을 안 닫았으면: 빈 줄 · 태그로 시작하는 줄(</prose>, <tracker> 등) · 다음 블록 · 글 끝 중 먼저 오는 곳까지만 (예전엔 글 끝까지 다 지웠음)
-// <status>는 닫혀 있을 때만, 그리고 다른 프리셋 모양(<details>·표)이 아닐 때만 미트볼 것.
+// <meatball>을 안 닫았으면: 「키: 값」 모양의 줄이 이어지는 데까지만 (사이의 빈 줄은 허용). 태그로 시작하는 줄(</prose>, <tracker>)이나 이야기 문장에서 멈춘다.
+//   → 예전엔 글 끝까지 다 지웠음. 읽히는 변화(키: 값)는 예전과 같아서 옛 채팅의 숫자는 그대로.
+// 옛 <status>는 예전 규칙 그대로 (안 닫혔으면 글 끝·다음 블록까지) — 옛 채팅 호환. 다른 프리셋 모양(<details>·표)이면 건드리지 않는다.
+const KV_RUN = /^(?:\s*(?:[-*•]\s*|\d+[.)]\s*)?[^<:：\n]{1,24}[:：][^\n]*)*/;
 function scanBlocks(text) {
     const t = String(text ?? '');
     const out = [];
@@ -69,10 +71,9 @@ function scanBlocks(text) {
         let end, body, closed = close >= 0 && (nx < 0 || close < nx);
         if (closed) { body = t.slice(from, close); end = close + tag.length + 3; }
         else if (tag === 'meatball') {
-            const rest = t.slice(from);
-            const stop = rest.search(/\n[ \t]*\n|\n[ \t]*<|<(?:meatball|status)>/i);
-            body = stop < 0 ? rest : rest.slice(0, stop); end = from + body.length;
-        } else continue; // 안 닫힌 <status>는 건드리지 않는다
+            const rest = nx < 0 ? t.slice(from) : t.slice(from, nx);
+            body = rest.match(KV_RUN)?.[0] ?? ''; end = from + body.length;
+        } else { body = nx < 0 ? t.slice(from) : t.slice(from, nx); end = from + body.length; } // 옛 <status>: 예전 그대로
         let start = m.index; while (start > 0 && /\s/.test(t[start - 1])) start--;
         const ours = tag === 'meatball' || (legacyOn() && !FOREIGN_RE.test(body));
         out.push({ start, end, tag, body, ours, all: t.slice(start, end) });
@@ -1556,9 +1557,10 @@ export function buildInjection(r, opt = {}) {
 function romanceBlock(r) {
     const set = settings(), s = r.state, d = s.data, meta = getMeta();
     const L = [];
+    let tester = null;
+    const inScene = (n) => (tester ??= sceneTester(set, s))(n); // 필요할 때 한 번만 만든다
     if (modOn('rel', meta) && d.rel && (set.romFacts || set.romDrive)) {
         const rl = d.rel, st = rl.stages?.length ? rl.stages : DEFAULT_STAGES, top = st.length - 1;
-        const inScene = sceneTester(set, s);
         for (const x of rl.user.filter(y => inScene(y.name)).slice(0, 8)) {
             const k = clamp(x.stage ?? 0, 0, top), g = st[k], nx = st[k + 1];
             if (set.romFacts) {
@@ -1586,7 +1588,6 @@ function romanceBlock(r) {
     if (set.romInit) { // 먼저 움직이기: 답 1번마다 주사위 (같은 턴엔 같은 결과 → 프롬프트 창과 실제가 같다)
         const rng = seeded(`${ctx().getCurrentChatId?.() ?? MODULE}:init:${s.turn}:${(ctx().chat ?? []).length}`);
         if (rng() * 100 < clamp(num(set.romInitPct, 25), 0, 100)) {
-            const inScene = sceneTester(set, s);
             const cand = (modOn('rel', meta) && d.rel ? d.rel.user.filter(y => inScene(y.name)).map(y => y.name) : []);
             L.push(P('inj.rom.init', { who: cand.length ? cand[Math.floor(rng() * cand.length)] : 'one of the characters present' }));
         }

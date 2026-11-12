@@ -115,6 +115,7 @@ export async function attachToCard() {
     const pick = el.querySelector('[data-v].on')?.dataset.v ?? 'now';
     const base = pick === 'now' || !hasOrigin ? { core: clone(app.current.state.core), data: clone(app.current.state.data) } : clone(meta.origin);
     const pack = { v: DATA_V, version: VERSION, t: Date.now(), title: base.core?.title ?? '', base, mods: { ...meta.mods }, difficulty: meta.difficulty, play: meta.play ?? null };
+    if (meta.tr && Object.keys(meta.tr).length) pack.tr = meta.tr; // 화면 번역 사전도 같이 (영어 저장 카드를 받은 사람이 번역 비용 없이 바로 보게)
     await c.writeExtensionField(c.characterId, CARD_KEY, pack);
     toastr.success('카드에 붙였어요. 카드를 내보내면 상태창도 같이 들어가요.', TITLE);
     app.rerenderPanels?.();
@@ -132,6 +133,7 @@ export async function loadFromCard(setBase, ask = true) {
         const m = getMeta(true); m.cardAsked = true; await saveMeta(); return false;
     }
     await setBase(pack.base, pack.mods, pack.difficulty, pack.play);
+    if (pack.tr && typeof pack.tr === 'object') { const m = getMeta(true); m.tr = { ...pack.tr, ...(m.tr ?? {}) }; await saveMeta(); }
     toastr.success('카드의 상태창을 불러왔어요!', TITLE);
     return true;
 }

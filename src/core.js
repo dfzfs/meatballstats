@@ -55,7 +55,7 @@ export const DEFAULTS = Object.freeze({
     trCode: 'ko',            // 실리 기본 번역에 넘길 언어 코드
     trRules: '',
     legacyStatus: true,      // 옛 <status>도 미트볼 것으로 읽기 (v2.5 이전 채팅 호환 · 다른 프리셋이 <status>를 쓰면 끄기)
-    trAuto: true,            // 화면만 번역: 본편 AI가 새로 쓴 영어 글도 자동으로 화면 번역 (모르는 글만 · LLM이면 가끔 1회)             // 번역 지침 — LLM: 그대로 전달 · 실리 기본 번역: 「원문 = 번역」 줄만 (이름 고정)
+    trAuto: 'st',            // 화면만 번역: 새로 생긴 영어 글 자동 번역 — st = 실리 기본 번역일 때만 (무료) | always = 번역 모델이어도 (AI 호출) | off             // 번역 지침 — LLM: 그대로 전달 · 실리 기본 번역: 「원문 = 번역」 줄만 (이름 고정)
     prompts: {},             // 사용자 수정 프롬프트
     stashTags: true,         // <meatball>을 읽은 뒤 본문에서 떼어 메시지 숨은 칸에 보관 (다른 확장·요약에 안 보임)
     aiFallbackMain: true,    // 연결 프로필 실패·빈 응답 때 메인 연결로 다시 보냄
@@ -247,7 +247,8 @@ export function findBy(list, name, field = 'name') {
 }
 // ───── 화면만 번역 (v2.6): 상태창 데이터는 영어 그대로 (= AI에게도 영어), 화면에 그릴 때만 번역본 ─────
 // 번역 사전은 채팅마다 meta.tr = { 영어 원문: 번역 } 에 쌓인다.
-export const viewTr = () => { try { return settings().ssGenLang === 'enview'; } catch { return false; } };
+// 아주 자주 불린다 (이름 찾기 · 화면 번역기) → settings()의 기본값 채우기를 거치지 않고 바로 읽는다
+export const viewTr = () => { try { return ctx().extensionSettings?.[MODULE]?.ssGenLang === 'enview'; } catch { return false; } };
 export function trDict() { try { return viewTr() ? (getMeta()?.tr ?? null) : null; } catch { return null; } }
 export function trLook(en) { const d = trDict(); const k = String(en ?? '').trim(); return d && Object.hasOwn(d, k) ? d[k] : undefined; }
 let trRev = { d: null, n: -1, map: null };

@@ -130,6 +130,7 @@ const CHANGELOG = [
         ['🏷️ 태그 지우기를 더 안전하게', '<meatball>을 안 닫아도 이제 본문 끝까지 지우지 않아요 (빈 줄이나 다음 태그 전까지만). 옛 <status>를 미트볼 것으로 볼지 설정에서 고를 수 있어요.'],
         ['💍 연인 확정 버튼은 필요할 때만', '고백이 감지됐거나 연인 단계 조건을 채운 사람에게만 떠요.'],
         ['📣 업데이트 알림', '화면을 막는 창 대신 팝업 알림 한 장으로 떠요. 누르면 자세히 볼 수 있어요.'],
+        ['🧰 호환성 · 속도', '구형 아이폰(사파리)에서 화면 번역이 오류 나던 것 · 알림에 태그 글자가 보이던 것 · AI가 답을 쓰는 중엔 자동 번역을 미루기 · 화면 번역 속도 · 번역 사전이 채팅 파일을 키우지 않게 상한 · 카드에 붙일 때 화면 번역 사전도 같이.'],
     ] },
     { v: '2.6.0', title: '로맨스 보정 · 화면만 번역 · 업데이트 알림', items: [
         ['💗 로맨스 보정 (전부 선택 · 기본 꺼짐)', '확장 설정 › 로맨스 보정. 연인은 고백으로만(확정 창이 떠요) · 한 번에 확 못 오르게 · 연달아 꼬시면 덜 오르게 · 관계를 사실로 알려 주기 · 인물의 욕구 · 의도 먼저 · 내 추가 주입문. 「추천 세트 켜기」 버튼 하나로 시작할 수 있어요.'],
@@ -171,7 +172,7 @@ function whatsNewOnLoad(fresh) {
         try {
             // 팝업 알림 한 장 (누르면 「바뀐 점」 자세히) — 화면을 막는 창은 띄우지 않는다
             if (settings().toastMode === 'popup') notify({ kind: 'update', icon: '📣', title: `미트볼 상태창 v${VERSION} 업데이트`, text: `${heads} — 눌러서 자세히` }, { save: false });
-            else toastr.info(`📣 v${esc(VERSION)} 업데이트: ${esc(heads)}<br><small>눌러서 자세히</small>`, TITLE, { timeOut: 12000, onclick: () => showWhatsNew(false, sameVer) });
+            else toastr.info(`📣 v${esc(VERSION)} 업데이트: ${esc(heads)}<br><small>눌러서 자세히</small>`, TITLE, { timeOut: 12000, escapeHtml: false, onclick: () => showWhatsNew(false, sameVer) });
             done();
         } catch (e) { console.error(LOG, 'whatsnew', e); }
     }, 2000);
@@ -181,9 +182,9 @@ app.decorate = decorateAll;
 
 // ───── 정규식 ─────
 function regexScripts() {
-    // 닫힌 <meatball> · 안 닫혔으면 빈 줄/태그 줄/다음 블록 전까지만 (본문을 끝까지 지우지 않게) · 옛 <status>는 설정이 켜져 있고 닫혀 있을 때만
-    const MB = '<meatball>(?:(?!<\\/?meatball>)[\\s\\S])*?<\\/meatball>|<meatball>(?:(?!<\\/?meatball>|<status>|\\n[ \\t]*\\n|\\n[ \\t]*<)[\\s\\S])*';
-    const ST = '<status>(?:(?!<\\/?status>|<summary|<details|\\|\\s*Physical\\s*:|Relationship \\(mutual)[\\s\\S])*?<\\/status>';
+    // 닫힌 <meatball> · 안 닫혔으면 「키: 값」 줄이 이어지는 데까지만 (본문·다른 태그를 끝까지 지우지 않게) · 옛 <status>는 예전 규칙 그대로 (설정이 켜져 있을 때)
+    const MB = '<meatball>(?:(?!<\\/?meatball>)[\\s\\S])*?<\\/meatball>|<meatball>(?:\\s*(?:[-*•]\\s*|\\d+[.)]\\s*)?[^<:：\\n]{1,24}[:：][^\\n]*)*';
+    const ST = '<status>(?:(?!<\\/status>|<summary|<details|\\|\\s*Physical\\s*:|Relationship \\(mutual)[\\s\\S])*?(?:<\\/status>|$)';
     const any = settings().legacyStatus !== false ? `${MB}|${ST}` : MB;
     return [
         { id: REGEX_IDS.show, scriptName: '미트볼 상태창 ① <meatball> 블록 → 변동 칩', findRegex: `/${any}/gi`, replaceString: '<div class="ss-slot"></div>', trimStrings: [], placement: [2], disabled: false, markdownOnly: true, promptOnly: false, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null },
@@ -277,7 +278,7 @@ function renderSettings() {
                 <small>실리 기본 번역은 확장 메뉴 › <b>Chat Translation</b>에서 고른 번역기를 써요.</small></label>
             <label>실리 기본 번역 언어 코드<input class="text_pole" data-s="trCode" value="${esc(s.trCode)}" placeholder="ko"></label>
             <label>번역 지침<textarea class="text_pole" rows="4" data-s="trRules" placeholder="Rob Lucci = 로브 루치&#10;Kaku = 카쿠&#10;편지는 반말로 옮길 것">${esc(s.trRules ?? '')}</textarea>
-                <label class="checkbox_label"><input type="checkbox" data-s="trAuto" ${s.trAuto !== false ? 'checked' : ''}> 화면만 번역: 본편 AI가 새로 쓴 영어 글도 자동 번역 <small>(모르는 글만 모아서 · 실리 기본 번역이면 무료 · 번역 모델이면 새 글이 생길 때 가끔 1회)</small></label>
+                <label>화면만 번역: 본편 AI가 새로 쓴 영어 글 자동 번역<select class="text_pole" data-s="trAuto">${o('trAuto', 'st', '실리 기본 번역일 때만 (무료 · 추천)')}${o('trAuto', 'always', '항상 — 번역 모델이면 새 글이 생길 때 AI 1회씩')}${o('trAuto', 'off', '끔 — 「상태창 전체 번역」을 누를 때만')}</select></label>
             <small><b>번역 모델</b>: 적은 글이 그대로 지침으로 가요. <b>실리 기본 번역</b>: 지침을 읽지 못해서 <code>원문 = 번역</code> 모양의 줄만 써요 (이름·용어 고정). 다른 줄은 무시돼요.</small></label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="trsheet"><i class="fa-solid fa-language"></i> 상태창 전체 번역</button><button class="menu_button" data-s-act="toenglish" title="예전에 한국어로 저장된 칸을 영어 저장으로 바꿔요. 지금 보이는 한국어는 화면 번역으로 남아요."><i class="fa-solid fa-right-left"></i> 한국어로 저장된 칸을 영어 저장으로 바꾸기</button></div>
             <small>「화면만 번역」으로 바꿔도 <b>이미 한국어로 저장된 칸</b>은 그대로 한국어로 AI에게 가요. 위 오른쪽 버튼을 한 번 누르면 이 채팅의 칸들이 영어 저장으로 바뀌고, 지금 보이는 한국어는 화면 번역으로 그대로 남아요. (채팅마다 한 번)</small>
@@ -669,6 +670,9 @@ function init() {
     on('MESSAGE_SWIPED', onSwiped);
     on('MESSAGE_EDITED', onEdited);
     for (const ev of ['USER_MESSAGE_RENDERED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'MORE_MESSAGES_LOADED', 'GENERATION_STOPPED']) on(ev, refresh);
+    on('GENERATION_STARTED', (type, opts, dry) => { if (!dry) app.generatingAt = Date.now(); });
+    on('GENERATION_ENDED', () => { app.generatingAt = 0; });
+    on('GENERATION_STOPPED', () => { app.generatingAt = 0; });
     on('GENERATION_ENDED', onGenEnded);
     refreshNow();
     try { whatsNewOnLoad(fresh); } catch (e) { console.warn(LOG, 'whatsnew', e); }
