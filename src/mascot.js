@@ -42,11 +42,11 @@ function outBus(a, level) {
 }
 const jit = (x, r = 0.08) => x * (1 + (Math.random() * 2 - 1) * r);
 
-// ───── 진짜 고양이 녹음을 짧게 다듬은 소리 (snd/ 폴더) — level: 다른 효과음과 크기 맞춤 ─────
+// ───── 진짜 고양이 녹음(Kitten Mew, CC0 · OpenGameArt)을 짧게 다듬은 소리 (snd/ 폴더) — level: 다른 효과음과 크기 맞춤 ─────
 const CLIPS = {
     short: { file: 'nyang_short.mp3', level: 0.38 },
     arc: { file: 'nyang_arc.mp3', level: 0.13 },
-    adult: { file: 'nyang_adult.mp3', level: 0.46 },
+    adult: { file: 'nyang_adult.mp3', level: 0.37 }, // 아기 냥을 조금 낮춘 것
     kitten: { file: 'nyaang_kitten.mp3', level: 0.41 },
 };
 const CLIP_SET = { meow: ['short', 'arc', 'adult'], kitten: ['kitten', 'kitten', 'arc'] };
@@ -238,7 +238,7 @@ function bubble(img, text, ms = 1000) {
 
 // ───── 누르기 ─────
 const REACT = ['happy', 'surprise', 'party', 'happy'];
-const CRY_LINES = ['히잉… 그만 눌러ㅠㅠ', '으앙ㅠㅠ 아파!', '냐아앙ㅠ 너무해…'];
+const CRY_LINES = ['그만 눌러…', '으앙ㅠㅠ 아파!', '냐아앙ㅠ 너무해…'];
 const SULK_LINES = ['훌쩍…', '흥, 안 놀아ㅠ', '…삐졌어'];
 const CRY_AT = 12, SULK_MS = 4000;
 let combo = 0, comboT = 0, annoy = 0, annoyT = 0, sulkUntil = 0;
