@@ -4,7 +4,7 @@ import { app, ctx, settings, saveSettings, getMeta, saveMeta, isActive, ready, m
 import { compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, drawerOps, setDrawer, extractOps, ssValue, undoLast, hasStatus } from './src/engine.js';
 import { analyzeMessage, instructModule } from './src/ai.js';
 import { listProfiles } from './src/prompts.js';
-import { diffHTML, confirmPopup, applyTheme, askInput } from './src/kit.js';
+import { diffHTML, confirmPopup, applyTheme, askInput, mascot, popup } from './src/kit.js';
 import { ensureUI, rerenderPanels, openSheet, openWizard, openRoll, openPromptWindow, openThemeWindow, panels, renderHud } from './src/shell.js';
 import { receivePing } from './src/contact.js';
 import { translateSheet, startViewTr, translateView } from './src/translate.js';
@@ -88,7 +88,62 @@ function notifyLatest() {
     const key = `${c.getCurrentChatId?.()}:${i}:${m.swipe_id ?? 0}:${m.mes?.length}`;
     if (notified.has(key)) return;
     notified.add(key);
-    for (const a of app.current.snaps.get(i)?.alerts ?? []) notify(a);
+    for (const a of app.current.snaps.get(i)?.alerts ?? []) {
+        if (a?.kind === 'confess') { askBond(a.who); continue; }
+        notify(a);
+    }
+}
+// 💌 고백이 오간 것 같을 때: 연인으로 확정할지 물어본다 (로맨스 보정 ① · 「아직」을 골라도 관계 탭에 버튼은 남는다)
+let bondAsking = false;
+async function askBond(who) {
+    if (!settings().romBond || bondAsking) return;
+    notify({ kind: 'text', icon: '💌', title: `${who}와(과) 고백이 오갔어요`, text: '관계 탭에서 언제든 「연인 확정」', tab: 'rel' }); // 알림함에도 남김
+    bondAsking = true;
+    try {
+        const el = document.createElement('div');
+        el.className = 'ss-root ss-scope ss-bondask';
+        el.innerHTML = `${mascot('party', 'lg')}<h3>💌 ${esc(who)}와(과) 고백이 오간 것 같아요</h3>
+            <p>두 사람, 이제 연인으로 확정할까요?</p>
+            <p class="ss-hint">「아직」을 골라도 괜찮아요. 관계 탭의 <b>💍 연인 확정</b> 버튼은 그대로 있어서, 마음이 정해지면 언제든 누를 수 있어요.</p>`;
+        const yes = await confirmPopup(el, '💍 네, 좋아요', '🌙 음… 아직 지금을 더 즐길래요');
+        if (yes) {
+            await addAdjust({ ops: [['_bond', who]], label: `💍 ${who}와(과) 고백이 오가 연인이 되었다 (확정)` });
+            toastr.success(`${esc(who)}와(과) 연인이 되었어요 💞`, TITLE);
+        } else toastr.info('좋아요, 지금 이 설렘을 조금 더 즐겨요 🌙', TITLE);
+    } catch (e) { console.error(LOG, 'askBond', e); } finally { bondAsking = false; }
+}
+app.askBond = askBond;
+
+// ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
+const CHANGELOG = [
+    { v: '2.6.0', title: '로맨스 보정 · 화면만 번역 · 업데이트 알림', items: [
+        ['💗 로맨스 보정 (전부 선택 · 기본 꺼짐)', '확장 설정 › 로맨스 보정. 연인은 고백으로만(확정 창이 떠요) · 한 번에 확 못 오르게 · 연달아 꼬시면 덜 오르게 · 관계를 사실로 알려 주기 · 인물의 욕구 · 의도 먼저 · 내 추가 주입문. 「추천 세트 켜기」 버튼 하나로 시작할 수 있어요.'],
+        ['🌐 영어로 저장 · 화면만 번역', '상태창 생성 언어의 새 선택지. 상태창은 영어로 저장되어 AI에게도 영어로 가고, 화면에서만 번역돼 보여요.'],
+        ['🆓 실리 기본 번역', '번역 담당을 「실리 기본 번역」(Chat Translation의 Google·DeepL 등)으로 바꾸면 토큰 없이 번역해요.'],
+        ['📝 번역 지침', '「Rob Lucci = 로브 루치」처럼 적으면 이름·용어가 늘 그렇게 번역돼요. 번역 모델(LLM)에는 문장 지침도 그대로 전달돼요.'],
+        ['📣 업데이트 알림', '지금 보시는 이 창이에요. 확장 설정 › 데이터 · 화면에서 끌 수 있어요.'],
+    ] },
+];
+const verNum = (v) => String(v ?? '').split('.').map(x => parseInt(x, 10) || 0);
+const verGt = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0); } return false; };
+async function showWhatsNew(all = false) {
+    const seen = settings().lastSeenVersion || '';
+    const list = CHANGELOG.filter(c => all || !seen || verGt(c.v, seen));
+    if (!list.length) { if (all) toastr.info('기록된 업데이트 내역이 없어요.', TITLE); return; }
+    const el = document.createElement('div');
+    el.className = 'ss-root ss-scope ss-whatsnew';
+    el.innerHTML = `<div class="ss-wz-head">${mascot('happy', 'md')}<div><b>🍝 미트볼 상태창이 업데이트됐어요</b><small>v${esc(VERSION)}</small></div></div>
+        ${list.map(c => `<h4>v${esc(c.v)} — ${esc(c.title)}</h4><ul class="ss-newlist">${c.items.map(([h, d]) => `<li><b>${esc(h)}</b><br><small>${esc(d)}</small></li>`).join('')}</ul>`).join('')}
+        <p class="ss-hint">새 기능은 모두 선택 사항이라, 켜지 않으면 예전과 똑같이 동작해요. 다시 보려면 확장 설정 › 데이터 · 화면 › 「업데이트 내역」.</p>`;
+    await popup(el, { okButton: '확인' });
+}
+function whatsNewOnLoad(fresh) {
+    const s = settings();
+    if (s.lastSeenVersion === VERSION) return;
+    const show = !fresh && s.updateNotice !== false && CHANGELOG.some(c => !s.lastSeenVersion || verGt(c.v, s.lastSeenVersion));
+    const done = () => { s.lastSeenVersion = VERSION; saveSettings(); };
+    if (!show) { done(); return; }
+    setTimeout(() => { showWhatsNew().catch(e => console.error(LOG, 'whatsnew', e)).finally(done); }, 1500);
 }
 app.notifyLatest = notifyLatest;
 app.decorate = decorateAll;
@@ -251,7 +306,10 @@ function renderSettings() {
             <label>⑦ 내 추가 주입문 <small>(아무 프롬프트·프리셋이든 같이 들어가요 · 비우면 안 보냄 · 영어 추천)</small><textarea class="text_pole" rows="3" data-s="romInject" placeholder="예: {{char}} has a life outside {{user}} and does not always agree.">${esc(s.romInject ?? '')}</textarea></label>
             <label>로맨스 보정 주입 깊이 (0 = 맨 끝 · 모델이 잘 안 지키면 0~1로)<input type="number" min="0" max="20" class="text_pole" data-s="romDepth" value="${s.romDepth}"></label>
             <small>④⑤⑥ 문구는 「프롬프트 · 토큰」 창에서 고칠 수 있어요.</small>
+            <div class="ss-set-btns"><button class="menu_button" data-s-act="romrec" title="① 연인은 고백으로만 · ② 한 번에 확 못 오르게 · ④ 관계를 사실로"><i class="fa-solid fa-heart"></i> 추천 세트 켜기 (①②④)</button><button class="menu_button" data-s-act="romoff"><i class="fa-solid fa-power-off"></i> 로맨스 보정 모두 끄기</button></div>
             <b class="ss-set-h">데이터 · 화면</b>
+            <label class="checkbox_label"><input type="checkbox" data-s="updateNotice" ${s.updateNotice !== false ? 'checked' : ''}> 📣 업데이트하면 「바뀐 점」을 한 번 알려 주기</label>
+            <div class="ss-set-btns"><button class="menu_button" data-s-act="whatsnew"><i class="fa-solid fa-bullhorn"></i> 업데이트 내역</button></div>
             <label class="checkbox_label"><input type="checkbox" data-s="cardOffer" ${s.cardOffer ? 'checked' : ''}> 카드에 상태창이 들어 있으면 새 채팅에서 불러올지 물어보기</label>
             <label class="checkbox_label"><input type="checkbox" data-s="autoSave" ${s.autoSave ? 'checked' : ''}> 자동 세이브 (오래된 기록을 정리하기 전에 · 분기 대비)</label>
             <label class="checkbox_label"><input type="checkbox" data-s="bottomNav" ${s.bottomNav ? 'checked' : ''}> 폰 한 손 모드 — 탭 바를 아래로</label>
@@ -312,6 +370,17 @@ function renderSettings() {
         const a = e.target.closest('[data-s-act]')?.dataset.sAct;
         if (!a) return;
         if (a === 'diag') return diagnose();
+        if (a === 'whatsnew') return showWhatsNew(true);
+        if (a === 'romrec' || a === 'romoff') {
+            const set = settings(), on = a === 'romrec';
+            if (on) { set.romBond = true; set.romCap = true; set.romFacts = true; }
+            else for (const k of ['romBond', 'romCap', 'romFatigue', 'romFacts', 'romDrive', 'romIntent']) set[k] = false;
+            saveSettings();
+            el.querySelectorAll('[data-s^="rom"]').forEach(i => { if (i.type === 'checkbox') i.checked = !!set[i.dataset.s]; });
+            refreshNow();
+            toastr.success(on ? '추천 세트(①②④)를 켰어요. 지금부터 오는 답에 적용돼요.' : '로맨스 보정을 모두 껐어요. (내 추가 주입문은 그대로예요)', TITLE);
+            return;
+        }
         if (a === 'mascotsound') { playMascotSound(); return; }
         if (a === 'mascotfileclear') { const set = settings(); delete set.mascotSoundFile; delete set.mascotSoundName; if (set.mascotSound === 'custom') set.mascotSound = 'meow'; saveSettings(); clearSoundCache(); el.querySelector('.ss-mfile').textContent = '없음'; el.querySelector('[data-s="mascotSound"]').value = set.mascotSound; return; }
         if (a === 'backup') return fullBackup();
@@ -529,6 +598,7 @@ function registerMacros() {
 
 function init() {
     const { eventSource, event_types: E } = ctx();
+    const fresh = !ctx().extensionSettings?.[MODULE]; // 처음 설치한 사람에겐 「바뀐 점」을 안 띄운다
     settings();
     applyTheme();
     initMascot();
@@ -547,6 +617,7 @@ function init() {
     for (const ev of ['USER_MESSAGE_RENDERED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'MORE_MESSAGES_LOADED', 'GENERATION_STOPPED']) on(ev, refresh);
     on('GENERATION_ENDED', onGenEnded);
     refreshNow();
+    try { whatsNewOnLoad(fresh); } catch (e) { console.warn(LOG, 'whatsnew', e); }
     console.log(LOG, 'loaded', VERSION);
 }
 

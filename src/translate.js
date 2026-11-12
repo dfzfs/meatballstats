@@ -37,10 +37,12 @@ const preSub = (text) => { let t = String(text); for (const [a, b] of rulePairs(
 const engineST = () => settings().trEngine === 'st';
 let stMod = null;
 async function stTranslate(text) {
-    stMod ??= await import('/scripts/extensions/translate/index.js');
-    if (typeof stMod?.translate !== 'function') throw new Error('실리 번역 확장을 찾지 못했어요');
+    // 실리가 이미 올려 둔 translate()를 먼저 쓰고 (새 버전), 없으면 모듈을 직접 불러온다
+    let fn = typeof globalThis.translate === 'function' ? globalThis.translate : null;
+    if (!fn) { stMod ??= await import('/scripts/extensions/translate/index.js'); fn = stMod?.translate; }
+    if (typeof fn !== 'function') throw new Error('실리 번역 확장을 찾지 못했어요');
     const es = ctx().extensionSettings?.translate ?? {};
-    const out = await stMod.translate(preSub(text), String(settings().trCode || 'ko').trim(), es.provider || 'google');
+    const out = await fn(preSub(text), String(settings().trCode || 'ko').trim(), es.provider || 'google');
     if (typeof out !== 'string') throw new Error('실리 번역이 실패했어요 (확장 메뉴 › Chat Translation에서 번역기를 확인해 주세요)');
     return out;
 }
@@ -81,10 +83,11 @@ export async function trJSON(obj, extra) {
     if (engineST()) {
         try {
             const d = trDict() ?? {};
+            const known = (s) => (Object.hasOwn(d, s.trim()) ? d[s.trim()] : undefined);
             const fixed = new Map(rulePairs());
             const all = [...leaves(obj)];
-            const map = await stMany(all.filter(s => !fixed.has(s.trim()) && !d[s.trim()])); // 지침에 있는 이름 · 이미 아는 건 안 보냄
-            for (const s of all) { if (fixed.has(s.trim())) map.set(s, fixed.get(s.trim())); else if (!map.has(s) && d[s.trim()]) map.set(s, d[s.trim()]); }
+            const map = await stMany(all.filter(s => !fixed.has(s.trim()) && !known(s))); // 지침에 있는 이름 · 이미 아는 건 안 보냄
+            for (const s of all) { if (fixed.has(s.trim())) map.set(s, fixed.get(s.trim())); else if (!map.has(s) && known(s)) map.set(s, known(s)); }
             return rebuild(obj, map);
         } catch (e) {
             console.warn(LOG, 'st translate json', e);
@@ -115,6 +118,7 @@ export async function trText(text) {
 }
 // ───── 화면만 번역 (enview): 번역본은 저장하지 않고 사전(meta.tr)에만 남긴다 ─────
 const TR_MAX = 4000;
+let trVer = 0; // 사전이 바뀔 때마다 +1 (화면 번역기 캐시 갱신)
 const hasLatin = (x) => /[A-Za-z]/.test(x);
 export function addPairs(pairs) {
     const meta = getMeta(true);
@@ -124,12 +128,12 @@ export function addPairs(pairs) {
     for (const [en0, ko0] of pairs) {
         const en = String(en0 ?? '').trim(), ko = String(ko0 ?? '').trim();
         if (!en || !ko || en === ko || !hasLatin(en)) continue;
-        if (d[en] === ko) continue;
+        if (Object.hasOwn(d, en) && d[en] === ko) continue;
         delete d[en]; d[en] = ko; n++;
     }
     const keys = Object.keys(d);
     for (const k of keys.slice(0, Math.max(0, keys.length - TR_MAX))) delete d[k];
-    if (n) Promise.resolve().then(() => saveMeta()).catch(() => { /* ignore */ });
+    if (n) { trVer++; Promise.resolve().then(() => saveMeta()).catch(() => { /* ignore */ }); }
     return n;
 }
 // 원문 JSON과 번역 JSON을 같은 모양대로 따라가며 글자 칸끼리 짝짓기
@@ -166,23 +170,29 @@ export const finLines = async (lines) => {
 // ───── 화면 번역기: 상태창 UI의 글자(텍스트 노드)만 바꾼다. 데이터·입력칸·속성(data-arg 등)·본편 메시지는 그대로 ─────
 const SCOPE = '.ss-scope, .ss-root, [class^="ss-"], [class*=" ss-"], [id^="ss-"]';
 const SKIP = 'input, textarea, select, option, script, style, code, pre, .ss-pw, .mes_text, [contenteditable="true"], .ss-notr';
-let sorted = { d: null, n: -1, list: [] };
+let sorted = { d: null, n: -1, ver: -1, list: [] };
 function entries(d) {
     const n = Object.keys(d).length;
-    if (sorted.d !== d || sorted.n !== n) sorted = { d, n, list: Object.entries(d).filter(([e]) => e.length >= 3).sort((a, b) => b[0].length - a[0].length).map(([e, k]) => [e, k, new RegExp(`(?<![A-Za-z])${e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z])`, 'g')]) };
+    if (sorted.d !== d || sorted.n !== n || sorted.ver !== trVer) sorted = { d, n, ver: trVer, list: Object.entries(d).filter(([e]) => e.length >= 3).sort((a, b) => b[0].length - a[0].length).map(([e, k]) => [e, k, new RegExp(`(?<![A-Za-z])${e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z])`, 'g')]) };
     return sorted.list;
 }
 export function trString(v, d = trDict()) {
     if (!d || !v || !hasLatin(v)) return v;
     const k = v.trim();
-    if (d[k]) return v.replace(k, d[k]);
+    if (Object.hasOwn(d, k)) return v.replace(k, () => d[k]);
     let out = v;
     for (const [en, ko, re] of entries(d)) if (out.includes(en)) out = out.replace(re, () => ko);
     return out;
 }
+// 본편 메시지 글(.mes_text)은 절대 안 건드리되, 그 안에 붙는 미트볼 변동 칩(.ss-slot)만은 번역한다
+function eligible(p) {
+    const sk = p.closest(SKIP);
+    if (sk) { if (!sk.matches('.mes_text')) return false; const slot = p.closest('.ss-slot, .ss-msgcard'); return !!slot && sk.contains(slot); }
+    return !!p.closest(SCOPE);
+}
 function trNode(node, d) {
     const p = node.parentElement;
-    if (!p || p.closest(SKIP) || !p.closest(SCOPE)) return;
+    if (!p || !eligible(p)) return;
     const v = node.nodeValue;
     const out = trString(v, d);
     if (out !== v) node.nodeValue = out;
@@ -190,7 +200,7 @@ function trNode(node, d) {
 function walk(root, d) {
     if (!root) return;
     if (root.nodeType === 3) return trNode(root, d);
-    if (root.nodeType !== 1 || root.closest?.(SKIP)) return;
+    if (root.nodeType !== 1) return;
     if (!root.closest(SCOPE) && !root.querySelector(SCOPE)) return;
     const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const nodes = [];

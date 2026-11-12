@@ -580,10 +580,11 @@ export function applyOp(s, rawKey, rawVal, info) {
             const rl = ensure(s, 'rel');
             const [nm] = splitBar(val);
             const r = findBy(rl.user, nm.replace(/^[+]\s*/, ''));
-            if (!r || r.bond || r.bondAsk) return;
-            r.bondAsk = true;
+            if (!r || r.bond) return;
+            if (r.bondAsk && s.turn - (r.bondAskAt ?? 0) < 10) return; // 「아직」을 고른 뒤 10턴 안엔 다시 안 물어봄
+            r.bondAsk = true; r.bondAskAt = s.turn;
             L(`💌 ${r.name}: 고백?`);
-            info.alerts.push(`💌 ${r.name}와(과) 고백이 오간 것 같아요. 맞으면 관계 탭에서 「연인 확정」을 눌러 주세요. (AI가 잘못 본 거면 그냥 두면 돼요)`);
+            info.alerts.push({ kind: 'confess', who: r.name }); // index.js가 「연인으로 확정할까요?」 창을 띄운다
             return;
         }
         case '_bond': case '_unbond': {

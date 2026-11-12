@@ -2,7 +2,7 @@
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.5.1';
+export const VERSION = '2.6.0';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
 export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
@@ -101,6 +101,8 @@ export const DEFAULTS = Object.freeze({
     cardOffer: true,         // 카드에 붙은 상태창이 있으면 새 채팅에서 불러올지 물어봄
     autoSave: true,          // 자동 세이브 (오래된 기록을 굳히기 전에 · 최근 3개)
     carry: {},               // 2회차 이어받기 (캐릭터별)
+    updateNotice: true,      // 업데이트하면 「바뀐 점」을 한 번 알려 줌 (v2.6)
+    lastSeenVersion: '',     // 마지막으로 「바뀐 점」을 본 버전
     showMascot: true,        // 마스코트 고양이 보이기
     mascotBuddy: true,       // 상태창 머리에 마스코트 항상 (누르면 반응)
     mascotSound: 'mix',      // 누르면 나는 소리: mix · squeak · meow · kitten · custom · pop · purr · bell · off
@@ -224,7 +226,7 @@ export function findBy(list, name, field = 'name') {
 // 번역 사전은 채팅마다 meta.tr = { 영어 원문: 번역 } 에 쌓인다.
 export const viewTr = () => { try { return settings().ssGenLang === 'enview'; } catch { return false; } };
 export function trDict() { try { return viewTr() ? (getMeta()?.tr ?? null) : null; } catch { return null; } }
-export function trLook(en) { const d = trDict(); return d ? d[String(en ?? '').trim()] : undefined; }
+export function trLook(en) { const d = trDict(); const k = String(en ?? '').trim(); return d && Object.hasOwn(d, k) ? d[k] : undefined; }
 let trRev = { d: null, n: -1, map: null };
 export function trBack(ko) {
     const d = trDict(); if (!d) return undefined;
