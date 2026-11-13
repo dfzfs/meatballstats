@@ -101,6 +101,9 @@
 .ss-scope .ss-chip.done, .ss-scope .ss-chip.active { color: var(--ss-pos); }
 .ss-scope .ss-chip.diff-easy { color: var(--ss-pos); } .ss-scope .ss-chip.diff-hard { color: var(--ss-neg); }
 .ss-scope .ss-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+/* 긴 이름(「밀짚모자가 걸려 있던 빈 벽걸이 못」 등)이 카드 밖으로 넘치지 않게: 칸 너비를 넘으면 칩 안에서 줄바꿈 */
+.ss-scope .ss-chips > .ss-chip { max-width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; word-break: keep-all; border-radius: 14px; line-height: 1.35; padding-top: 3px; padding-bottom: 3px; }
+.ss-scope .ss-chips > .ss-chip > .ss-x, .ss-scope .ss-chips > .ss-chip > button { flex: none; align-self: center; }
 .ss-scope .ss-badge {
     display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px;
     background: var(--ss-neg); color: #fff; font-size: 10.5px; font-style: normal; font-weight: 700; line-height: 1;
