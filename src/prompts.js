@@ -138,21 +138,38 @@ export function profileFor(feature) {
     const k = FEATURE_GROUP[feature];
     return (k && s[k]) || s.aiProfile || '';
 }
+// 본편이 답을 쓰는 중인가: 실리가 직접 켜고 끄는 표시(body[data-generating] · 정지 버튼)로 본다.
+// (GENERATION_STARTED는 슬래시 명령만 보내도 오고, 그땐 GENERATION_ENDED가 안 와서 「쓰는 중」이 몇 분씩 남았음 · v2.7.10)
+export function mainBusy() {
+    try {
+        if (document.body?.dataset?.generating === 'true') return true;
+        const stop = document.getElementById('mes_stop');
+        return !!stop && getComputedStyle(stop).display !== 'none';
+    } catch { return false; }
+}
 async function waitMainIdle(maxMs = 60000) {
     const t0 = Date.now();
     let told = false;
-    while (app.generatingAt && Date.now() - app.generatingAt < 300000 && Date.now() - t0 < maxMs) {
+    while (mainBusy() && Date.now() - t0 < maxMs) {
         if (!told && Date.now() - t0 > 1500) { told = true; toastr.info('본편 AI가 답을 다 쓰면 이어서 할게요.', TITLE, { timeOut: 2500 }); }
         await new Promise(r => setTimeout(r, 150));
     }
 }
+const ANY_CHAT = new Set(['wizard', 'help', 'translate']); // 채팅과 상관없거나 (만들기 창은) 적용할 때 고르는 것
+const chatKey = () => { try { const c = ctx(); return `${c.groupId ?? ''}|${c.getCurrentChatId?.() ?? ''}`; } catch { return ''; } };
 // 똑같은 요청이 이미 가고 있으면 또 보내지 않는다 (버튼 연타로 두 번 과금 방지)
 const inflight = new Set();
 export async function aiGenerate(feature, systemPrompt, prompt, maxTokens, opts = {}) {
     const key = `${feature}\u0000${systemPrompt}\u0000${prompt}`;
     if (inflight.has(key)) throw new Error('같은 요청을 이미 처리하고 있어요. 잠시만 기다려 주세요.');
     inflight.add(key);
-    try { return await aiGenerateOnce(feature, systemPrompt, prompt, maxTokens, opts); }
+    const chat0 = chatKey();
+    try {
+        const out = await aiGenerateOnce(feature, systemPrompt, prompt, maxTokens, opts);
+        // 기다리는 동안 다른 채팅으로 옮겼으면 그 결과(문자 답장 · 뉴스 · 분석 …)를 지금 채팅에 넣지 않는다 (v2.7.10)
+        if (!ANY_CHAT.has(feature) && chatKey() !== chat0) throw new Error('답을 기다리는 동안 채팅이 바뀌어서, 이 결과는 넣지 않았어요.');
+        return out;
+    }
     finally { inflight.delete(key); }
 }
 async function aiGenerateOnce(feature, systemPrompt, prompt, maxTokens, opts = {}) {

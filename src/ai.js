@@ -2,7 +2,7 @@
 import { app, ctx, settings, getMeta, MOD, NORM, normalize, ensureLove, LOVE_AXES, relAxes, fixLoveLadder, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay, ssWarn, dayIndex } from './core.js';
 import { P, aiGenerate, parseJSON, aiJSON } from './prompts.js';
 import { SCHEMA } from './core.js';
-import { compute, buildInjection, tagKeysFor, extractOps, stripStatus, recentChat, chatCharacters } from './engine.js';
+import { compute, buildInjection, tagKeysFor, extractOps, stripStatus, recentChat, chatCharacters, setDrawer } from './engine.js';
 import { finJSON, finText, finLines } from './translate.js';
 
 const tasteLine = () => { const t = app.current?.state?.data?.music?.taste || settings().musicTaste; return t ? ` (the user likes: ${t})` : ''; };
@@ -131,10 +131,7 @@ export async function analyzeMessage(idx) {
         const o2 = String(out ?? '').replace(/<(\/?)status>/gi, '<$1meatball>'); // 분석 모델이 옛 <status>로 답해도 읽는다
         const ops = extractOps(/<meatball>/i.test(o2) ? o2 : `<meatball>\n${o2}\n</meatball>`);
         if (c.chat?.[idx] !== m || (m.swipe_id ?? 0) !== sid || m.mes !== mes0) { ssWarn(LOG, 'analyze: message changed, dropped'); return; }
-        m.extra ??= {};
-        m.extra[MODULE] ??= { bySwipe: {} };
-        m.extra[MODULE].bySwipe ??= {};
-        m.extra[MODULE].bySwipe[sid] = ops;
+        setDrawer(m, ops); // 스와이프 칸에도 같이 적는다 — 왼쪽으로 넘겼다 돌아오면 분석 결과가 사라져 AI를 또 부르던 것 (v2.7.10)
         Object.defineProperty(ops, 'analyzed', { value: true, enumerable: false }); // 같은 답을 다시 분석하지 않게 (이번 접속 동안)
         app.pipState.set(pk, ops.length ? 'done' : 'empty');
         await (c.saveChat?.() ?? c.saveChatDebounced?.());

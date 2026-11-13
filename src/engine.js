@@ -109,11 +109,40 @@ export function drawerOps(m) {
     const d = m?.extra?.[MODULE]?.bySwipe?.[m?.swipe_id ?? 0];
     return Array.isArray(d) ? d : null;
 }
-function syncSwipe(m) {
+// 실리는 왼쪽으로 스와이프할 때 지금 답(mes · extra)을 스와이프 칸에 저장하지 않아요 → 고친 것을 직접 같이 적어 둔다
+export function syncSwipe(m) {
     const sid = m.swipe_id;
     if (typeof sid !== 'number' || !Array.isArray(m.swipes) || typeof m.swipes[sid] !== 'string') return;
     m.swipes[sid] = m.mes;
     if (Array.isArray(m.swipe_info) && m.swipe_info[sid] && typeof m.swipe_info[sid] === 'object') m.swipe_info[sid].extra = structuredClone(m.extra);
+}
+// 스와이프를 지우면 실리가 뒤쪽 스와이프 번호를 하나씩 당긴다 → 답마다 「스와이프 번호 → 변화」로 적어 둔 것도 같이 당긴다 (v2.7.10)
+// (안 당기면 앞 스와이프를 지운 뒤 지금 스와이프의 변화를 못 찾아 숫자가 조용히 바뀌었음)
+export function shiftSwipeKeys(m, removed) {
+    if (!m || !Number.isInteger(removed)) return false;
+    const seen = new Set();
+    let changed = false;
+    const fix = (ex) => {
+        const b = ex?.[MODULE];
+        if (!b || typeof b !== 'object' || seen.has(b)) return;
+        seen.add(b);
+        for (const key of ['bySwipe', 'skip']) {
+            const o = b[key];
+            if (!o || typeof o !== 'object') continue;
+            const n = {};
+            for (const [k, v] of Object.entries(o)) {
+                const i = Number(k);
+                if (!Number.isInteger(i)) { n[k] = v; continue; }
+                if (i === removed) { changed = true; continue; }
+                if (i > removed) changed = true;
+                n[i > removed ? i - 1 : i] = v;
+            }
+            b[key] = n;
+        }
+    };
+    fix(m.extra);
+    for (const si of Array.isArray(m.swipe_info) ? m.swipe_info : []) fix(si?.extra);
+    return changed;
 }
 export function setDrawer(m, ops) {
     m.extra ??= {};
@@ -1294,6 +1323,7 @@ export function compute(limit, opts = {}) {
     if (!meta?.base) return null;
     const chat = c.chat ?? [];
     adjEvents.clear(); // 편집 기록 알림은 이번 계산 것만 (예전엔 세션 내내 쌓였음)
+    const slimmed = [];
     const s = freshState(meta.base);
     s.turn = meta.baseTurn ?? 0;
     const snaps = new Map();
@@ -1313,6 +1343,10 @@ export function compute(limit, opts = {}) {
         if (a.set?.patch) { // v2.7.7: 연락 · 피드는 바뀐 부분만 (칸 통째 복사본이 쌓여 채팅 파일이 MB로 불던 것)
             if (DELTA_MODS.has(a.set.mod) && s.data[a.set.mod]) { try { applyDelta(s.data[a.set.mod], a.set.patch); } catch (e) { ssWarn(LOG, 'delta', e); } }
         } else if (a.set) {
+            // 옛 채팅 줄이기 (v2.7.10): 예전에 칸 통째로 적힌 연락 · 피드 기록을 「그때 상태와 달라진 부분」으로 바꿔 둔다 (이번 계산 결과는 그대로)
+            if (opts.slim && a.set.data && DELTA_MODS.has(a.set.mod) && isPlain(s.data[a.set.mod])) {
+                try { const p = deltaOf(normalize(a.set.mod, clone(s.data[a.set.mod])), a.set.data); slimmed.push([a, p]); } catch (e) { ssWarn(LOG, 'slim', e); }
+            }
             if (a.set.mod === 'core') s.core = clone(a.set.data);
             else if (MOD_IDS.includes(a.set.mod)) {
                 s.data[a.set.mod] = clone(a.set.data);
@@ -1353,7 +1387,17 @@ export function compute(limit, opts = {}) {
     try { birthdays(s); } catch (e) { ssWarn(LOG, 'bday', e); }
     const cal = s.data.calendar;
     if (cal?.autoWeather && !cal.weather && modOn('calendar', meta)) cal.weather = pickWeather(cal, `${seed}:w${dayIndex(cal)}`);
-    return { state: s, snaps, lastAI, rest: adj.slice(ai), fresh };
+    for (const [a, p] of slimmed) a.set = { mod: a.set.mod, patch: p };
+    return { state: s, snaps, lastAI, rest: adj.slice(ai), fresh, slimmed: slimmed.length };
+}
+// 옛 채팅(v2.7.6 이하)에 쌓인 연락 · 피드 통째 기록을 한 번 줄인다 → 줄인 개수
+export function slimLegacy(meta = getMeta()) {
+    if (!meta?.base || meta.slim277) return 0;
+    const fat = (meta.adjust ?? []).filter(a => a.set?.data && DELTA_MODS.has(a.set.mod)).length;
+    if (fat < 2) { meta.slim277 = true; return 0; }
+    const r = compute(undefined, { slim: true });
+    meta.slim277 = true;
+    return r?.slimmed ?? 0;
 }
 // ───── 🗑 버리거나 판 물건 (v2.7.3) ─────
 // 창고에서 버린 가구 · 판 물건은 상태창에선 사라져도, AI는 지난 이야기를 보고 「아직 있다」고 여겨 다시 쓰거나 decor로 되살렸다.

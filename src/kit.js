@@ -62,7 +62,7 @@ export function gauge(b, compact = false, dot = '') {
 }
 export function meter(name, v, cls) {
     const pct = (v + 100) / 2;
-    return `<div class="ss-meter ${cls}"><span>${name}</span><div class="ss-meter-t"><b style="left:${Math.min(50, pct)}%;width:${Math.abs(pct - 50)}%"></b></div><em>${v > 0 ? '+' : ''}${v}</em></div>`;
+    return `<div class="ss-meter ${cls}"><span>${esc(name)}</span><div class="ss-meter-t"><b style="left:${Math.min(50, pct)}%;width:${Math.abs(pct - 50)}%"></b></div><em>${v > 0 ? '+' : ''}${v}</em></div>`;
 }
 export function avatar(name, size = '') {
     let h = 0; for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) % 360;
