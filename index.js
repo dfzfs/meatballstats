@@ -70,6 +70,25 @@ function decorateAll() {
         });
     });
 }
+// 번역 확장 등이 답 본문(.mes_text)을 통째로 다시 그리면 칩 자리(.ss-slot)도 같이 지워진다
+// → 지워지는 걸 보면 잠깐 뒤 다시 붙인다 (미트볼이 칩 안쪽만 바꿀 땐 .ss-slot 자체는 안 지워져서 반복되지 않음)
+let slotObs = null, slotTimer = 0;
+function watchSlots() {
+    const chatEl = document.getElementById('chat');
+    if (!chatEl || typeof MutationObserver === 'undefined') return;
+    if (slotObs) { if (slotObs._el === chatEl) return; slotObs.disconnect(); }
+    slotObs = new MutationObserver((muts) => {
+        for (const m of muts) for (const n of m.removedNodes) {
+            if (n.nodeType === 1 && (n.classList.contains('ss-slot') || n.querySelector('.ss-slot'))) {
+                clearTimeout(slotTimer);
+                slotTimer = setTimeout(() => { try { decorateAll(); } catch (e) { ssWarn(LOG, 'decorate', e); } }, 80);
+                return;
+            }
+        }
+    });
+    slotObs._el = chatEl;
+    slotObs.observe(chatEl, { childList: true, subtree: true });
+}
 document.addEventListener('click', async (e) => {
     const star = e.target.closest('.ss-star[data-ss-star]');
     if (star) {
@@ -144,6 +163,7 @@ const CHANGELOG = [
         ['✂️ 세계관 요약은 매 턴 안 보내요', '세계관 요약·규칙은 보통 카드·로어북에 이미 있어서 중복이라 기본으로 뺐어요 (매 턴 최대 1천 자 절약). 칸을 AI로 만들 때는 계속 참고해요. 다시 보내려면 확장 설정 › 「세계관 요약·규칙도 매 턴 보내기」.'],
         ['💞 미니창 관계 칸 고르기', '꾸미기 › 「미니창 · 홈 관계 칸」에서 보일 수치(애정·우정·단계·질투), 순서, 인원, 고정할 사람을 골라요.'],
         ['🔔 알림 눌러서 펼치기', '알림 본문을 누르면 닫히지 않고 펼쳐져서 전체 글이 보여요 (펼친 동안 안 닫힘). 폰에선 손가락을 대고 있으면 멈춰요. 「이것도 아세요?」 팁도 알림함에 남아요.'],
+        ['🌐 번역 확장과 같이 쓰기', '번역 확장이 답을 번역해서 다시 그리면 미트볼 변동 칩이 사라지던 문제를 고쳤어요. 칩이 지워지면 바로 다시 붙여요.'],
         ['🧱 긴 이름 줄바꿈', '가구·소지품 이름이 길면 카드 밖으로 잘리던 문제, 사이드 패널에서 제목이, 창고에서 가구 이름이 한 글자씩 세로로 찌그러지던 문제를 고쳤어요. 창이 좁으면 위쪽 버튼 줄이 제목 아래로 내려가요.'],
     ] },
     { v: '2.7.0', title: '기본 틀 · 긴 채팅 가볍게 · 안정화', items: [
@@ -758,6 +778,7 @@ function init() {
     registerMacros();
     if (settings().autoRegex) installRegex(false);
     try { startViewTr(); } catch (e) { ssWarn(LOG, 'viewtr', e); }
+    try { watchSlots(); } catch (e) { ssWarn(LOG, 'slots', e); }
     const on = (name, fn) => { if (E[name]) eventSource.on(E[name], fn); };
     on('CHAT_CHANGED', onChatChanged);
     on('GENERATION_AFTER_COMMANDS', onBeforeGenerate);
