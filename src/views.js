@@ -354,13 +354,20 @@ const endPtr = (e) => {
 document.addEventListener('pointerup', endPtr);
 document.addEventListener('pointercancel', endPtr);
 document.addEventListener('click', (e) => { const svg = e.target.closest?.('svg.ss-map'); if (svg?._dragged) { e.stopPropagation(); e.preventDefault(); } }, true);
-document.addEventListener('wheel', (e) => {
-    const svg = e.target.closest?.('svg.ss-map'); if (!svg) return;
+// 휠 확대: 문서 전체에 막는(passive:false) 휠 리스너를 걸면 브라우저가 채팅 스크롤마다 JS를 기다려 스크롤이 버벅인다 (v2.7.7)
+// → 지도 위에 마우스가 처음 올라올 때 그 지도에만 건다
+document.addEventListener('pointerover', (e) => {
+    const svg = e.target.closest?.('svg.ss-map'); if (!svg || svg._ssWheel) return;
+    svg._ssWheel = true;
+    svg.addEventListener('wheel', mapWheel, { passive: false });
+}, { passive: true });
+function mapWheel(e) {
+    const svg = e.currentTarget;
     e.preventDefault();
     const r = svg.getBoundingClientRect(), vb = svgBox(svg);
     const cx = vb[0] + ((e.clientX - r.left) / r.width) * vb[2], cy = vb[1] + ((e.clientY - r.top) / r.height) * vb[3];
     keepBox(svg, zoomBox(vb, e.deltaY > 0 ? 1.2 : 1 / 1.2, cx, cy));
-}, { passive: false });
+}
 
 export function sellPrice(s, name) {
     if (!modOn('shop') || !s.data.shop) return 0;

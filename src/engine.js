@@ -1288,6 +1288,7 @@ export function compute(limit, opts = {}) {
     const meta = getMeta();
     if (!meta?.base) return null;
     const chat = c.chat ?? [];
+    adjEvents.clear(); // 편집 기록 알림은 이번 계산 것만 (예전엔 세션 내내 쌓였음)
     const s = freshState(meta.base);
     s.turn = meta.baseTurn ?? 0;
     const snaps = new Map();
