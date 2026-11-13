@@ -1275,8 +1275,13 @@ export function opInfo(s, rawKey) {
     if (!key && s?.data?.wallet && norm(nm) === norm(s.data.wallet.currency)) key = 'cash';
     return { key, mod: key ? KEY_MOD[key] ?? null : null };
 }
+// 답 글이 그대로면 다시 읽지 않는다 (v2.7.9 · 매 계산마다 모든 답의 글을 정규식으로 다시 훑던 것이 계산 시간의 1/3)
+const opsCache = new WeakMap();
 export function msgOps(m) {
-    const ops = extractOps(m.mes);
+    const lg = legacyOn();
+    let hit = opsCache.get(m);
+    if (!hit || hit.mes !== m.mes || hit.lg !== lg) { hit = { mes: m.mes, lg, ops: extractOps(m.mes) }; opsCache.set(m, hit); }
+    const ops = hit.ops.map(o => [...o]);
     const extra = m.extra?.[MODULE]?.bySwipe?.[m.swipe_id ?? 0];
     if (Array.isArray(extra) && !ops.length) ops.push(...extra);
     return ops;
