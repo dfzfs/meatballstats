@@ -183,6 +183,11 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.7', title: '가벼워졌어요 — 연락 · 피드 · 긴 채팅', items: [
+        ['🪶 연락 · 피드 기록', '버튼을 누를 때마다 칸 전체를 통째로 복사하던 것을 바뀐 부분만 적게 바꿨어요. 메신저를 많이 쓰면 채팅 파일이 MB로 커져 저장할 때 멈칫하던 원인이에요.'],
+        ['💬 대화방 50개', '한 사람과의 대화는 최근 50개까지 남겨요 (예전 80). AI에게 가는 건 원래 최근 몇 줄뿐이에요.'],
+        ['🏎 한 턴 계산 줄이기', '생성 직전 계산을 다시 쓰고, 바뀐 게 없으면 변동 칩을 다시 훑지 않아요.'],
+    ] },
     { v: '2.7.6', title: '골라 되돌리기 · 흥정 · 일하기 판정 · 번역 사전 정리', items: [
         ['↩ 골라 되돌리기', '관리 탭 › 되돌리기 › 「편집 기록에서 골라 되돌리기」 — 최근 편집 20개 중 하나만 골라 취소해요. 그 뒤의 편집은 그대로예요.'],
         ['🎲 흥정', '상점 물건 옆 🎲 — 매력 · 화술 같은 능력치로 d20. 대성공 30% · 성공 15% 깎고, 대실패면 10% 올라요. 하루에 물건마다 한 번 (AI 0회).'],
@@ -408,11 +413,18 @@ function removeRegex() {
 let refreshTimer = null;
 // soft = 이벤트로 온 갱신: 채팅·기록·설정이 그대로면 다시 계산하지 않고 화면도 다시 그리지 않는다 (한 턴에 3~4번 오던 중복 계산 줄이기)
 let refreshForce = false, lastFp = '';
-function refresh(force = false) { refreshForce ||= force; if (force) app.redecorate(); clearTimeout(refreshTimer); refreshTimer = setTimeout(() => { const f = refreshForce; refreshForce = false; refreshNow({ soft: !f }); }, 60); }
+function refresh(force = false) { refreshForce ||= force; if (force) { app.redecorate(); lastDom = ''; } clearTimeout(refreshTimer); refreshTimer = setTimeout(() => { const f = refreshForce; refreshForce = false; refreshNow({ soft: !f }); }, 60); }
 function fingerprint() {
     const c = ctx(), chat = c.chat ?? [], last = chat.at(-1), meta = getMeta();
     return [c.getCurrentChatId?.(), chat.length, last?.swipe_id, last?.mes?.length, drawerOps(last ?? {})?.length, meta?.adjust?.length, meta?.adjust?.at(-1)?.t, meta?.startAt, rev.n].join('|');
 }
+let lastDom = '';
+function domSig() {
+    const el = document.getElementById('chat');
+    if (!el) return '';
+    return `${el.childElementCount}|${el.firstElementChild?.getAttribute('mesid')}|${el.lastElementChild?.getAttribute('mesid')}|${set0().msgCard}|${set0().albumOn}|${set0().chipOutside}`;
+}
+const set0 = () => settings();
 function refreshNow({ soft = false } = {}) {
     clearTimeout(refreshTimer);
     let same = false;
@@ -424,7 +436,10 @@ function refreshNow({ soft = false } = {}) {
             if (!same) app.current = compute();
             lastFp = fp;
             try { setInjection(getMeta()?.paused ? null : buildInjection(app.current)); } catch (e) { ssErr(LOG, 'inject', e); }
-            try { decorateAll(); } catch (e) { ssErr(LOG, 'decorate', e); }
+            // v2.7.7: 상태도 그대로 · 화면의 메시지도 그대로면 칩을 다시 훑지 않는다 (긴 채팅에서 갱신마다 모든 답을 돌던 것)
+            const ds = domSig();
+            if (!same || ds !== lastDom) { try { decorateAll(); } catch (e) { ssErr(LOG, 'decorate', e); } }
+            lastDom = ds;
             try { scheduleFill(); checkKorean(); } catch (e) { ssWarn(LOG, 'viewtr', e); }
         }
     } catch (e) { ssErr(LOG, e); }
@@ -856,7 +871,9 @@ async function onBeforeGenerate(type, _opts, dryRun) {
     const last = chat[chat.length - 1];
     if ((type === 'swipe' || type === 'regenerate') && last && !last.is_user) limit = chat.length - 1;
     // 사칭(impersonate)은 유저 글이라 <meatball> 출력 규칙을 빼고 보낸다 (안 빼면 내 메시지에 태그가 붙어 나옴)
-    try { setInjection(buildInjection(compute(limit), { noOutput: type === 'impersonate' })); } catch (e) { ssErr(LOG, e); }
+    // v2.7.7: 방금 계산한 상태가 그대로면 다시 계산하지 않는다 (한 턴에 3번씩 돌던 것 중 하나)
+    const reuse = limit === chat.length && app.current && lastFp && fingerprint() === lastFp;
+    try { setInjection(buildInjection(reuse ? app.current : compute(limit), { noOutput: type === 'impersonate' })); } catch (e) { ssErr(LOG, e); }
 }
 function onGenEnded() { refresh(); } // 바로 앞 렌더에서 이미 계산했으면 건너뜀
 // 서랍: AI 답이 끝나면 <meatball>을 본문에서 떼어 보관
@@ -916,7 +933,7 @@ function onCharRendered(id, type) {
     analyzeMessage(i);
 }
 async function onChatChanged() {
-    ctxReset(); lastFp = ''; app.lastGenSkipped = false;
+    ctxReset(); lastFp = ''; lastDom = ''; app.lastGenSkipped = false;
     notified = new Set();
     pingCounter = 0;
     for (const el of panels) if (el._ss) { el._ss.mode = 'view'; el._ss.ui = {}; el._ss.tab = 'home'; el._ss.group = null; }
