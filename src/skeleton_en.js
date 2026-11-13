@@ -49,6 +49,7 @@ export const SK_EN = {
     '오랜만의 연락': 'Long-Lost Contact', '한동안 연락 없던 누군가에게서 소식이 왔다.': 'Word came from someone you had not heard from in a while.',
     // 관계
     '애정': 'Romance', '우정': 'Friendship',
+    '가까운 사이': 'Close', '특별한 사이': 'Something Special', '고민 털어놓기 · 단둘이 약속': 'share worries · plans just for two', '애칭 · 질투 · 스킨십 조금': 'pet names · jealousy · a little touch',
     '낯선 사이': 'Strangers', '아는 사이': 'Acquaintances', '친구': 'Friends', '단짝': 'Best Friends', '설렘': 'Butterflies', '연인': 'Lovers',
     '이름 부르기': 'call each other by name', '말 편하게 하기 · 사적인 연락': 'casual speech · personal messages', '고민 털어놓기 · 단둘이 약속 · 비밀 나누기': 'share worries · plans just for two · share secrets',
     '서로 의식하기 · 애칭 · 질투 · 스킨십 조금': 'aware of each other · pet names · jealousy · a little touch', '고백 이후 · 연인다운 행동': 'after a confession · acting like lovers',

@@ -26,12 +26,17 @@ function glossary(extra) {
 
 // ───── 번역 지침 (v2.6) ─────
 const rulesText = () => String(settings().trRules ?? '').trim();
-const llmRules = () => (rulesText() ? `\n\nExtra rules from the user (follow them exactly):\n${rulesText()}` : '');
+const llmRules = () => { const lk = lockedPairs(); return (rulesText() ? `\n\nExtra rules from the user (follow them exactly):\n${rulesText()}` : '') + (lk.length ? `\n\nFixed translations (always use exactly these): ${lk.map(([a, b]) => `${a} = ${b}`).join('; ')}` : ''); };
 // 「원문 = 번역」 · 「원문 -> 번역」 · 「원문 → 번역」 줄 → 이름·용어 고정
+// 📌 「번역 고치기」로 고정한 이름 (이 채팅 · 40자 이하 = 이름 · 낱말) — 지침의 「원문 = 번역」처럼 새 글을 번역할 때도 미리 바꿔 넣는다 (v2.7.2)
+export const lockedPairs = () => { try { const m = getMeta(); const d = m?.tr ?? {}; return Object.keys(m?.trLock ?? {}).filter(en => en.length <= 40 && d[en]).map(en => [en, d[en]]); } catch { return []; } };
 export function rulePairs() {
-    return rulesText().split(/\r?\n/).map(l => l.match(/^\s*(.+?)\s*(?:=|->|→)\s*(.+?)\s*$/)).filter(Boolean).map(m => [m[1], m[2]]).filter(([a]) => /[A-Za-z]/.test(a)).sort((a, b) => b[0].length - a[0].length);
+    const base = rulesText().split(/\r?\n/).map(l => l.match(/^\s*(.+?)\s*(?:=|->|→)\s*(.+?)\s*$/)).filter(Boolean).map(m => [m[1], m[2]]).filter(([a]) => /[A-Za-z]/.test(a)).sort((a, b) => b[0].length - a[0].length);
+    return [...new Map([...base, ...lockedPairs()])].sort((a, b) => b[0].length - a[0].length); // 이 채팅에서 고정한 게 이김
 }
-const preSub = (text, rev = false) => { let t = String(text); for (const [a, b] of rulePairs()) t = rev ? t.split(b).join(a) : t.split(a).join(b); return t; };
+// 번역기에 보내기 전에 「원문 = 번역」 · 고정한 이름을 미리 바꿔 넣기 — 영어 쪽은 낱말 통째로만 (「Law」가 「Lawyer」 안에서 바뀌지 않게)
+const wordRe = (w) => new RegExp(`(^|[^A-Za-z])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z])`, 'g');
+const preSub = (text, rev = false) => { let t = String(text); for (const [a, b] of rulePairs()) t = rev ? t.split(b).join(a) : t.replace(wordRe(a), (m0, pre) => pre + b); return t; };
 
 // ───── 실리 기본 번역 (Chat Translation 확장의 translate()) ─────
 const engineST = () => settings().trEngine === 'st';
@@ -167,34 +172,50 @@ const hasLatin = (x) => /[A-Za-z]/.test(x);
 app.addTrPairs = (p) => addPairs(p);
 // ───── 🌐 번역 고치기 (v2.7.2): 화면에 보이는 한국어가 이상할 때 직접 고친다 (토큰 0 · 이 채팅만) ─────
 // 고친 짝은 잠가서 자동 번역이 다시 덮어쓰지 않고, 이름을 고치면 그 이름이 든 다른 번역 문장 속 옛 이름도 같이 바꾼다
-export async function openTrFix(data, title = '') {
+export async function openTrFix(only = null) {
     const meta = getMeta(true); if (!meta) return;
+    const st = app.current?.state; if (!st && !only) return;
     const d = (meta.tr ??= {}), lock = (meta.trLock ??= {});
-    const strs = [...new Set([...leaves(data)])].filter(s => /[A-Za-z]/.test(s) && s.trim().length >= 2 && s.length <= 200).map(s => s.trim());
-    const list = [...new Set(strs)].sort((a, b) => a.length - b.length).slice(0, 200); // 짧은 것(이름)부터
+    // 상태창 전체(켜진 칸 모두)의 영어 글 · 짧은 것(이름)부터 · 고정한 것 맨 위
+    const srcs = only ? [only] : [st.core, ...MOD_IDS.filter(id => modOn(id, meta) && st.data[id]).map(id => st.data[id])];
+    const all = [...new Set(srcs.flatMap(o => [...leaves(o)]).map(x => x.trim()).filter(x => /[A-Za-z]/.test(x) && x.length >= 2 && x.length <= 300))]
+        .sort((a, b) => (lock[b] ? 1 : 0) - (lock[a] ? 1 : 0) || a.length - b.length);
+    const edits = new Map(); // en → 새 한국어 (목록을 다시 그려도 고친 게 남게)
     const el = document.createElement('div');
     el.className = 'ss-root ss-scope ss-trfix ss-notr';
-    el.innerHTML = `<div class="ss-wz-head"><i class="fa-solid fa-language"></i><div><b>번역 고치기${title ? ` — ${esc(title)}` : ''}</b><small>왼쪽은 저장된 영어 · 오른쪽 칸을 고치면 화면에 그렇게 보여요 (AI 0회 · 이 채팅만)</small></div></div>
-        <input class="ss-in ss-trf-q" placeholder="찾기 (영어나 한국어)">
-        <div class="ss-trf-list">${list.map(en => `<label class="ss-trf-row" data-s="${esc((en + ' ' + (d[en] ?? '')).toLowerCase())}"><small>${esc(en)}${lock[en] ? ' <b class="ss-trf-lock">고침</b>' : ''}</small><input class="ss-in" data-en="${esc(en)}" value="${esc(d[en] ?? '')}" placeholder="(아직 번역 없음 — 비워 두면 자동)"></label>`).join('') || '<p class="ss-hint">이 칸에는 고칠 영어 글이 없어요.</p>'}</div>
-        <p class="ss-hint">이름을 고치면 그 이름이 들어간 다른 문장 번역 속 옛 이름도 같이 바뀌어요. 칸을 비우면 자동 번역으로 되돌아가요.</p>`;
-    el.querySelector('.ss-trf-q').addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase(); el.querySelectorAll('.ss-trf-row').forEach(r => { r.style.display = !q || r.dataset.s.includes(q) ? '' : 'none'; }); });
+    el.innerHTML = `<div class="ss-wz-head"><i class="fa-solid fa-language"></i><div><b>🌐 번역 고치기</b><small>상태창 전체 · 고친 건 📌 고정 — 모든 탭과 앞으로 새로 생기는 글에도 그대로 (AI 0회)</small></div></div>
+        <div class="ss-inline"><input class="ss-in ss-trf-q" placeholder="찾기 — 영어나 한국어 (예: Law, 트라팔가)"><label class="ss-tog sm"><input type="checkbox" class="ss-switch ss-trf-pin"><span>📌 고정만</span></label></div>
+        <small class="ss-hint ss-trf-n"></small>
+        <div class="ss-trf-list"></div>
+        <p class="ss-hint">왼쪽은 저장된 영어, 칸에 적은 한국어가 화면에 보여요. 이름을 고치면 그 이름이 든 다른 문장 번역도 같이 바뀌고, 새 글을 번역할 때도 그 이름으로 넣어요. 칸을 비우면 고정이 풀리고 자동 번역으로 돌아가요.</p>`;
+    const listEl = el.querySelector('.ss-trf-list'), qEl = el.querySelector('.ss-trf-q'), pinEl = el.querySelector('.ss-trf-pin'), nEl = el.querySelector('.ss-trf-n');
+    const val = (en) => (edits.has(en) ? edits.get(en) : d[en] ?? '');
+    const draw = () => {
+        const q = qEl.value.trim().toLowerCase();
+        const hits = all.filter(en => (!pinEl.checked || lock[en]) && (!q || en.toLowerCase().includes(q) || String(val(en)).toLowerCase().includes(q)));
+        const shown = hits.slice(0, 150); // 한 번에 150줄까지 (찾기로 좁혀요)
+        nEl.textContent = `${hits.length}개${hits.length > shown.length ? ` 중 ${shown.length}개 보임 — 찾기로 좁혀 보세요` : ''}`;
+        listEl.innerHTML = shown.map(en => `<label class="ss-trf-row"><small>${lock[en] ? '<b class="ss-trf-lock">📌</b> ' : ''}${esc(en)}</small><input class="ss-in" data-en="${esc(en)}" value="${esc(val(en))}" placeholder="(아직 번역 없음 — 비워 두면 자동)"></label>`).join('') || '<p class="ss-hint">찾는 글이 없어요.</p>';
+    };
+    listEl.addEventListener('input', (e) => { const en = e.target.dataset?.en; if (en !== undefined) edits.set(en, e.target.value.trim()); });
+    qEl.addEventListener('input', draw); pinEl.addEventListener('change', draw);
+    draw();
     const ok = await app.popup(el, { okButton: '저장', cancelButton: '취소', large: true });
-    if (!ok) return;
+    if (!ok || !edits.size) return;
     let n = 0;
-    for (const inp of el.querySelectorAll('[data-en]')) {
-        const en = inp.dataset.en, ko = inp.value.trim(), old = d[en] ?? '';
-        if (ko === inp.defaultValue.trim()) continue; // 내가 안 건드린 칸 (위에서 이름을 고쳐 문장이 바뀌었어도 그대로 둠)
+    for (const [en, ko] of edits) {
+        const old = d[en] ?? '';
+        if (ko === old) continue;
         n++;
         if (!ko) { delete d[en]; delete lock[en]; continue; }
         d[en] = ko; lock[en] = true;
-        if (old && en.length <= 40) for (const [k, v] of Object.entries(d)) if (k !== en && k.includes(en) && typeof v === 'string' && v.includes(old)) d[k] = v.split(old).join(ko);
+        if (old && en.length <= 40) for (const [k, v] of Object.entries(d)) if (k !== en && !edits.has(k) && (k.includes(en) || old.length >= 4) && typeof v === 'string' && v.includes(old)) d[k] = v.split(old).join(ko); // 옛 이름이 4글자 이상이면 원문에 이름이 없어도 (번역기가 넣은 경우) // 이 이름이 든 다른 문장도
     }
     if (!n) return;
     trVer++; memo.clear();
     await saveMeta();
-    app.rerenderPanels?.(true); translateView();
-    toastr.success(`번역 ${n}개를 고쳤어요.`, TITLE);
+    app.rerenderPanels?.(true); translateView(); app.renderHud?.();
+    toastr.success(`번역 ${n}개를 고쳐서 고정했어요.`, TITLE);
 }
 app.openTrFix = openTrFix; // 기본 틀 영어판이 화면 번역 짝을 넣을 때 (skeleton.js → 순환 import 없이)
 export function addPairs(pairs) {
