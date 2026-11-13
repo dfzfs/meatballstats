@@ -33,7 +33,7 @@ export function walletView(s, d, ui) {
             <div class="ss-row-btns"><button class="ss-btn sm" data-act="cashedit"><i class="fa-solid fa-pen"></i> 수정</button><button class="ss-btn sm ghost" data-act="mcur" title="화폐 · 환율"><i class="fa-solid fa-money-bill-transfer"></i></button></div></div>
         ${mul !== 1 ? `<div class="ss-callout warn"><i class="fa-solid fa-hat-wizard"></i><div><b>물가 ${mul > 1 ? '+' : ''}${Math.round((mul - 1) * 100)}%</b><span>저주·축복 때문에 상점 가격이 달라요</span></div></div>` : ''}
         ${sec(`소지품 <small>${d.items.length}</small>`, `<div class="ss-stack">${d.items.map(i => `<div class="ss-item"><div class="ss-item-b"><b>${esc(i.name)}${i.qty > 1 ? ` <em>×${i.qty}</em>` : ''}</b>${i.desc ? `<small>${esc(i.desc)}</small>` : ''}${i.effect ? `<small class="ss-eff"><i class="fa-solid fa-wand-sparkles"></i> ${esc(i.effect)}</small>` : ''}</div>
-            <div class="ss-item-a"><button class="ss-btn sm" data-act="${i.effect ? 'useitem' : 'use'}" data-arg="${esc(i.name)}">사용</button>${app.sellPrice?.(s, i.name) ? `<button class="ss-btn sm ghost" data-act="sell" data-arg="${esc(i.name)}">판매 ${fmtNum(app.sellPrice(s, i.name))}</button>` : ''}<button class="ss-ib" data-act="dec" data-arg="${esc(i.name)}" title="하나 버리기"><i class="fa-solid fa-minus"></i></button></div></div>`).join('') || emptyBox('소지품이 없어요', 'fa-box-open')}</div>`)}
+            <div class="ss-item-a"><button class="ss-btn sm" data-act="${i.effect ? 'useitem' : 'use'}" data-arg="${esc(i.name)}">사용</button>${modOn('home') && s.data.home ? `<button class="ss-ib" data-act="tostore" data-arg="${esc(i.name)}" title="창고로 옮기기 (1개)">📦</button>` : ''}${app.sellPrice?.(s, i.name) ? `<button class="ss-btn sm ghost" data-act="sell" data-arg="${esc(i.name)}">판매 ${fmtNum(app.sellPrice(s, i.name))}</button>` : ''}<button class="ss-ib" data-act="dec" data-arg="${esc(i.name)}" title="하나 버리기"><i class="fa-solid fa-minus"></i></button></div></div>`).join('') || emptyBox('소지품이 없어요', 'fa-box-open')}</div>`)}
         ${sec('물가', `<div class="ss-ask"><input class="ss-in ss-price-q" placeholder="이 세계에서 ○○ 사려면 얼마?" value="${esc(ui.priceQ ?? '')}"><button class="ss-btn" data-act="mprice">${ai1} 묻기</button></div>
             ${ui.priceA ? `<div class="ss-card ss-answer"><p class="ss-pre">${esc(ui.priceA.text)}</p>${ui.priceA.item && ui.priceA.price ? `<button class="ss-btn sm ghost" data-act="mpriceadd"><i class="fa-solid fa-plus"></i> 물가표에 「${esc(ui.priceA.item)} ${fmtNum(ui.priceA.price)}」 추가</button>` : ''}</div>` : ''}
             ${d.prices.length ? `<div class="ss-prices">${d.prices.map(p => `<div><span>${esc(p.name)}</span><b>${fmtNum(p.price)}</b>${fxText(d, p.price) ? `<small>${esc(fxText(d, p.price))}</small>` : ''}</div>`).join('')}</div>` : '<p class="ss-hint">물가표가 비어 있어요. ✏️ 편집이나 ✨ AI로 수정에서 채울 수 있어요.</p>'}`)}
@@ -49,6 +49,7 @@ export function walletView(s, d, ui) {
 
 const curState = () => app.current?.state;
 export const MONEY_ACTIONS = {
+    tostore: (el, arg) => addAdjust({ ops: [['_tostore', arg]], label: `${arg}을(를) 창고에 넣었다` }),
     useitem: (el, arg, btn, s) => {
         const it = findBy(s.data.wallet.items, arg); if (!it) return;
         return addAdjust({ ops: [['_effect', it.effect], ['item', `-${it.name} 1|`]], // | 를 붙여야 이름 속 쉼표·빗금으로 나뉘지 않음
