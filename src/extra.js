@@ -1,7 +1,8 @@
 // v2.5 화면: SNS · 추천 음악 · 내 탭 · 추억 앨범 · 플레이 기록 · 검색 · 속마음 · 엔딩 · 모델 맞춤 설정
 import { app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, esc, short, clone, clamp, num, fmtNum, signed, uid, findBy, norm, stamp, userName, TITLE, LOG, MOD, dayIndex, msgText, DEFAULT_STAGES } from './core.js';
 import { loveIndex, ensureLove, relAxes, romanceStart } from './core.js';
-import { addAdjust, commit, stageIndex, stripStatus } from './engine.js';
+import { addAdjust, commit, stageIndex, stripStatus, isFresh } from './engine.js';
+const FRESH_I = '<i class="ss-fresh" title="방금 AI 답에서 바뀌었어요"></i>';
 import { newSns, snsReactions, musicPicks, peekMind, fillWants } from './ai.js';
 import { sec, emptyBox, chip, avatar, ai1, seg, gauge, meter, askInput, askConfirm, busyBtn, insertInput, closeIfPopup, mascot } from './kit.js';
 import { MUSIC_APPS, songLink } from './notify.js';
@@ -129,8 +130,8 @@ export function relView(s, d, ui) {
         const k = clamp(r.stage ?? stageIndex(st, r.aff, r.trust), 0, st.length - 1);
         const g = st[k], rs = r.noLove ? romanceStart(d) : -1, nx = rs > 0 && k + 1 >= rs ? null : st[k + 1]; // 애정 꺼 둔 사람은 연애 단계를 다음 목표로 안 보여 줌
         const need = nx ? [r.aff < nx.at ? `${AX.aff} ${nx.at - r.aff}` : '', r.trust < nx.trust ? `${AX.trust} ${nx.trust - r.trust}` : ''].filter(Boolean).join(' · ') : '';
-        return `<div class="ss-card ss-relc"><div class="ss-relc-h">${avatar(r.name)}<div class="ss-ct-b"><b>${esc(r.name)} <span class="ss-stage s${k}">${esc(g.name)}</span>${set.romBond && r.bond && k < (L < 0 ? Infinity : L) ? ' <span class="ss-stage love">💞 연인</span>' : ''}</b>${r.label ? `<small>${esc(r.label)}</small>` : ''}</div>
-            <button class="ss-ib" data-act="peek" data-arg="${esc(r.name)}" title="속마음 엿보기 (AI 1회${set.peekPerDay ? ` · 오늘 ${left}번 남음` : ''})" ${set.peekPerDay && left <= 0 ? 'disabled' : ''}><i class="fa-solid fa-heart-circle-question"></i></button>
+        return `<div class="ss-card ss-relc"><div class="ss-relc-h">${avatar(r.name)}<div class="ss-ct-b"><b>${isFresh(app.current?.fresh, 'rel', 'user', r.name) ? FRESH_I : ''}${esc(r.name)} <span class="ss-stage s${k}">${esc(g.name)}</span>${set.romBond && r.bond && k < (L < 0 ? Infinity : L) ? ' <span class="ss-stage love">💞 연인</span>' : ''}</b>${r.label ? `<small>${esc(r.label)}</small>` : ''}</div>
+            ${set.peekOn !== false ? `<button class="ss-ib" data-act="peek" data-arg="${esc(r.name)}" title="속마음 엿보기 (AI 1회${set.peekPerDay ? ` · 오늘 ${left}번 남음` : ''})" ${set.peekPerDay && left <= 0 ? 'disabled' : ''}><i class="fa-solid fa-heart-circle-question"></i></button>` : ''}
             ${modOn('contact') ? `<button class="ss-ib" data-act="talk" data-arg="${esc(r.name)}" title="연락"><i class="fa-solid fa-envelope"></i></button>` : ''}
             <button class="ss-ib ss-nolove ${r.noLove ? 'on' : ''}" data-act="${r.noLove ? 'love' : 'nolove'}" data-arg="${esc(r.name)}" title="${r.noLove ? `💗 ${esc(AX.aff)} 다시 켜기` : `💗 ${esc(AX.aff)} 꺼 두기 — 이 사람은 우정만 (연애 없음)`}"><i class="fa-solid ${r.noLove ? 'fa-heart-crack' : 'fa-heart'}"></i></button></div>
             ${r.noLove ? `<div class="ss-meter love off"><span>${esc(AX.aff)}</span><div class="ss-meter-t"></div><em>꺼 둠</em></div>` : meter(AX.aff, r.aff, 'love')}${meter(AX.trust, r.trust, 'trust')}${set.jealousy && r.jealous ? `<div class="ss-meter jealous"><span>질투</span><div class="ss-meter-t"><b style="left:0;width:${r.jealous}%"></b></div><em>${r.jealous}</em></div>` : ''}
@@ -188,7 +189,7 @@ export const REL_ACTIONS = {
             const box = document.createElement('div');
             box.className = 'ss-root ss-scope ss-peek';
             box.innerHTML = `<div class="ss-wz-head"><i class="fa-solid fa-heart-circle-question"></i><div><b>${esc(arg)}의 속마음</b><small>${esc(stamp(s))} · ${esc(arg)}은(는) 모르는 일이에요</small></div></div><blockquote class="ss-pre">${esc(text)}</blockquote>
-                <div class="ss-row-btns"><button class="ss-btn sm" data-save="1"><i class="fa-regular fa-star"></i> 앨범에 저장</button></div>`;
+                ${settings().albumOn !== false ? '<div class="ss-row-btns"><button class="ss-btn sm" data-save="1"><i class="fa-regular fa-star"></i> 앨범에 저장</button></div>' : ''}`;
             box.addEventListener('click', async (e) => { const b = e.target.closest('[data-save]'); if (!b) return; await addAlbum({ kind: 'peek', who: arg, text, when: stamp(s), here: s.data.map?.here ?? '' }); b.disabled = true; b.innerHTML = '<i class="fa-solid fa-star"></i> 저장했어요'; });
             await app.popup(box);
         } catch (e) { toastr.error(`엿보지 못했어요: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
@@ -320,7 +321,7 @@ export function searchAll(s, q) {
     for (const sh of d.shop?.shops ?? []) for (const i of sh.items) if (hit(i.name)) add('🏪', `${sh.name} · ${i.name}`, `${fmtNum(i.price)} — ${i.desc}`, 'shop');
     for (const e of d.calendar?.events ?? []) if (hit(e.title)) add('📅', e.title, `${e.m}/${e.d} ${e.desc}`, 'calendar');
     for (const t of d.custom?.tabs ?? []) for (const f of t.fields) if (hit(f.k) || hit(f.v)) add(t.icon, `${t.name} · ${f.k}`, String(f.v), 'custom');
-    for (const a of getMeta()?.album ?? []) if (hit(a.text) || hit(a.note)) add('⭐', a.who, a.text, 'album');
+    if (settings().albumOn !== false) for (const a of getMeta()?.album ?? []) if (hit(a.text) || hit(a.note)) add('⭐', a.who, a.text, 'album');
     return out;
 }
 export async function openSearch() {

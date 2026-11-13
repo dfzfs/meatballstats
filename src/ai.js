@@ -121,6 +121,8 @@ export async function analyzeMessage(idx) {
     if (!r) return;
     // 분석하는 동안 스와이프·다시 생성·편집되면 엉뚱한 답에 기록이 붙지 않게 (시작할 때의 답을 기억)
     const sid = m.swipe_id ?? 0, mes0 = m.mes;
+    const pk = `${idx}:${sid}`;
+    (app.pipState ??= new Map()).set(pk, 'running'); app.decorate?.(); // 🔍 칩 점검이 「분석 중」을 알 수 있게 (v2.7.3)
     const prevUser = [...c.chat.slice(0, idx)].reverse().find(x => x.is_user);
     const inj = buildInjection(r, { noOutput: true, full: true });
     const prompt = `${inj.main}\n${inj.people}\n\nKeys: ${tagKeysFor(getMeta()).join(' · ')}\n\n=== {{user}} ===\n${short(prevUser?.mes ?? '', 1500)}\n\n=== REPLY ===\n${short(stripStatus(m.mes), 4000)}`;
@@ -133,10 +135,12 @@ export async function analyzeMessage(idx) {
         m.extra[MODULE] ??= { bySwipe: {} };
         m.extra[MODULE].bySwipe ??= {};
         m.extra[MODULE].bySwipe[sid] = ops;
+        app.pipState.set(pk, ops.length ? 'done' : 'empty');
         await (c.saveChat?.() ?? c.saveChatDebounced?.());
         app.refreshNow?.();
         app.notifyLatest?.();
-    } catch (e) { ssWarn(LOG, 'analyze failed', e); }
+        return ops.length;
+    } catch (e) { ssWarn(LOG, 'analyze failed', e); app.pipState.set(pk, `failed:${String(e?.message ?? e).slice(0, 120)}`); app.redecorate?.(); app.decorate?.(); return -1; }
 }
 
 // 그 인물에 대해 알고 있는 것
@@ -212,6 +216,7 @@ async function freshItems(mod, feature, state, extra = '') {
         `=== RECENT STORY ===\n${recentChat(Math.min(settings().recentForGen, 16)) || '(none)'}`,
         `=== PLAY STYLE ===\n${playLine()}`,
         `=== EXISTING (don't repeat) ===\n${JSON.stringify(cur ?? {}).slice(0, 3000)}`,
+        mod === 'quest' && state.data.stats?.attrs?.length ? `=== {{user}}'S ATTRIBUTES (use one of these exact names in check.attr, or leave it empty) ===\n${state.data.stats.attrs.map(a => a.name).join(', ')}\ncheck.dc: 8 easy · 12 normal · 15 hard · 18 very hard` : '',
         extra,
         `=== TASK ===\n${P(`gen.${mod}`, { difficulty: diffLine() })}\nReturn ONLY new entries.`,
         `=== OUTPUT JSON SHAPE ===\n${SCHEMA[mod]}`,

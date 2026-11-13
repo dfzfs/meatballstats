@@ -62,7 +62,8 @@ async function stMany(list, rev = false) {
     const one = async (b) => {
         let lines = null;
         try { lines = (await stTranslate(b.map(flat).join('\n'), rev)).split(/\r?\n/).map(x => x.trim()).filter(Boolean); } catch (e) { ssWarn(LOG, 'st batch', e); }
-        if (lines && lines.length === b.length) b.forEach((s, i) => out.set(s, lines[i]));
+        const back = (s, x) => (/\r?\n/.test(s) ? x.replace(/\s*\/\s*/g, '\n') : x); // 줄바꿈을 「 / 」로 보냈던 글은 되돌린다 (v2.7.3)
+        if (lines && lines.length === b.length) b.forEach((s, i) => out.set(s, back(s, lines[i])));
         else await Promise.all(b.map(async (s) => { try { out.set(s, (await stTranslate(s, rev)).trim()); } catch (e) { ssWarn(LOG, 'st one', e); } }));
     };
     // v2.7.2: 묶음을 3개씩 동시에 (예전엔 하나씩 차례로라 느렸음)
@@ -71,11 +72,15 @@ async function stMany(list, rev = false) {
     return out;
 }
 // 코드 값(상태·종류·id 같은 것)은 번역하면 안 된다
-const CODE_KEYS = new Set(['id', 'kind', 'role', 'status', 'mode', 'type', 'cls', 'repeat', 'by', 'from', 'icon', 'color', 'unit', 'every', 'key', 'currencyCode', 'contact', 'play']);
+const CODE_KEYS = new Set(['id', 'kind', 'role', 'status', 'mode', 'type', 'cls', 'repeat', 'by', 'from', 'icon', 'color', 'unit', 'every', 'key', 'currencyCode', 'contact', 'play', 'system', 'sys', 'judge', 'genre', 'sort', 'show', 'pick', 'mesid', 'chatId', 'seed', 'url', 'link', 'src', 'img', 'avatar', 'handle']);
+// 이름 모를 칸에 든 값이 코드인지: 예전엔 「소문자 한 낱말」을 모두 코드로 봐서 bread · rope · lantern 같은 소지품 이름이 영어로 남았어요 (v2.7.3)
+// → 이제 밑줄 · 하이픈 · 숫자가 섞인 것과, 미트볼이 쓰는 정해진 코드 값만 코드로 봐요
+const CODE_VALS = new Set(['open', 'active', 'done', 'failed', 'user', 'main', 'npc', 'minimal', 'detailed', 'phone', 'instant', 'letter', 'curse', 'bless', 'luck', 'bad', 'event', 'yearly', 'once', 'day', 'week', 'month', 'num', 'bar', 'text', 'ai', 'me', 'them', 'deco', 'item', 'mes', 'peek', 'song', 'auto', 'pinned', 'summary', 'off', 'on', 'true', 'false', 'none', 'rp', 'multi', 'director', 'easy', 'normal', 'hard', 'crit', 'ok', 'fail', 'fumble', 'info', 'bank', 'loan', 'pawn', 'shark', 'paid', 'late', 'tag', 'kw', 'always', 'aff', 'trust', 'stage', 'jealous', 'up', 'down', 'neg', 'pos', 'hi', 'warn', 'free', 'st', 'llm', 'ko', 'en', 'enview']);
+const codeLike = (v) => { const t = v.trim(); return /^[a-z0-9_\-]{1,14}$/.test(t) && (/[_\-\d]/.test(t) || CODE_VALS.has(t)); };
 // rev = 한국어 → 영어 (옛 번역본을 영어 저장으로 바꿀 때): 한글이 든 칸만
 // SNS 아이디 · 핸들(@luffy, mugiwara_luffy, law.d.water 같은 것)은 이름이 아니라 번역하지 않는다 (v2.7.2)
 const HANDLE = (v) => /^@?[A-Za-z0-9_.]{2,30}$/.test(v.trim()) && (v.trim().startsWith('@') || /[_.\d]/.test(v));
-const isCode = (k, v, rev = false) => CODE_KEYS.has(k) || (rev ? !/[가-힣]/.test(v) : (/^[a-z0-9_\-]{1,14}$/.test(v) || !/[A-Za-z]/.test(v) || HANDLE(v)));
+const isCode = (k, v, rev = false) => CODE_KEYS.has(k) || (rev ? !/[가-힣]/.test(v) : (codeLike(v) || !/[A-Za-z]/.test(v) || HANDLE(v)));
 function leaves(o, acc = new Set(), k = '', rev = false) {
     if (typeof o === 'string') { if (o.trim() && !isCode(k, o, rev)) acc.add(o); return acc; }
     if (Array.isArray(o)) { for (const v of o) leaves(v, acc, k, rev); return acc; }
@@ -90,10 +95,10 @@ function rebuild(o, map, k = '', rev = false) {
 }
 export const hasHangul = (o) => leaves(o, new Set(), '', true).size > 0;
 // 번역 결과를 원본 모양에 덮어씌운다: 숫자·참거짓·빠진 칸은 원본 그대로, 같은 자리의 글자만 바꾼다 (모델이 칸을 빼먹어도 데이터가 안 사라짐)
-export function overlay(orig, out, k = '') {
-    if (typeof orig === 'string') return typeof out === 'string' && out.trim() && !isCode(k, orig, true) ? out : orig;
-    if (Array.isArray(orig)) return orig.map((v, i) => overlay(v, Array.isArray(out) ? out[i] : undefined, k));
-    if (orig && typeof orig === 'object') return Object.fromEntries(Object.entries(orig).map(([kk, v]) => [kk, overlay(v, out && typeof out === 'object' ? out[kk] : undefined, kk)]));
+export function overlay(orig, out, k = '', rev = true) {
+    if (typeof orig === 'string') return typeof out === 'string' && out.trim() && !isCode(k, orig, rev) ? out : orig;
+    if (Array.isArray(orig)) return orig.map((v, i) => overlay(v, Array.isArray(out) ? out[i] : undefined, k, rev));
+    if (orig && typeof orig === 'object') return Object.fromEntries(Object.entries(orig).map(([kk, v]) => [kk, overlay(v, out && typeof out === 'object' ? out[kk] : undefined, kk, rev)]));
     return orig;
 }
 // 영어 → 원본으로 짝지을 때, 원본에서 한글이 든 칸만
@@ -146,7 +151,8 @@ export async function trJSON(obj, extra) {
     const src = JSON.stringify(obj);
     try {
         const out = await aiGenerate('translate', P('ai.translate', { lang: set.trLang || '한국어', glossary: glossary(extra) }) + llmRules(), src, Math.min(16000, Math.max(1000, Math.ceil(src.length * 1.3))), trOpts());
-        return parseJSON(out);
+        // v2.7.3: 원본 모양에 덮어씌운다 — 번역 모델이 칸을 빼먹거나 숫자 · id · 상태 코드를 바꿔도 데이터가 안 망가지게 (「영어로 생성 → 번역본 저장」은 이 결과를 그대로 저장해요)
+        return overlay(obj, parseJSON(out), '', false);
     } catch (e) {
         ssWarn(LOG, 'translate json', e);
         toastr.warning(`번역하지 못해 원문으로 둬요: ${esc(e.message)}`, TITLE);
@@ -282,10 +288,13 @@ const SKIP = 'input, textarea, select, option, script, style, code, pre, .ss-pw,
 let sorted = { d: null, n: -1, ver: -1, list: [] };
 const memo = new Map(); // 같은 글자는 한 번만 계산 (상태창을 다시 그릴 때마다 사전 전체를 돌지 않게)
 function entries(d) {
+    // 사전이 바뀌는 곳(addPairs · 번역 고치기)은 모두 trVer를 올려요 → 글자마다 Object.keys(사전)을 세던 것 빼기 (사전이 크면 화면 번역이 느렸던 원인 · v2.7.3)
+    if (sorted.d === d && sorted.ver === trVer) return sorted.list;
     const n = Object.keys(d).length;
     if (sorted.d !== d || sorted.n !== n || sorted.ver !== trVer) {
         // (^|글자 아님)단어(?!글자) — 뒤돌아보기(lookbehind)는 구형 사파리에서 오류라 쓰지 않는다
-        sorted = { d, n, ver: trVer, list: Object.entries(d).filter(([e]) => e.length >= 3).sort((a, b) => b[0].length - a[0].length).map(([e, k]) => [e, k, new RegExp(`(^|[^A-Za-z])${e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z])`, 'g')]) };
+        // 글 속에서 바꿔 끼우는 건 이름 · 낱말(3~40자)만 — 긴 문장까지 넣으면 사전이 클 때 글마다 수천 번 훑어 화면이 느려졌어요 (v2.7.3)
+        sorted = { d, n, ver: trVer, list: Object.entries(d).filter(([e]) => e.length >= 3 && e.length <= 40).sort((a, b) => b[0].length - a[0].length).map(([e, k]) => [e, k, new RegExp(`(^|[^A-Za-z])${e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z])`, 'g')]) };
         memo.clear();
     }
     return sorted.list;
@@ -293,7 +302,7 @@ function entries(d) {
 // 화면에서 「…」로 잘린 글(short())은 사전의 원문과 안 맞아서 영어로 남았음 → 앞부분이 같은 원문을 찾아 그 번역을 같은 길이쯤으로 잘라 보여 준다 (v2.7.2)
 let prefixIdx = { d: null, ver: -1, n: -1, m: null };
 function prefixHit(d, pre) {
-    if (prefixIdx.d !== d || prefixIdx.ver !== trVer || prefixIdx.n !== Object.keys(d).length) {
+    if (prefixIdx.d !== d || prefixIdx.ver !== trVer) {
         const m = new Map();
         for (const key of Object.keys(d)) { if (key.length < 12) continue; const h = key.slice(0, 10); (m.get(h) ?? m.set(h, []).get(h)).push(key); }
         prefixIdx = { d, ver: trVer, n: Object.keys(d).length, m };
@@ -362,7 +371,12 @@ export function startViewTr() {
     observer = new MutationObserver((muts) => {
         const d = trDict();
         if (!d) return;
-        for (const m of muts) for (const n of m.addedNodes) walk(n, d);
+        for (const m of muts) {
+            // 본편 메시지 글이 바뀐 것(스트리밍 · 다른 확장)은 미트볼 칩이 아니면 건너뛴다 — 답을 쓰는 동안 글자마다 훑던 것 (v2.7.3)
+            const t = m.target;
+            if (t?.nodeType === 1 && t.closest?.('.mes_text') && !t.closest('.ss-slot, .ss-msgcard')) { let mine = false; for (const n of m.addedNodes) if (n.nodeType === 1 && (n.classList?.contains('ss-slot') || n.querySelector?.('.ss-slot, .ss-msgcard'))) { mine = true; break; } if (!mine) continue; }
+            for (const n of m.addedNodes) walk(n, d);
+        }
     });
     observer.observe(document.body, { childList: true, subtree: true });
 }

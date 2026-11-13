@@ -1,6 +1,6 @@
 // 🐱 미트볼 도우미: 모르는 기능을 물어보는 작은 챗창 (v2.6)
 // v2.7.1: 먼저 README를 읽고 AI 없이 바로 답한다 (토큰 0) · 「왜 안 돼요?」는 지금 설정을 직접 확인 · 부족할 때만 「AI에게 더 물어보기」
-import { app, settings, saveSettings, getMeta, modOn, MODS, esc, TITLE, LOG, VERSION, ssWarn, isActive } from './core.js';
+import { app, settings, saveSettings, getMeta, modOn, MODS, esc, short, TITLE, LOG, VERSION, ssWarn, isActive } from './core.js';
 import { parseReadme, search, intentOf, sectionHtml, versionsOf } from './helpkb.js';
 import { P, aiGenerate, listProfiles } from './prompts.js';
 import { popup, mascot } from './kit.js';
@@ -23,7 +23,8 @@ HOW THE STORY UPDATES THE SHEET (setting 「스토리 → 상태창 자동 반�
 - A. 태그 (recommended): the main AI ends each reply with a <meatball> block of "key: value" changes (e.g. "aff: 레온 +3"). No extra call.
 - A+B: tag, plus a separate analysis call only when the tag is missing. B: a separate analysis call after every reply (accurate, costs more). C: off.
 - The block is hidden by an auto-installed regex and shown as small change chips under the message. ✏️ on a chip edits that reply's changes.
-- If chips do not appear: check 「사용」 is on, the chat has a sheet, sync is not C, the regex is installed (「정규식 설치」), and it is not paused.
+- If chips do not appear: check 「사용」 is on, the chat has a sheet, sync is not C, the regex is installed (「정규식 설치」), and it is not paused. The 🔍 chip under the last reply (or /ss-pip) tells whether the change was lost (no/broken tag → re-read or re-analyze) or only hidden on screen (→ re-attach, or 「칩을 본문 밖에 붙이기」).
+- v2.7.3: 확장 설정 › 「기능 켜고 끄기」 turns off memo · album · peek · play record for all chats; 🔴 red dots mark what the last AI reply changed; quests have a completion roll (🎲) and ended/deleted quests can't be revived by the AI; discarded items are told to the AI as 'no longer owned'; /ss-perf measures load.
 
 PANELS (기능; turn on/off per chat in 관리 탭 › 쓸 기능)
 프로필 · 수치(gauges, attributes, conditions) · 주사위 · 재산(money, items, prices, jobs, regular income, loans) · 상점 · 본거지(rooms, furniture, storage, trash, second-hand market) · 관계 · 지도(zoom, areas, residents, routines, travel time/fare) · 달력(date, time slots, weather, seasons, events) · 연락(messenger or letters with couriers, rush delivery, attachments, read receipts, 선톡) · 퀘스트 · 뉴스 · 가십지 · 게시판 · 업적(and endings, 2회차) · 메모 · 운명(curses/blessings, event cards, auto rules, mini-games) · SNS · 추천 음악 · 내 탭(custom tracked values).
@@ -131,6 +132,16 @@ function diagHtml(what) {
         L.push(row(s.sync !== 'off', `자동 반영: <b>${{ tag: 'A 태그', tagPlus: 'A+B', analyze: 'B 별도 분석', off: 'C 끔' }[s.sync] ?? s.sync}</b>${s.sync === 'off' ? ' — 꺼져 있어서 칩이 안 생겨요' : s.sync === 'tag' ? ' · 가벼운 모델이면 A+B 추천 (태그 빼먹은 답만 따로 분석)' : ''}`));
         L.push(row(s.msgCard !== 'off', s.msgCard === 'off' ? '메시지 변동 칩이 <b>숨기기</b>예요 — 확장 설정 위쪽에서 「보이기」' : '메시지 변동 칩 보이기'));
         L.push(row(null, '본문에 <code>&lt;meatball&gt;</code> 글이 그대로 보이면 확장 설정 › 다른 확장과 같이 쓰기 › 「정규식 설치」'));
+        // 🔍 마지막 AI 답을 직접 점검 (v2.7.3): 씹혔나 · 안 보이나
+        try {
+            const i = app.current?.lastAI;
+            if (Number.isFinite(i) && i >= 0 && app.pipDiag) {
+                const d = app.pipDiag(i);
+                const good = ['shown', 'baked', 'none', 'cardoff', 'nochange', 'skipped'].includes(d.code);
+                L.push(row(good ? true : false, `마지막 AI 답(${i}번): <b>${esc(d.title)}</b>${d.text ? `<br><small>${esc(short(d.text, 160))}</small>` : ''}`));
+                if (!good) L.push(row(null, '답 밑의 🔍 칩을 누르거나 <code>/ss-pip</code> — 「다시 읽기 · AI로 다시 분석 · 칩 다시 붙이기」를 바로 할 수 있어요'));
+            }
+        } catch { /* 점검 실패는 무시 */ }
     }
     if (what === 'sheet') {
         L.push(row(!!(s.showHud || s.showSide || s.showFloat), `보이는 곳: HUD ${s.showHud ? '켬' : '끔'} · 사이드 ${s.showSide ? '켬' : '끔'} · 떠 있는 버튼 ${s.showFloat ? '켬' : '끔'} (꾸미기 › 보이는 곳)`));

@@ -1207,3 +1207,32 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 
 /* ───── 📰 신문 본문도 제목과 같은 신문 글꼴로 (v2.7.2) — 제목만 신문체이고 본문은 기본 글꼴이라 어색했음 */
 .ss-article .ss-art-b { font-family: var(--ss-serif); line-height: 1.75; }
+
+/* ───── v2.7.3 ───── */
+/* 🔴 방금 AI 답에서 바뀐 곳 — 작은 빨간 점 하나 */
+.ss-scope .ss-fresh, .ss-fresh { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #e5322d; box-shadow: 0 0 0 1.5px var(--ss-bg, #fff); vertical-align: middle; margin: 0 4px 0 1px; flex: none; position: relative; top: -1px; }
+.ss-groups > button .ss-fresh, .ss-tabs > button .ss-fresh { position: absolute; top: 5px; right: 6px; margin: 0; }
+.ss-tabs > button { position: relative; }
+.ss-mini-w.fresh { position: relative; }
+.ss-mini-w.fresh > .ss-fresh:first-child { position: absolute; top: 6px; right: 6px; margin: 0; }
+.ss-gauge-h .ss-fresh { top: -2px; }
+/* 🔍 칩 점검 */
+.ss-msgcard.pip { opacity: .7; }
+.ss-mchip.pip { cursor: pointer; font-weight: 500; border-style: dashed; color: var(--ss-dim); background: transparent; }
+.ss-mchip.pip:hover { opacity: 1; color: var(--ss-ink); }
+.ss-slot.out { margin: 2px 0 4px; }
+.ss-pipbox .ss-pip-res { border-radius: var(--ss-r); padding: 10px 12px; margin: 8px 0; background: var(--ss-surface); border-left: 3px solid var(--ss-dim); }
+.ss-pipbox .ss-pip-res.lost { border-left-color: var(--ss-neg); }
+.ss-pipbox .ss-pip-res.hide { border-left-color: var(--ss-warn); }
+.ss-pipbox .ss-pip-res.ok { border-left-color: var(--ss-pos); }
+.ss-pipbox .ss-pip-res p { margin: 6px 0 0; font-size: .92em; }
+/* 🎲 퀘스트 완료 판정 */
+.ss-qcheck { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 2px; font-size: .88em; }
+.ss-qcheck > span { color: var(--ss-dim); }
+.ss-qcheck select.ss-in.sm { width: auto; min-width: 0; padding: 2px 6px; font-size: .95em; height: auto; }
+.ss-qjudge .ss-qj-table { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 8px 0; font-size: .9em; }
+.ss-qjudge .ss-qj-table b { font-weight: 600; }
+.ss-qjudge .ss-dice-res { margin: 6px 0; }
+.ss-perf .ss-perf-t { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .92em; }
+.ss-perf .ss-perf-t td { padding: 4px 6px; border-bottom: 1px solid var(--ss-line); }
+.ss-perf .ss-perf-t td:nth-child(2) { text-align: right; white-space: nowrap; }
