@@ -15,6 +15,30 @@ export function playLine(p = playOf()) {
 const diffLine = () => `Difficulty: ${DIFFS[diffOf()].name} — ${P(`diff.${diffOf()}`)}`;
 const contactModeLine = (mode) => (mode && mode !== 'auto' ? `Use mode "${mode}" (${CONTACT_MODES[mode]?.name}).` : 'Choose mode: phone for modern/sci-fi worlds with phones, instant for magic/radio/telepathy, letter for worlds without phones (letters take days).');
 
+// v2.7.2 안전망: 생성 결과의 설명 글이 길면 문장 단위로 줄인다 (AI가 만든 결과만 · 내가 직접 쓴 글은 안 건드림)
+const BRIEF_KEYS = new Set(['desc', 'summary', 'memo', 'unlock', 'note', 'likes', 'dislikes', 'concern', 'label']);
+function brief(s, max) {
+    if (typeof s !== 'string' || s.length <= max) return s;
+    const parts = s.replace(/\s*\n+\s*/g, ' ').match(/[^.!?。]+[.!?。]+["'」』)]*\s*|[^.!?。]+$/g) ?? [s];
+    let out = '';
+    for (const p of parts) { if (out && (out + p).trim().length > max) break; out += p; }
+    out = out.trim();
+    return out.length > max * 1.3 ? short(out, max) : out; // 첫 문장부터 아주 길면 글자로 자름
+}
+export function trimGen(x, mod, depth = 0) {
+    const k = settings().ssGenLang === 'ko' ? 1 : 1.8; // 영어는 같은 뜻이 더 길다
+    if (Array.isArray(x)) return x.map(v => trimGen(v, mod, depth + 1));
+    if (!x || typeof x !== 'object' || depth > 6) return x;
+    const o = {};
+    for (const [key, v] of Object.entries(x)) {
+        // 대략 한 문장: 설명 70자 · 요약 80자 · 프로필 항목 60자 · 세계 요약 240자 (영어는 ×1.8)
+        const lim = mod === 'core' && key === 'summary' ? 240 : key === 'label' ? 30 : key === 'summary' ? 80 : 70;
+        if (typeof v === 'string' && BRIEF_KEYS.has(key)) o[key] = brief(v, Math.round(lim * k));
+        else if (typeof v === 'string' && key === 'v' && mod === 'profile') o[key] = brief(v, Math.round(60 * k)); // 프로필 항목 값
+        else o[key] = typeof v === 'object' ? trimGen(v, mod, depth + 1) : v;
+    }
+    return o;
+}
 export async function genModule(mod, { sources, core, instruction, profileMode, current, extra, contactMode, feature = 'gen', play, detectPlay }) {
     const L = [];
     if (sources) L.push(`=== SOURCES ===\n${sources}`);
@@ -25,7 +49,7 @@ export async function genModule(mod, { sources, core, instruction, profileMode, 
     L.push(`=== TASK ===\nPanel: ${mod === 'core' ? 'world core' : MOD[mod].name} — ${P(`gen.${mod}`, { difficulty: diffLine(), contactMode: contactModeLine(contactMode), taste: tasteLine() })}${mod === 'profile' ? `\nMODE: ${profileMode ?? 'minimal'}` : ''}`);
     if (current) L.push(`=== CURRENT PANEL DATA ===\n${JSON.stringify(current)}`);
     L.push(`=== OUTPUT JSON SHAPE ===\n${SCHEMA[mod]}${detectPlay ? `\nALSO add a key "play": ${PLAY_SHAPE} — decide how this setup is played (see sources).` : ''}`);
-    const obj = await finJSON((await aiJSON(feature, P('gen.system'), L.join('\n\n'))), core);
+    const obj = await finJSON(trimGen(await aiJSON(feature, P('gen.system'), L.join('\n\n')), mod), core); // 줄인 다음 번역 (화면 번역 사전이 줄인 글과 맞게)
     if (mod === 'core') { const c = NORM.core(obj); if (detectPlay && obj.play) Object.defineProperty(c, 'play', { value: normPlay(obj.play), enumerable: false }); return c; }
     if (mod === 'profile' && profileMode) obj.mode = profileMode;
     if (mod === 'contact' && contactMode && contactMode !== 'auto') obj.mode = contactMode;
@@ -57,7 +81,9 @@ export async function genGroup(mods, { sources, core, instruction, profileMode, 
     }
     L.push(`=== OUTPUT ===\nONE JSON object with exactly these keys: {${mods.map(m => `"${m}": {…}`).join(', ')}}`);
     const max = Math.min(Math.max(Number(settings().aiMaxTokens) || 6000, 2500 * mods.length), 24000);
-    const obj = await finJSON((await aiJSON(feature, P('gen.system'), L.join('\n\n'), max)), core);
+    const raw = await aiJSON(feature, P('gen.system'), L.join('\n\n'), max);
+    for (const m of mods) if (raw?.[m] && typeof raw[m] === 'object' && !Array.isArray(raw[m])) raw[m] = trimGen(raw[m], m); // 줄인 다음 번역
+    const obj = await finJSON(raw, core);
     const out = {};
     for (const mod of mods) {
         const d = obj?.[mod];
