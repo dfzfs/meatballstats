@@ -110,7 +110,6 @@ export function renderPanel(el) {
     const tools = editable && data && st.mode !== 'edit' && st.mode !== 'json' ? `<div class="ss-tools">${favBtn}${hideBtn}
             <button class="ss-tool ${st.ui.instructOpen ? 'on' : ''}" data-act="instructtog" title="AI에게 이 칸을 고치라고 지시 (AI 1회)"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI로 수정</span></button>
             <button class="ss-tool" data-act="edit" title="직접 편집"><i class="fa-solid fa-pen"></i><span>편집</span></button>
-            ${viewTr() ? '<button class="ss-tool" data-act="trfix" title="번역 고치기 — 이름·낱말이 이상하게 번역돼 보일 때 (AI 0회)"><i class="fa-solid fa-language"></i><span>번역 고치기</span></button>' : ''}
             <button class="ss-tool" data-act="json" title="JSON 편집"><i class="fa-solid fa-code"></i></button>
             <button class="ss-tool" data-act="regen" title="이 칸만 다시 생성 (AI 1회)"><i class="fa-solid fa-rotate"></i></button></div>` : (favBtn || hideBtn) && (pseudo || !data) ? `<div class="ss-tools">${favBtn}${hideBtn}</div>` : '';
     const instruct = st.ui.instructOpen && editable && data ? `<div class="ss-instruct"><textarea class="ss-in" rows="2" placeholder="${esc(INSTRUCT_HINT[mod] ?? '예: 스토리에 맞게 ○○를 추가하고 △△는 바꿔줘')}">${esc(st.ui.instructText ?? '')}</textarea>
@@ -129,6 +128,7 @@ export function renderPanel(el) {
                 <button class="ss-ib" data-act="search" title="검색"><i class="fa-solid fa-magnifying-glass"></i></button>
                 <button class="ss-ib ${meta.paused ? 'on' : ''}" data-act="pause" title="${meta.paused ? '재개' : '일시정지 (AI에게 상태를 보내지 않음)'}"><i class="fa-solid ${meta.paused ? 'fa-play' : 'fa-pause'}"></i></button>
                 <button class="ss-ib" data-act="prompts" title="프롬프트 · 토큰"><i class="fa-solid fa-scroll"></i></button>
+                ${viewTr() ? '<button class="ss-ib" data-act="trfix" title="🌐 번역 고치기 — 이상하게 번역된 이름·낱말을 고쳐서 고정 (상태창 전체 · AI 0회)"><i class="fa-solid fa-language"></i></button>' : ''}
                 <button class="ss-helpchip" data-act="help" title="미트볼 도우미 — 모르는 기능을 물어보면 바로 답해요 (AI 0회)"><i class="fa-solid fa-circle-question"></i><span>도우미</span></button>
                 <button class="ss-ib" data-act="fullscreen" title="${!inSide && settings().sheetFull ? '전체화면 끄기' : '전체화면'}"><i class="fa-solid ${!inSide && settings().sheetFull ? 'fa-compress' : 'fa-expand'}"></i></button>
                 ${inSide ? `<button class="ss-ib" data-act="sidemini" title="작게"><i class="fa-solid fa-down-left-and-up-right-to-center"></i></button>` : ''}
@@ -179,7 +179,7 @@ async function onPanelAction(el, act, arg, btn) {
             toastr.info(now ? `「${mname}」을(를) 가렸어요. 다시 켤 때까지 AI에게 안 보내요 (화면·기록은 그대로).` : `「${mname}」을(를) 다시 AI에게 보내요.`, TITLE);
             return rerenderPanels(true);
         }
-        case 'trfix': return app.openTrFix?.(mod === 'core' ? s.core : s.data[mod], mname);
+        case 'trfix': return app.openTrFix?.();
         case 'inbox': return app.openInbox?.();
         case 'search': return app.openSearch?.();
         case 'help': return app.openHelp?.();

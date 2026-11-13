@@ -1,4 +1,5 @@
 // 미트볼 상태창 (Meatball Stats) — 공통: 상수 · 유틸 · 설정 · 데이터 모양
+import { toEnglish, usedPairs } from './skeleton_en.js'; // 영어 저장일 때 기본 관계 단계도 영어로 (skeleton_en은 아무것도 안 불러서 순환 없음)
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
@@ -561,7 +562,7 @@ export const NORM = {
         return {
             user: arr(d.user).filter(r => r?.name).map(r => ({ name: str(r.name), label: str(r.label), aff: clamp(Math.round(num(r.aff, 0)), -100, 100), trust: clamp(Math.round(num(r.trust, 0)), -100, 100), memo: str(r.memo), stage: Number.isFinite(Number(r.stage)) && r.stage !== null && r.stage !== '' ? Math.round(Number(r.stage)) : -1, jealous: clamp(Math.round(num(r.jealous, 0)), 0, 100), met: str(r.met), bond: r.bond === true || r.bond === 'true', ...(r.noLove === true || r.noLove === 'true' ? { noLove: true } : {}), likes: str(r.likes), dislikes: str(r.dislikes), concern: str(r.concern) })),
             pairs: arr(d.pairs).filter(p => p?.a && p?.b).map(p => ({ a: str(p.a), b: str(p.b), label: str(p.label), memo: str(p.memo) })),
-            stages: stages.length ? stages : clone(str(d.affName) ? LOVE_STAGES : DEFAULT_STAGES),
+            stages: stages.length ? stages : (() => { const st = clone(str(d.affName) ? LOVE_STAGES : DEFAULT_STAGES); if (!viewTr()) return st; const en = toEnglish(st); try { app.addTrPairs?.(usedPairs(en)); } catch { /* 사전 없어도 저장은 영어 */ } return en; })(), // 영어 저장이면 기본 단계도 영어로
             affName: short(str(d.affName), 12), trustName: short(str(d.trustName), 12),
             life: arr(d.life).filter(x => x?.text).map(x => ({ who: str(x.who), text: str(x.text), date: str(x.date) })).slice(-20),
         };
