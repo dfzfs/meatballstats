@@ -2,7 +2,7 @@
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
     signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, trBack, viewTr, weekday,
-    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser, ssWarn, relAxes, romanceStart} from './core.js';
+    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser, ssWarn, relAxes, romanceStart, INJ, isHidden, modOnRaw } from './core.js';
 import { P } from './prompts.js';
 
 export const KEYMAP = {
@@ -1318,7 +1318,7 @@ const noLoveNote = (rl) => { const n = (rl?.user ?? []).filter(x => x.noLove).ma
 const relKeyShort = (rl) => { const A = relAxes(rl, viewTr()); return (A.love ? ` (aff = ${A.aff}: romance only · trust = ${A.trust}${noLoveNote(rl)})` : noLoveNote(rl) ? ` (${noLoveNote(rl).slice(3)})` : ''); };
 export function tagKeysFor(meta) {
     const K = [];
-    const on = (id) => modOn(id, meta);
+    const on = (id) => modOnRaw(id, meta); // 가린 칸도 변화 기록은 계속 (AI가 값은 못 보지만 ±N으로 적으면 반영)
     if (on('stats')) K.push('stat (게이지이름 ±N, e.g. 체력 -12 · 체력 max +10) · attr (능력치 ±1, only after real growth) · cond (+이름 | 효과 / -이름)');
     if (on('wallet')) K.push('cash (±N) · item (+이름 2 | 설명 / -이름 1)');
     if (on('shop')) K.push('stock (상점 | 상품 | 가격 | 설명 — when the story adds goods; 상점 | -상품 removes)');
@@ -1384,6 +1384,7 @@ export function deltaPlan(r, set = settings()) {
     const t = r.state.turn;
     const k = t % N;
     if (k === 0) return null; // 이번 턴은 전체
+    if (getMeta()?.fullTurn === t) return null; // 가린 칸을 다시 켠 턴 → 한 번은 전체
     const last = r.snaps.get(r.lastAI);
     if (last?.labels.some(l => /^📍|^💞|^💔/.test(l))) return null; // 장소·관계 단계가 바뀐 직후엔 전체
     const changes = [];
@@ -1526,10 +1527,11 @@ function buildUltra(r, opt = {}) {
     const inScene = sceneTester(set, s);
     const L = [P('inj.ultra')];
     const head = [MOD_SHORT[diffOf(meta)] ?? diffOf(meta)];
-    if (s.core.title) head.push(`${s.core.title}${s.core.genre ? `(${s.core.genre})` : ''}`);
+    const coreOn = !isHidden('core', meta);
+    if (s.core.title && coreOn) head.push(`${s.core.title}${s.core.genre ? `(${s.core.genre})` : ''}`);
     L.push(head.join('|'));
-    if (s.core.userRole) L.push(`{{user}}=${short(s.core.userRole, 70)}`);
-    if (s.core.rules) L.push(`규칙:${short(s.core.rules, 140)}`);
+    if (s.core.userRole && coreOn) L.push(`{{user}}=${short(s.core.userRole, 70)}`);
+    if (s.core.rules && coreOn) L.push(`규칙:${short(s.core.rules, 140)}`);
     if (on('calendar')) {
         const c = d.calendar;
         const ev = eventsOn(c, c.y, c.m, c.d).map(e => e.title);
@@ -1590,7 +1592,7 @@ function buildUltra(r, opt = {}) {
     if (on('dice')) L.push('🎲[판정·…]=시스템 결과 그대로 서술 · 위험한 행동은 roll 키로 판정 요청');
     if (s.recent.length) L.push(`${viewTr() ? 'UI:' : 'UI행동:'}${recentI(s, 5)}`);
     if (!opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus')) {
-        const keys = tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ') + (on('rel') ? relKeyShort(d.rel) : '');
+        const keys = tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ') + (modOnRaw('rel', meta) && d.rel ? relKeyShort(d.rel) : '');
         L.push(outRule(P('inj.ultra.output', { keys })));
     }
     return { main: L.filter(Boolean).join('\n'), people: '' };
@@ -1616,7 +1618,7 @@ function buildDelta(r, plan, opt = {}) {
     if (plan.changes.length) L.push(`${viewTr() ? 'changes:' : '변화:'}${plan.changes.slice(-14).join(' / ')}`);
     if (s.recent.length) L.push(`${viewTr() ? 'UI:' : 'UI행동:'}${recentI(s, 5)}`);
     if (!opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus')) {
-        const keys = tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ') + (on('rel') ? relKeyShort(d.rel) : '');
+        const keys = tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ') + (modOnRaw('rel', meta) && d.rel ? relKeyShort(d.rel) : '');
         L.push(outRule(P('inj.ultra.output', { keys })));
     }
     return { main: L.filter(Boolean).join('\n'), people: '' };
@@ -1624,9 +1626,12 @@ function buildDelta(r, plan, opt = {}) {
 
 // 플레이 방식: 다인봇·풀사칭이면 머리에 한 줄, 풀사칭이면 {{user}} → 주인공
 export function buildInjection(r, opt = {}) {
-    const inj = buildInjection1(r, opt);
-    if (r && !opt.noOutput) { try { inj.romance = swapUser(romanceBlock(r)); } catch (e) { ssWarn(LOG, 'romance', e); } }
-    return inj;
+    const was = INJ.on; INJ.on = true; // 🙈 가린 칸은 이 안에서만 꺼진 것처럼
+    try {
+        const inj = buildInjection1(r, opt);
+        if (r && !opt.noOutput) { try { inj.romance = swapUser(romanceBlock(r)); } catch (e) { ssWarn(LOG, 'romance', e); } }
+        return inj;
+    } finally { INJ.on = was; }
 }
 // ───── 로맨스 보정 주입 (v2.6 · 따로 주입 · 깊이 따로) ─────
 function romanceBlock(r) {
@@ -1697,7 +1702,7 @@ function buildInjection0(r, opt = {}) {
     const PP = [];
     L.push(P('inj.header'));
     L.push(P(`diff.${diffOf(meta)}`));
-    if (s.core.title || s.core.summary) {
+    if ((s.core.title || s.core.summary) && !isHidden('core', meta)) {
         L.push(`World: ${s.core.title}${s.core.genre ? ` (${s.core.genre})` : ''}${s.core.canon ? ` · canon: ${s.core.canon}` : ''}${s.core.tone ? ` · tone: ${s.core.tone}` : ''}`);
         if (s.core.summary && !lite) L.push(`Setting: ${short(s.core.summary, 600)}`);
         if (s.core.userRole) L.push(`{{user}}: ${s.core.userRole}`);
@@ -1796,7 +1801,7 @@ function buildInjection0(r, opt = {}) {
     if (s.recent.length) L.push(`Since the last reply {{user}} did (via the status UI): ${recentI(s, 8)}`);
     if (!opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus')) {
         L.push(outRule(P('inj.output')));
-        L.push(lite ? `Keys (key: value, ±N for numbers, +/-name for lists, name | detail): ${keysI(tagKeysFor(meta)).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ')}${modOn('rel', meta) && s.data.rel ? relKeyShort(s.data.rel) : ''}` : `Keys: ${keysI(tagKeysFor(meta)).join(' · ')}`);
+        L.push(lite ? `Keys (key: value, ±N for numbers, +/-name for lists, name | detail): ${keysI(tagKeysFor(meta)).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ')}${modOnRaw('rel', meta) && s.data.rel ? relKeyShort(s.data.rel) : ''}` : `Keys: ${keysI(tagKeysFor(meta)).join(' · ')}`);
         if (!lite) L.push(viewTr() ? P('inj.example.en') : P('inj.example'));
     }
     return { main: L.filter(Boolean).join('\n'), people: PP.length ? `[STATUS SIM — PEOPLE (part of the state above)]\n${PP.join('\n')}` : '' };

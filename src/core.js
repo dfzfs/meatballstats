@@ -435,11 +435,20 @@ export async function saveMeta(now = false) {
     if (now || !c.saveMetadataDebounced) await c.saveMetadata();
     else c.saveMetadataDebounced();
 }
-export function modOn(id, meta = getMeta()) {
+export function modOnRaw(id, meta = getMeta()) {
     if (!meta) return false;
     if (meta.mods?.[id] === false) return false;
     const need = MOD[id]?.needs;
     if (need && meta.mods?.[need] === false) return false;
+    return true;
+}
+// 🙈 가리기 (채팅마다): 켜져 있는 칸이라도 AI에게 보내는 글을 만드는 동안엔 꺼진 것처럼 — 직접 다시 켤 때까지 유지
+// INJ.on은 buildInjection이 도는 동안만 true → 화면·버튼·자동 반영은 그대로, 주입문에서만 빠진다
+export const INJ = { on: false };
+export const isHidden = (id, meta = getMeta()) => !!meta?.hide?.[id];
+export function modOn(id, meta = getMeta()) {
+    if (!modOnRaw(id, meta)) return false;
+    if (INJ.on && meta?.hide?.[id]) return false;
     return true;
 }
 export function isActive() {
