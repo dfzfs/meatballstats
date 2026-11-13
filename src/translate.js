@@ -263,10 +263,24 @@ function entries(d) {
     }
     return sorted.list;
 }
+// 화면에서 「…」로 잘린 글(short())은 사전의 원문과 안 맞아서 영어로 남았음 → 앞부분이 같은 원문을 찾아 그 번역을 같은 길이쯤으로 잘라 보여 준다 (v2.7.2)
+let prefixIdx = { d: null, ver: -1, n: -1, m: null };
+function prefixHit(d, pre) {
+    if (prefixIdx.d !== d || prefixIdx.ver !== trVer || prefixIdx.n !== Object.keys(d).length) {
+        const m = new Map();
+        for (const key of Object.keys(d)) { if (key.length < 12) continue; const h = key.slice(0, 10); (m.get(h) ?? m.set(h, []).get(h)).push(key); }
+        prefixIdx = { d, ver: trVer, n: Object.keys(d).length, m };
+    }
+    return (prefixIdx.m.get(pre.slice(0, 10)) ?? []).find(key => key.replace(/\s+/g, ' ').startsWith(pre)) ?? null;
+}
 export function trString(v, d = trDict()) {
     if (!d || !v || !hasLatin(v)) return v;
     const k = v.trim();
     if (Object.hasOwn(d, k)) return v.replace(k, () => d[k]);
+    if (k.endsWith('…') && k.length >= 12) {
+        const pre = k.slice(0, -1).trimEnd(), full = prefixHit(d, pre);
+        if (full) { const ko = String(d[full]); const n = Math.max(12, Math.round(pre.length * 0.75)); return v.replace(k, () => (ko.length > n + 1 ? `${ko.slice(0, n).trimEnd()}…` : ko)); }
+    }
     const list = entries(d); // (사전이 바뀌었으면 여기서 memo가 비워진다)
     const hit = memo.get(v);
     if (hit !== undefined) return hit;
