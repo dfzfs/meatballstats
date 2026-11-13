@@ -82,7 +82,7 @@ function homeView(s, ui) {
     return `<div class="ss-home">
         <div class="ss-hero"><div class="ss-hero-t"><small>${esc(c.genre || '세계')}${c.canon ? ` · ${esc(c.canon)}` : ''}</small><b>${esc(c.title || '이름 없는 세계')}</b></div>
             ${c.userRole ? `<p><b>${esc(userName())}</b> — ${esc(c.userRole)}</p>` : ''}
-            ${c.summary ? `<details class="ss-more" ${ui.worldOpen ? 'open' : ''}><summary>세계관 요약</summary><p class="ss-pre">${esc(c.summary)}</p>${c.rules ? `<p class="ss-pre ss-dim">${esc(c.rules)}</p>` : ''}${c.tone ? `<p class="ss-dim">톤: ${esc(c.tone)}</p>` : ''}</details>` : ''}
+            ${c.summary ? `<details class="ss-more" ${ui.worldOpen ? 'open' : ''}><summary>세계관 요약 <small class="ss-dim">${settings().injWorld ? '· 매 턴 AI에게 보냄' : '· 칸 만들 때만 참고 (매 턴 안 보냄)'}</small></summary><p class="ss-pre">${esc(c.summary)}</p>${c.rules ? `<p class="ss-pre ss-dim">${esc(c.rules)}</p>` : ''}${c.tone ? `<p class="ss-dim">톤: ${esc(c.tone)}</p>` : ''}</details>` : ''}
         </div>
         ${alerts.join('')}
         <div class="ss-home-grid">${miniWidgets(s, order)}</div>

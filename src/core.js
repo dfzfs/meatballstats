@@ -56,6 +56,7 @@ export const DEFAULTS = Object.freeze({
     trCode: 'ko',            // 실리 기본 번역에 넘길 언어 코드
     trRules: '',
     legacyStatus: false,     // 옛 <status>도 미트볼 것으로 읽기 (v2.5 이전 채팅 호환 · 정규식이 모든 채팅에 걸려서 새로 설치하면 꺼진 채로 · v2.7)
+    injWorld: false,         // 세계관 요약·규칙을 매 턴 보낼지 (v2.7.1: 기본 끔 — 보통 카드·로어북에 이미 있어서 중복. 칸 만들 때 참고로는 계속 씀)
     injScan: true,           // 상태 주입문으로 월드인포(로어북) 키워드를 켤지 (끄면 장면 밖 항목이 덜 켜져 토큰 절약 · v2.7)
     autoBake: true,          // 긴 채팅: 오래된 기록을 자동으로 굳혀 계산을 가볍게 (v2.7)
     bakeAfter: 400,          // 굳히지 않은 메시지가 이만큼 넘으면 (최근 120개는 늘 그대로)
