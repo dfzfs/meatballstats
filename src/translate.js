@@ -209,7 +209,13 @@ export async function openTrFix(only = null) {
         n++;
         if (!ko) { delete d[en]; delete lock[en]; continue; }
         d[en] = ko; lock[en] = true;
-        if (old && en.length <= 40) for (const [k, v] of Object.entries(d)) if (k !== en && !edits.has(k) && (k.includes(en) || old.length >= 4) && typeof v === 'string' && v.includes(old)) d[k] = v.split(old).join(ko); // 옛 이름이 4글자 이상이면 원문에 이름이 없어도 (번역기가 넣은 경우) // 이 이름이 든 다른 문장도
+        if (en.length <= 40) for (const [k, v] of Object.entries(d)) {
+            if (k === en || edits.has(k) || typeof v !== 'string') continue;
+            let nv = v;
+            if (old && (k.includes(en) || old.length >= 4) && nv.includes(old)) nv = nv.split(old).join(ko); // 옛 한국어 이름 (원문에 이름이 없어도 4글자 이상이면)
+            if (nv.includes(en)) nv = nv.replace(wordRe(en), (m0, pre) => pre + ko); // 번역문 안에 영어 그대로 남은 이름 (「Trafalgar Law 외과 과장」)
+            if (nv !== v) d[k] = nv;
+        } // 이 이름이 든 다른 문장도
     }
     if (!n) return;
     trVer++; memo.clear();
@@ -294,13 +300,22 @@ function prefixHit(d, pre) {
     }
     return (prefixIdx.m.get(pre.slice(0, 10)) ?? []).find(key => key.replace(/\s+/g, ' ').startsWith(pre)) ?? null;
 }
+// 📌 고정한 이름이 번역문 안에 영어로 남아 있으면 (번역기가 고유명사를 안 옮긴 경우) 화면에서 바꿔 보여 준다
+let lockRe = { ver: -1, m: null, list: [] };
+function fixLocked(t) {
+    if (!t || !hasLatin(t)) return t;
+    const m = getMeta();
+    if (lockRe.ver !== trVer || lockRe.m !== m) lockRe = { ver: trVer, m, list: lockedPairs().sort((a, b) => b[0].length - a[0].length).map(([en, ko]) => [wordRe(en), ko]) };
+    for (const [re, ko] of lockRe.list) t = t.replace(re, (m0, pre) => pre + ko);
+    return t;
+}
 export function trString(v, d = trDict()) {
     if (!d || !v || !hasLatin(v)) return v;
     const k = v.trim();
-    if (Object.hasOwn(d, k)) return v.replace(k, () => d[k]);
+    if (Object.hasOwn(d, k)) return v.replace(k, () => fixLocked(String(d[k])));
     if (k.endsWith('…') && k.length >= 12) {
         const pre = k.slice(0, -1).trimEnd(), full = prefixHit(d, pre);
-        if (full) { const ko = String(d[full]); const n = Math.max(12, Math.round(pre.length * 0.75)); return v.replace(k, () => (ko.length > n + 1 ? `${ko.slice(0, n).trimEnd()}…` : ko)); }
+        if (full) { const ko = fixLocked(String(d[full])); const n = Math.max(12, Math.round(pre.length * 0.75)); return v.replace(k, () => (ko.length > n + 1 ? `${ko.slice(0, n).trimEnd()}…` : ko)); }
     }
     const list = entries(d); // (사전이 바뀌었으면 여기서 memo가 비워진다)
     const hit = memo.get(v);
