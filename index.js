@@ -45,8 +45,12 @@ function decorateAll() {
         const snap = app.current.snaps.get(i);
         const m = chat[i];
         const on0 = !!album && !!m && album.has(`${m.send_date}|${m.name}`);
-        const sig = snap || i === lastAI ? null : `n|${on0}|${set.msgCard}|${albumOn}|${out}`;
-        if (sig && doneEl.get(mesEl) === sig && (!albumOn || mesEl._ssStar?.isConnected !== false)) return;
+        // v2.7.9: 칩이 있는 답도 내용이 그대로면 건너뛴다 (마지막 AI 답은 칩 점검 때문에 늘 다시) — 단, 칩 자리가 지워졌으면 다시
+        const sig = i === lastAI ? null : snap
+            ? `y|${on0}|${set.msgCard}|${albumOn}|${out}|${i >= baked}|${m?.mes?.length}|${m?.swipe_id}|${!!(m && drawerOps(m))}|${snap.roll ? 1 : 0}|${snap.labels.join('\u0001')}`
+            : `n|${on0}|${set.msgCard}|${albumOn}|${out}`;
+        if (sig && doneEl.get(mesEl) === sig && (!albumOn || mesEl._ssStar?.isConnected !== false)
+            && (!snap || set.msgCard === 'off' || !(snap.labels.length || snap.roll) || mesEl.querySelector('.ss-slot')?.firstChild)) return;
         const textEl = mesEl.querySelector('.mes_text');
         if (!textEl) return;
         if (sig) doneEl.set(mesEl, sig);
@@ -183,6 +187,10 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.9', title: '계산 더 가볍게', items: [
+        ['⚡ 상태 계산', '답 글이 그대로면 변화 줄을 다시 읽지 않아요 — 계산이 약 3배 빨라졌어요.'],
+        ['🏷 변동 칩', '칩 내용이 그대로인 답은 다시 그리지 않아요.'],
+    ] },
     { v: '2.7.8', title: '스크롤 버벅임 · 동시 요청 충돌', items: [
         ['🖱 스크롤', '지도 휠 확대가 페이지 전체 스크롤을 붙잡던 것을 지도 위에서만 동작하게 바꿨어요.'],
         ['🚦 동시 요청', '확장 AI가 메인 연결을 쓸 땐 본편 AI가 답을 다 쓴 뒤에 보내요 (로컬 백엔드 「바쁨」 · 무료 API 429 방지).'],
