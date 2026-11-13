@@ -3,7 +3,7 @@ import { toEnglish, usedPairs } from './skeleton_en.js'; // 영어 저장일 때
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.7.6';
+export const VERSION = '2.7.7';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
 export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
@@ -60,7 +60,7 @@ export const DEFAULTS = Object.freeze({
     injWorld: false,         // 세계관 요약·규칙을 매 턴 보낼지 (v2.7.1: 기본 끔 — 보통 카드·로어북에 이미 있어서 중복. 칸 만들 때 참고로는 계속 씀)
     injScan: true,           // 상태 주입문으로 월드인포(로어북) 키워드를 켤지 (끄면 장면 밖 항목이 덜 켜져 토큰 절약 · v2.7)
     autoBake: true,          // 긴 채팅: 오래된 기록을 자동으로 굳혀 계산을 가볍게 (v2.7)
-    bakeAfter: 400,          // 굳히지 않은 메시지가 이만큼 넘으면 (최근 120개는 늘 그대로)
+    bakeAfter: 250,          // 굳히지 않은 메시지가 이만큼 넘으면 (최근 120개는 늘 그대로)
     featureTips: true,       // 💡 이야기에 맞는 순간 안 쓰는 기능을 한 번씩 추천 (기능마다 한 번 · AI 0회 · v2.7)
     tipGap: 20,              // 추천 사이 최소 턴 (관련 말 없이 권하는 건 이 두 배)
     tipNever: {},            // 「괜찮아요」 누른 기능 (모든 채팅에서 다시 안 권함)
@@ -602,7 +602,7 @@ export const NORM = {
     contact: (d) => {
         const threads = {};
         for (const [k, v] of Object.entries(d.threads && typeof d.threads === 'object' ? d.threads : {})) {
-            threads[k] = arr(v).filter(x => x && (x.text || x.pending || (x.kind && x.kind !== 'text'))).map(msgN).slice(-80); // 송금·삭제됨은 글이 없어도 남긴다
+            threads[k] = arr(v).filter(x => x && (x.text || x.pending || (x.kind && x.kind !== 'text'))).map(msgN).slice(-THREAD_MAX); // 송금·삭제됨은 글이 없어도 남긴다
         }
         const mode = ['phone', 'instant', 'letter'].includes(d.mode) ? d.mode : 'phone';
         const couriers = arr(d.couriers).filter(c => c?.name).map(courierN);
@@ -686,6 +686,7 @@ export function normalize(mod, d) {
     try { return tidy(mod, NORM[mod](d && typeof d === 'object' ? d : {})); } catch (e) { ssWarn(LOG, 'normalize', mod, e); return EMPTY[mod](); }
 }
 // ───── 자동 정리: 오래된 소식·끝난 퀘스트는 보관함(제목만)으로 ─────
+export const THREAD_MAX = 50; // 연락: 한 사람과의 대화는 최근 50개까지 (v2.7.7 · 예전 80) — 더 오래된 건 빠져요 (AI에게 가는 건 원래 최근 몇 줄뿐)
 export const ARC_KEEP = { news: 40, gossip: 30, board: 40, quest: 15, sns: 40 };
 const arcItem = (x) => ({ title: str(x?.title ?? (x?.text ? `${x.author ?? ''}: ${short(x.text, 40)}` : '')), date: str(x?.date), status: str(x?.status) });
 export function tidy(mod, d) {

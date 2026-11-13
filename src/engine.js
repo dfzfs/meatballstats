@@ -2,7 +2,7 @@
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, DIFFS, GLOBAL_OFF, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
     signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, trBack, viewTr, weekday,
-    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser, ssWarn, relAxes, romanceStart, INJ, isHidden, modOnRaw } from './core.js';
+    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, THREAD_MAX, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser, ssWarn, relAxes, romanceStart, INJ, isHidden, modOnRaw } from './core.js';
 import { P } from './prompts.js';
 import { enStr } from './skeleton_en.js';
 
@@ -1033,7 +1033,7 @@ export function applyOp(s, rawKey, rawVal, info) {
             const letter = ct.mode === 'letter';
             const cour = letter ? (findBy(ct.couriers, findBy(ct.contacts, who)?.courier)?.name ?? ct.couriers[0]?.name ?? '') : '';
             (ct.threads[who] ??= []).push({ id: `${info.seed}:m${ct.threads[who].length}`, from: 'them', text, date: stamp(s), at: t, arrive: t, courier: cour, express: false, rush: false, pending: false, fee: 0, edited: false, ping: true });
-            if (ct.threads[who].length > 80) ct.threads[who] = ct.threads[who].slice(-80);
+            if (ct.threads[who].length > THREAD_MAX) ct.threads[who] = ct.threads[who].slice(-THREAD_MAX);
             ct.unread[who] = (ct.unread[who] ?? 0) + 1;
             touchContact(ct, who);
             T.got++;
@@ -1304,7 +1304,9 @@ export function compute(limit, opts = {}) {
     const runAdjust = (a) => {
         s.romActive = a.at >= romFrom;
         const info = { seed: `${seed}:adj:${a.t}`, labels: [], alerts: [], mods: meta.mods, meta, cut: 0 };
-        if (a.set) {
+        if (a.set?.patch) { // v2.7.7: 연락 · 피드는 바뀐 부분만 (칸 통째 복사본이 쌓여 채팅 파일이 MB로 불던 것)
+            if (DELTA_MODS.has(a.set.mod) && s.data[a.set.mod]) { try { applyDelta(s.data[a.set.mod], a.set.patch); } catch (e) { ssWarn(LOG, 'delta', e); } }
+        } else if (a.set) {
             if (a.set.mod === 'core') s.core = clone(a.set.data);
             else if (MOD_IDS.includes(a.set.mod)) {
                 s.data[a.set.mod] = clone(a.set.data);
@@ -1423,7 +1425,8 @@ export async function addAdjust(entry) {
     const a = { at: ctx().chat?.length ?? 0, t, ...entry };
     // 같은 칸을 통째로 덮는 기록이 이야기 진행 없이 또 오면, 앞 기록의 칸 데이터는 쓸모가 없다 (라벨만 남김) → 채팅 파일 비대 방지
     // (새 것 + 바로 앞 2개는 남겨서 '되돌리기'를 두 번까지 정확히 할 수 있게)
-    if (a.set?.mod) { const same = meta.adjust.filter(e => e.at === a.at && e.set?.mod === a.set.mod); for (const e of same.slice(0, -2)) delete e.set; }
+    // (바뀐 부분만 적은 기록(patch)은 서로 쌓여야 맞으니 지우지 않는다 — 작아서 괜찮음)
+    if (a.set?.data) { const same = meta.adjust.filter(e => e.at === a.at && e.set?.mod === a.set.mod && e.set.data); for (const e of same.slice(0, -2)) delete e.set; }
     meta.adjust.push(a);
     if (meta.adjust.length > 80) squash(meta);
     await saveMeta();
@@ -1482,8 +1485,59 @@ export async function undoAt(t) {
     app.refreshNow?.();
     return a;
 }
+// ───── 바뀐 부분만 기록 (v2.7.7) ─────
+// 연락 · 뉴스 · 소문 · 게시판 · SNS는 버튼 한 번마다 칸 전체(모든 대화방)를 편집 기록에 통째로 복사했다 → 오래 쓰면 채팅 파일이 MB 단위.
+// 이제 지금 상태와 비교해 바뀐 칸(대화방은 그 사람 것만)만 적는다. 계산할 땐 그 시점 상태 위에 덮어쓴다.
+export const DELTA_MODS = new Set(['contact', 'news', 'gossip', 'board', 'sns']);
+const isPlain = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
+const same = (x, y) => x === y || JSON.stringify(x) === JSON.stringify(y);
+// 목록은 「앞에서 d개 빼고 · 뒤에 몇 개 붙임」으로 적을 수 있으면 그렇게 (대화방에 한 줄 보내면 그 한 줄만)
+function listDelta(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return null;
+    const A = a.map(x => JSON.stringify(x)), B = b.map(x => JSON.stringify(x));
+    for (let d = 0; d <= A.length; d++) {
+        const n = A.length - d;
+        if (n > B.length) continue;
+        let ok = true;
+        for (let i = 0; i < n; i++) if (A[d + i] !== B[i]) { ok = false; break; }
+        if (ok) return n || !A.length ? { $d: d, $p: b.slice(n) } : null;
+    }
+    return null;
+}
+const isList = (x) => isPlain(x) && Object.hasOwn(x, '$p') && Object.hasOwn(x, '$d');
+function valDelta(a, b) { const l = listDelta(a, b); return l && JSON.stringify(l).length < JSON.stringify(b).length ? l : b; }
+export function deltaOf(a, b) {
+    const p = { top: {}, del: [], sub: {} };
+    for (const k of Object.keys(b)) {
+        if (same(a[k], b[k])) continue;
+        if (isPlain(a[k]) && isPlain(b[k])) {
+            const set = {}, del = [];
+            for (const sk of Object.keys(b[k])) if (!same(a[k][sk], b[k][sk])) set[sk] = valDelta(a[k][sk], b[k][sk]);
+            for (const sk of Object.keys(a[k])) if (!Object.hasOwn(b[k], sk)) del.push(sk);
+            p.sub[k] = del.length ? { set, del } : { set };
+        } else p.top[k] = valDelta(a[k], b[k]);
+    }
+    for (const k of Object.keys(a)) if (!Object.hasOwn(b, k)) p.del.push(k);
+    return p;
+}
+const putVal = (cur, v) => (isList(v) ? (Array.isArray(cur) ? cur.slice(v.$d) : []).concat(clone(v.$p)) : clone(v));
+export function applyDelta(d, p) {
+    for (const [k, v] of Object.entries(p.top ?? {})) d[k] = putVal(d[k], v);
+    for (const k of p.del ?? []) delete d[k];
+    for (const [k, { set = {}, del = [] }] of Object.entries(p.sub ?? {})) {
+        const o = isPlain(d[k]) ? d[k] : (d[k] = {});
+        for (const [sk, sv] of Object.entries(set)) o[sk] = putVal(o[sk], sv);
+        for (const sk of del) delete o[sk];
+    }
+    return d;
+}
 export function commit(mod, data, label, extra = {}) {
-    return addAdjust({ set: { mod, data: mod === 'core' ? NORM.core(data) : normalize(mod, data) }, label, ...extra });
+    const nd = mod === 'core' ? NORM.core(data) : normalize(mod, data);
+    const cur = DELTA_MODS.has(mod) ? app.current?.state?.data?.[mod] : null;
+    if (isPlain(cur)) {
+        try { return addAdjust({ set: { mod, patch: deltaOf(normalize(mod, clone(cur)), nd) }, label, ...extra }); } catch (e) { ssWarn(LOG, 'delta', e); }
+    }
+    return addAdjust({ set: { mod, data: nd }, label, ...extra });
 }
 const SQUASH_KEEP = 10; // 최근 이만큼의 메시지는 굳히지 않는다 (스와이프·다시 생성이 제대로 되게)
 export function squash(meta, keep = SQUASH_KEEP) {
@@ -1510,7 +1564,7 @@ export function autoBake(meta = getMeta()) {
     const set = settings();
     if (!meta?.base || set.autoBake === false) return false;
     const chat = ctx().chat ?? [];
-    const limit = clamp(parseInt(set.bakeAfter, 10) || 400, 200, 5000);
+    const limit = clamp(parseInt(set.bakeAfter, 10) || 250, 200, 5000);
     if (chat.length - resolveStart(meta, chat) <= limit) return false;
     squash(meta, BAKE_KEEP);
     return true;
