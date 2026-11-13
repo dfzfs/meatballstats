@@ -184,6 +184,13 @@ export function relAxes(rel, en = false) {
 // AI가 만든 단계표 다듬기 (애정/우정 방식): 연애 단계(설렘·썸·연인 …) 앞의 우정 단계는 애정이 필요 없게 (-100)
 // → 친구로 지내기만 해도 AI가 애정을 올려야 단계가 오르는 일이 없게
 const ROMANCE_STAGE_RE = /설렘|썸|연인|애인|커플|짝사랑|두근|연애|romance|romantic|crush|lover|couple|sweetheart|dating/i;
+// 연애 단계가 시작되는 곳 (💗 애정 꺼 둔 사람은 그 앞 단계까지만) — 없으면 -1
+export function romanceStart(rel) {
+    const st = rel?.stages ?? [];
+    const love = relAxes(rel).love;
+    const k = st.findIndex(x => x?.love === true || ROMANCE_STAGE_RE.test(String(x?.name ?? '')) || (love && Number(x?.at) > -100));
+    return k;
+}
 export function fixLoveLadder(rel) {
     if (!rel?.stages?.length || !relAxes(rel).love) return rel;
     const first = rel.stages.findIndex(x => x?.love === true || ROMANCE_STAGE_RE.test(String(x?.name ?? '')));
@@ -540,7 +547,7 @@ export const NORM = {
     rel: (d) => {
         const stages = arr(d.stages).filter(x => x?.name).map(x => ({ name: str(x.name), at: clamp(Math.round(num(x.at, 0)), -100, 100), trust: clamp(Math.round(num(x.trust, -100)), -100, 100), unlock: str(x.unlock), ...(x.love === true || x.love === 'true' ? { love: true } : x.love === false || x.love === 'false' ? { love: false } : {}) })).sort((a, b) => a.at - b.at);
         return {
-            user: arr(d.user).filter(r => r?.name).map(r => ({ name: str(r.name), label: str(r.label), aff: clamp(Math.round(num(r.aff, 0)), -100, 100), trust: clamp(Math.round(num(r.trust, 0)), -100, 100), memo: str(r.memo), stage: Number.isFinite(Number(r.stage)) && r.stage !== null && r.stage !== '' ? Math.round(Number(r.stage)) : -1, jealous: clamp(Math.round(num(r.jealous, 0)), 0, 100), met: str(r.met), bond: r.bond === true || r.bond === 'true', likes: str(r.likes), dislikes: str(r.dislikes), concern: str(r.concern) })),
+            user: arr(d.user).filter(r => r?.name).map(r => ({ name: str(r.name), label: str(r.label), aff: clamp(Math.round(num(r.aff, 0)), -100, 100), trust: clamp(Math.round(num(r.trust, 0)), -100, 100), memo: str(r.memo), stage: Number.isFinite(Number(r.stage)) && r.stage !== null && r.stage !== '' ? Math.round(Number(r.stage)) : -1, jealous: clamp(Math.round(num(r.jealous, 0)), 0, 100), met: str(r.met), bond: r.bond === true || r.bond === 'true', ...(r.noLove === true || r.noLove === 'true' ? { noLove: true } : {}), likes: str(r.likes), dislikes: str(r.dislikes), concern: str(r.concern) })),
             pairs: arr(d.pairs).filter(p => p?.a && p?.b).map(p => ({ a: str(p.a), b: str(p.b), label: str(p.label), memo: str(p.memo) })),
             stages: stages.length ? stages : clone(str(d.affName) ? LOVE_STAGES : DEFAULT_STAGES),
             affName: short(str(d.affName), 12), trustName: short(str(d.trustName), 12),
@@ -741,7 +748,7 @@ export const EDIT = {
         { k: 'trash', label: '쓰레기통', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'date', label: '버린 날', type: 'text' }] },
     ],
     rel: [
-        { k: 'user', label: '{{user}}와의 관계', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'aff', label: '💗 애정 (aff · 옛 채팅은 호감)', type: 'num' }, { k: 'trust', label: '🤝 우정 (trust · 옛 채팅은 신뢰)', type: 'num' }, { k: 'jealous', label: '질투 (0~100)', type: 'num' }, { k: 'met', label: '처음 만난 날', type: 'text' }, { k: 'memo', label: '메모', type: 'area' }, { k: 'likes', label: '끌리는 것 (로맨스 보정)', type: 'text' }, { k: 'dislikes', label: '싫어하는 것 (로맨스 보정)', type: 'text' }, { k: 'concern', label: '요즘 신경 쓰는 것 (로맨스 보정)', type: 'text' }] },
+        { k: 'user', label: '{{user}}와의 관계', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'aff', label: '💗 애정 (aff · 옛 채팅은 호감)', type: 'num' }, { k: 'trust', label: '🤝 우정 (trust · 옛 채팅은 신뢰)', type: 'num' }, { k: 'noLove', label: '💗 애정 꺼 두기 — 이 사람은 우정만 (애정이 안 오르고 연애 단계로 안 가요)', type: 'bool' }, { k: 'jealous', label: '질투 (0~100)', type: 'num' }, { k: 'met', label: '처음 만난 날', type: 'text' }, { k: 'memo', label: '메모', type: 'area' }, { k: 'likes', label: '끌리는 것 (로맨스 보정)', type: 'text' }, { k: 'dislikes', label: '싫어하는 것 (로맨스 보정)', type: 'text' }, { k: 'concern', label: '요즘 신경 쓰는 것 (로맨스 보정)', type: 'text' }] },
         { k: 'pairs', label: '인물끼리의 관계', type: 'list', title: 'a', fields: [{ k: 'a', label: 'A', type: 'text' }, { k: 'b', label: 'B', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'memo', label: '메모', type: 'text' }] },
         { k: 'affName', label: '💗 aff 수치 이름 (기본 애정 = 연애 감정만 · 비우면 옛 방식 「호감」)', type: 'text' }, { k: 'trustName', label: '🤝 trust 수치 이름 (기본 우정 · 비우면 옛 방식 「신뢰」)', type: 'text' },
         { k: 'stages', label: '관계 단계 (두 수치가 모두 넘으면 해금 · 우정 단계는 필요한 애정 -100)', type: 'list', title: 'name', fields: [{ k: 'name', label: '단계 이름', type: 'text' }, { k: 'at', label: '필요한 애정 (aff · -100 = 상관없음)', type: 'num' }, { k: 'trust', label: '필요한 우정 (trust)', type: 'num' }, { k: 'unlock', label: '해금되는 것 (호칭·말투·행동)', type: 'text' }, { k: 'love', label: '💞 연인 단계 (로맨스 보정 ①: 고백 후 💍 확정이 있어야 올라감)', type: 'bool' }] },

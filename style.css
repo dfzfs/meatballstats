@@ -1107,3 +1107,9 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-help .ss-help-tools { justify-content: flex-start; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; }
 .ss-scope .ss-t-tip { display: flex; flex-direction: column; gap: 4px; flex: none; }
 .ss-scope .ss-t-btn.ghost { background: transparent; opacity: .75; }
+/* v2.7: 💗 애정 꺼 둔 사람 */
+.ss-scope .ss-meter.off span, .ss-scope .ss-meter.off em { color: var(--ss-dim); font-weight: 600; }
+.ss-scope .ss-meter.off .ss-meter-t { background: repeating-linear-gradient(-45deg, var(--ss-surface2) 0 4px, transparent 4px 8px); }
+.ss-scope .ss-meter.off .ss-meter-t::after { display: none; }
+.ss-scope .ss-ib.ss-nolove { color: var(--ss-love); }
+.ss-scope .ss-ib.ss-nolove.on { color: var(--ss-dim); }

@@ -2,7 +2,7 @@
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
     signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, trBack, viewTr, weekday,
-    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser, ssWarn, relAxes} from './core.js';
+    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser, ssWarn, relAxes, romanceStart} from './core.js';
 import { P } from './prompts.js';
 
 export const KEYMAP = {
@@ -451,10 +451,17 @@ function markRomFrom(meta, chat) {
     meta.romFrom = chat.length;
     Promise.resolve().then(() => saveMeta()).catch(() => { /* ignore */ });
 }
+// 💗 애정 꺼 둔 사람의 단계: 애정/우정 방식이면 애정 없이(=-100) 닿는 우정 단계까지, 옛 방식이면 연애 단계 바로 앞까지
+function noLoveStage(rl, st, r, raw) {
+    const rs = romanceStart(rl);
+    const k = relAxes(rl).love ? stageIndex(st, -100, r.trust) : raw;
+    return rs > 0 ? Math.min(k, rs - 1) : k;
+}
 function updateStage(s, r, info, silent = false) {
     const rl = s.data.rel; if (!rl) return;
     const st = rl.stages?.length ? rl.stages : DEFAULT_STAGES;
-    const raw = stageIndex(st, r.aff, r.trust);
+    let raw = stageIndex(st, r.aff, r.trust);
+    if (r.noLove) raw = noLoveStage(rl, st, r, raw); // 💗 애정 꺼 둠: 연애 단계 앞까지만
     const want = bondCap(s, st, raw, r);
     if (want < raw) {
         if (!r.bondReady) {
@@ -496,7 +503,7 @@ function jealousyFrom(s, gainer, amount, info) {
     const g = findBy(s.data.rel?.user ?? [], gainer);
     if (!g || g.aff < 20) return; // 꽤 가까워진 사람에게만
     for (const y of s.data.rel?.user ?? []) {
-        if (norm(y.name) === norm(gainer) || y.aff < 50) continue;
+        if (norm(y.name) === norm(gainer) || y.aff < 50 || y.noLove) continue; // 애정 꺼 둔 사람은 질투도 안 함
         const b = y.jealous;
         y.jealous = clamp(b + Math.ceil(amount), 0, 100);
         if (b < 50 && y.jealous >= 50) info.alerts.push(`💢 ${y.name}의 질투가 쌓이고 있다`);
@@ -632,11 +639,19 @@ export function applyOp(s, rawKey, rawVal, info) {
             const rl = ensure(s, 'rel');
             const [nm] = splitBar(val);
             const r = findBy(rl.user, nm.replace(/^[+]\s*/, ''));
-            if (!r || r.bond) return;
+            if (!r || r.bond || r.noLove) return;
             if (r.bondAsk && s.turn - (r.bondAskAt ?? 0) < 10) return; // 「아직」을 고른 뒤 10턴 안엔 다시 안 물어봄
             r.bondAsk = true; r.bondAskAt = s.turn;
             L(`💌 ${r.name}: 고백?`);
             info.alerts.push({ kind: 'confess', who: r.name }); // index.js가 「연인으로 확정할까요?」 창을 띄운다
+            return;
+        }
+        case '_nolove': case '_love': { // 💗 애정 꺼 두기 / 다시 켜기 (관계 탭 버튼)
+            const rl = ensure(s, 'rel');
+            const r = findBy(rl.user, val); if (!r) return;
+            if (key === '_nolove') r.noLove = true; else delete r.noLove;
+            (s.nolove ??= {})[norm(r.name)] = !!r.noLove; // 관계 칸을 통째로 저장해도 유지
+            r.stage = -1; updateStage(s, r, info, true);
             return;
         }
         case '_bond': case '_unbond': {
@@ -893,6 +908,7 @@ export function applyOp(s, rawKey, rawVal, info) {
             const b = r[key];
             let nv = clamp(Math.round(p.mode === 'add' ? b + p.v : p.v), -100, 100);
             if (nv > b && info.ai && romLive(s)) nv = b + romGain(s, info, r.name, key, nv - b); // 로맨스 보정: 상한
+            if (key === 'aff' && r.noLove && nv > b) { if (info.ai) L(`🚫♥ ${r.name} (애정 꺼 둠)`); nv = b; } // 💗 애정 꺼 둔 사람: 안 오름 (내려가는 건 그대로)
             r[key] = nv;
             if (m[3]) r.memo = m[3];
             if (r[key] !== b) L(`${key === 'aff' ? '♥' : '🤝'} ${r.name} ${signed(r[key] - b)}`);
@@ -1111,7 +1127,7 @@ export function freshState(base) {
     const s = { core: clone(base?.core ?? EMPTY.core()), data, pendingRoll: null, recent: [], turn: 0, tally: clone(base?.tally) ?? null, days: clone(base?.days) ?? [], day0: base?.day0 ?? null };
     if (s.day0 === null && data.calendar) s.day0 = dayIndex(data.calendar);
     // 관계: 처음 단계 맞추기 (알림 없이)
-    if (data.rel) { data.rel.stages ??= clone(DEFAULT_STAGES); data.rel.life ??= []; for (const r of data.rel.user ?? []) { r.jealous ??= 0; if (r.stage === undefined || r.stage === null || r.stage < 0) r.stage = stageIndex(data.rel.stages, r.aff, r.trust); } }
+    if (data.rel) { data.rel.stages ??= clone(DEFAULT_STAGES); data.rel.life ??= []; for (const r of data.rel.user ?? []) { r.jealous ??= 0; if (r.stage === undefined || r.stage === null || r.stage < 0) { r.stage = stageIndex(data.rel.stages, r.aff, r.trust); if (r.noLove) r.stage = noLoveStage(data.rel, data.rel.stages, r, r.stage); } } }
     if (data.ach) data.ach.endings ??= [];
     s.dayBuf = startDay(s);
     return s;
@@ -1171,7 +1187,7 @@ export function compute(limit, opts = {}) {
             if (a.set.mod === 'core') s.core = clone(a.set.data);
             else if (MOD_IDS.includes(a.set.mod)) {
                 s.data[a.set.mod] = clone(a.set.data);
-                if (a.set.mod === 'rel') for (const r of s.data.rel.user) { if (s.bonds && Object.hasOwn(s.bonds, norm(r.name))) r.bond = s.bonds[norm(r.name)]; updateStage(s, r, info, true); }
+                if (a.set.mod === 'rel') for (const r of s.data.rel.user) { if (s.bonds && Object.hasOwn(s.bonds, norm(r.name))) r.bond = s.bonds[norm(r.name)]; if (s.nolove && Object.hasOwn(s.nolove, norm(r.name))) { if (s.nolove[norm(r.name)]) r.noLove = true; else delete r.noLove; } updateStage(s, r, info, true); }
                 if (a.set.mod === 'calendar' && s.day0 === null) s.day0 = dayIndex(s.data.calendar);
             }
         }
@@ -1295,10 +1311,11 @@ export function unreadCount(s, meta = getMeta()) {
 function relKeyHint() {
     const rl = app.current?.state?.data?.rel, A = relAxes(rl, viewTr());
     return A.love
-        ? `aff (이름 ±N — ${A.aff}: romantic feelings toward {{user}} ONLY; friendly moments don't raise it) · trust (이름 ±N — ${A.trust}: friendship, closeness, trust)`
-        : `aff (이름 ±N — ${A.aff}: affection) · trust (이름 ±N — ${A.trust})`;
+        ? `aff (이름 ±N — ${A.aff}: romantic feelings toward {{user}} ONLY; friendly moments don't raise it${noLoveNote(rl)}) · trust (이름 ±N — ${A.trust}: friendship, closeness, trust)`
+        : `aff (이름 ±N — ${A.aff}: affection${noLoveNote(rl)}) · trust (이름 ±N — ${A.trust})`;
 }
-const relKeyShort = (rl) => { const A = relAxes(rl, viewTr()); return A.love ? ` (aff = ${A.aff}: romance only · trust = ${A.trust})` : ''; };
+const noLoveNote = (rl) => { const n = (rl?.user ?? []).filter(x => x.noLove).map(x => x.name); return n.length ? ` · platonic only, never raise aff: ${n.slice(0, 8).join(', ')}` : ''; };
+const relKeyShort = (rl) => { const A = relAxes(rl, viewTr()); return (A.love ? ` (aff = ${A.aff}: romance only · trust = ${A.trust}${noLoveNote(rl)})` : noLoveNote(rl) ? ` (${noLoveNote(rl).slice(3)})` : ''); };
 export function tagKeysFor(meta) {
     const K = [];
     const on = (id) => modOn(id, meta);
@@ -1545,7 +1562,7 @@ function buildUltra(r, opt = {}) {
     if (on('rel')) {
         const here = [], away = [];
         for (const x of d.rel.user) (inScene(x.name) ? here : away).push(x);
-        if (here.length) L.push(`♥(${relAxes(d.rel, viewTr()).aff}/${relAxes(d.rel, viewTr()).trust}) ${here.slice(0, 10).map(x => `${x.name}${x.aff}/${x.trust}${x.label ? `[${x.label}]` : ''}<${stageOf(d.rel, x).name}>${x.jealous >= 30 ? `💢${x.jealous}` : ''}`).join(' ')}`);
+        if (here.length) L.push(`♥(${relAxes(d.rel, viewTr()).aff}/${relAxes(d.rel, viewTr()).trust}) ${here.slice(0, 10).map(x => `${x.name}${x.noLove ? '🚫♥' : ''}${x.aff}/${x.trust}${x.label ? `[${x.label}]` : ''}<${stageOf(d.rel, x).name}>${x.jealous >= 30 ? `💢${x.jealous}` : ''}`).join(' ')}`);
         if (away.length) L.push(`(장면 밖:${away.slice(0, 12).map(x => `${x.name}${x.aff}/${x.trust}`).join(' ')})`);
     }
     if (on('profile')) {
@@ -1594,7 +1611,7 @@ function buildDelta(r, plan, opt = {}) {
     if (on('map') && d.map.here) L.push(`@${d.map.here}`);
     if (on('stats') && d.stats.bars.length) L.push(d.stats.bars.map(b => `${b.name}${fmtNum(b.cur)}/${fmtNum(b.max)}`).join(' ') + (d.stats.conds.length ? ` ⚠${d.stats.conds.map(c => c.name).join(',')}` : ''));
     if (on('wallet')) L.push(`$${fmtNum(d.wallet.cash)}${d.wallet.currency}`);
-    if (on('rel')) { const here = d.rel.user.filter(x => inScene(x.name)); if (here.length) L.push(`♥(${relAxes(d.rel, viewTr()).aff}/${relAxes(d.rel, viewTr()).trust}) ${here.slice(0, 8).map(x => `${x.name}${x.aff}/${x.trust}<${stageOf(d.rel, x).name}>${x.jealous >= 30 ? `💢${x.jealous}` : ''}`).join(' ')}`); }
+    if (on('rel')) { const here = d.rel.user.filter(x => inScene(x.name)); if (here.length) L.push(`♥(${relAxes(d.rel, viewTr()).aff}/${relAxes(d.rel, viewTr()).trust}) ${here.slice(0, 8).map(x => `${x.name}${x.noLove ? '🚫♥' : ''}${x.aff}/${x.trust}<${stageOf(d.rel, x).name}>${x.jealous >= 30 ? `💢${x.jealous}` : ''}`).join(' ')}`); }
     if (on('fate')) L.push(...fateText(s, true));
     if (plan.changes.length) L.push(`${viewTr() ? 'changes:' : '변화:'}${plan.changes.slice(-14).join(' / ')}`);
     if (s.recent.length) L.push(`${viewTr() ? 'UI:' : 'UI행동:'}${recentI(s, 5)}`);
@@ -1733,7 +1750,7 @@ function buildInjection0(r, opt = {}) {
         const rl = d.rel;
         const here = rl.user.filter(x => inScene(x.name)), away = rl.user.filter(x => !inScene(x.name));
         const AX = relAxes(rl, viewTr()), W = viewTr() ? { aff: AX.aff, trust: AX.trust, stage: 'stage', jealous: 'jealousy' } : { aff: AX.aff, trust: AX.trust, stage: '단계', jealous: '질투' }; // 화면만 번역: 고정 낱말도 영어로
-        for (const x of here.slice(0, 12)) { const g = stageOf(rl, x); PP.push(`${x.name}${x.label ? ` [${x.label}]` : ''} → {{user}}: ${W.aff} ${x.aff} · ${W.trust} ${x.trust} · ${W.stage} 「${g.name}」${set.romBond && x.bond ? ' · 💞 lovers (confirmed)' : ''}${g.unlock && !lite ? ` (unlocked: ${short(g.unlock, 60)}${set.stageLock && !set.romFacts ? " — don't act beyond this stage yet" : ''})` : set.stageLock && !set.romFacts ? ' (stay within this stage)' : ''}${x.jealous >= 30 ? ` · ${W.jealous} ${x.jealous}/100 (show it subtly when they meet)` : ''}${x.memo && !lite ? ` — ${short(x.memo, 90)}` : ''}`); }
+        for (const x of here.slice(0, 12)) { const g = stageOf(rl, x); PP.push(`${x.name}${x.label ? ` [${x.label}]` : ''} → {{user}}: ${W.aff} ${x.aff} · ${W.trust} ${x.trust} · ${W.stage} 「${g.name}」${set.romBond && x.bond ? ' · 💞 lovers (confirmed)' : ''}${x.noLove ? ' · PLATONIC ONLY — no romantic feelings toward {{user}}; never raise aff' : ''}${g.unlock && !lite ? ` (unlocked: ${short(g.unlock, 60)}${set.stageLock && !set.romFacts ? " — don't act beyond this stage yet" : ''})` : set.stageLock && !set.romFacts ? ' (stay within this stage)' : ''}${x.jealous >= 30 ? ` · ${W.jealous} ${x.jealous}/100 (show it subtly when they meet)` : ''}${x.memo && !lite ? ` — ${short(x.memo, 90)}` : ''}`); }
         if (away.length) PP.push(`Not in this scene (${W.aff}/${W.trust}): ${away.slice(0, 15).map(x => `${x.name} ${x.aff}/${x.trust}`).join(', ')}`);
         const pairs = rl.pairs.filter(p => inScene(p.a) || inScene(p.b));
         if (pairs.length && !lite) PP.push(`Between others: ${pairs.slice(0, 10).map(p => `${p.a}↔${p.b} ${p.label}`).join(' · ')}`);
@@ -1779,7 +1796,7 @@ function buildInjection0(r, opt = {}) {
     if (s.recent.length) L.push(`Since the last reply {{user}} did (via the status UI): ${recentI(s, 8)}`);
     if (!opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus')) {
         L.push(outRule(P('inj.output')));
-        L.push(lite ? `Keys (key: value, ±N for numbers, +/-name for lists, name | detail): ${keysI(tagKeysFor(meta)).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ')}` : `Keys: ${keysI(tagKeysFor(meta)).join(' · ')}`);
+        L.push(lite ? `Keys (key: value, ±N for numbers, +/-name for lists, name | detail): ${keysI(tagKeysFor(meta)).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ')}${modOn('rel', meta) && s.data.rel ? relKeyShort(s.data.rel) : ''}` : `Keys: ${keysI(tagKeysFor(meta)).join(' · ')}`);
         if (!lite) L.push(viewTr() ? P('inj.example.en') : P('inj.example'));
     }
     return { main: L.filter(Boolean).join('\n'), people: PP.length ? `[STATUS SIM — PEOPLE (part of the state above)]\n${PP.join('\n')}` : '' };

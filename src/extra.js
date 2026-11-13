@@ -1,6 +1,6 @@
 // v2.5 화면: SNS · 추천 음악 · 내 탭 · 추억 앨범 · 플레이 기록 · 검색 · 속마음 · 엔딩 · 모델 맞춤 설정
 import { app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, esc, short, clone, clamp, num, fmtNum, signed, uid, findBy, norm, stamp, userName, TITLE, LOG, MOD, dayIndex, msgText, DEFAULT_STAGES } from './core.js';
-import { loveIndex, ensureLove, relAxes } from './core.js';
+import { loveIndex, ensureLove, relAxes, romanceStart } from './core.js';
 import { addAdjust, commit, stageIndex, stripStatus } from './engine.js';
 import { newSns, snsReactions, musicPicks, peekMind, fillWants } from './ai.js';
 import { sec, emptyBox, chip, avatar, ai1, seg, gauge, meter, askInput, askConfirm, busyBtn, insertInput, closeIfPopup, mascot } from './kit.js';
@@ -127,14 +127,16 @@ export function relView(s, d, ui) {
     const L = loveIndex(st), AX = relAxes(d);
     const card = (r) => {
         const k = clamp(r.stage ?? stageIndex(st, r.aff, r.trust), 0, st.length - 1);
-        const g = st[k], nx = st[k + 1];
+        const g = st[k], rs = r.noLove ? romanceStart(d) : -1, nx = rs > 0 && k + 1 >= rs ? null : st[k + 1]; // 애정 꺼 둔 사람은 연애 단계를 다음 목표로 안 보여 줌
         const need = nx ? [r.aff < nx.at ? `${AX.aff} ${nx.at - r.aff}` : '', r.trust < nx.trust ? `${AX.trust} ${nx.trust - r.trust}` : ''].filter(Boolean).join(' · ') : '';
         return `<div class="ss-card ss-relc"><div class="ss-relc-h">${avatar(r.name)}<div class="ss-ct-b"><b>${esc(r.name)} <span class="ss-stage s${k}">${esc(g.name)}</span>${set.romBond && r.bond && k < (L < 0 ? Infinity : L) ? ' <span class="ss-stage love">💞 연인</span>' : ''}</b>${r.label ? `<small>${esc(r.label)}</small>` : ''}</div>
             <button class="ss-ib" data-act="peek" data-arg="${esc(r.name)}" title="속마음 엿보기 (AI 1회${set.peekPerDay ? ` · 오늘 ${left}번 남음` : ''})" ${set.peekPerDay && left <= 0 ? 'disabled' : ''}><i class="fa-solid fa-heart-circle-question"></i></button>
-            ${modOn('contact') ? `<button class="ss-ib" data-act="talk" data-arg="${esc(r.name)}" title="연락"><i class="fa-solid fa-envelope"></i></button>` : ''}</div>
-            ${meter(AX.aff, r.aff, 'love')}${meter(AX.trust, r.trust, 'trust')}${set.jealousy && r.jealous ? `<div class="ss-meter jealous"><span>질투</span><div class="ss-meter-t"><b style="left:0;width:${r.jealous}%"></b></div><em>${r.jealous}</em></div>` : ''}
+            ${modOn('contact') ? `<button class="ss-ib" data-act="talk" data-arg="${esc(r.name)}" title="연락"><i class="fa-solid fa-envelope"></i></button>` : ''}
+            <button class="ss-ib ss-nolove ${r.noLove ? 'on' : ''}" data-act="${r.noLove ? 'love' : 'nolove'}" data-arg="${esc(r.name)}" title="${r.noLove ? `💗 ${esc(AX.aff)} 다시 켜기` : `💗 ${esc(AX.aff)} 꺼 두기 — 이 사람은 우정만 (연애 없음)`}"><i class="fa-solid ${r.noLove ? 'fa-heart-crack' : 'fa-heart'}"></i></button></div>
+            ${r.noLove ? `<div class="ss-meter love off"><span>${esc(AX.aff)}</span><div class="ss-meter-t"></div><em>꺼 둠</em></div>` : meter(AX.aff, r.aff, 'love')}${meter(AX.trust, r.trust, 'trust')}${set.jealousy && r.jealous ? `<div class="ss-meter jealous"><span>질투</span><div class="ss-meter-t"><b style="left:0;width:${r.jealous}%"></b></div><em>${r.jealous}</em></div>` : ''}
             ${g.unlock ? `<p class="ss-unlock"><i class="fa-solid fa-lock-open"></i> ${esc(g.unlock)}</p>` : ''}
-            ${nx ? `<p class="ss-hint">${r.bondReady && k + 1 === L ? `「${esc(nx.name)}」 조건은 채웠어요 — 고백 후 💍 확정해야 넘어가요` : `다음 「${esc(nx.name)}」까지 ${need || '조금만 더'}`}${nx.unlock ? ` → ${esc(nx.unlock)}` : ''}</p>` : '<p class="ss-hint">가장 높은 단계예요 💞</p>'}
+            ${!nx && r.noLove && k + 1 < st.length ? `<p class="ss-hint">💗 ${esc(AX.aff)} 꺼 둔 사람이라 「${esc(g.name)}」까지예요. 우정은 계속 쌓여요.</p>` : ''}
+            ${nx ? `<p class="ss-hint">${r.bondReady && k + 1 === L ? `「${esc(nx.name)}」 조건은 채웠어요 — 고백 후 💍 확정해야 넘어가요` : `다음 「${esc(nx.name)}」까지 ${need || '조금만 더'}`}${nx.unlock ? ` → ${esc(nx.unlock)}` : ''}</p>` : r.noLove && k + 1 < st.length ? '' : '<p class="ss-hint">가장 높은 단계예요 💞</p>'}
             ${!set.romBond ? '' : r.bond ? `<div class="ss-bondrow"><span>💍 연인 확정됨</span><button class="ss-btn sm ghost" data-act="unbond" data-arg="${esc(r.name)}" title="확정 취소 (단계가 숫자대로 돌아가요)">확정 취소</button></div>`
                 : r.bondAsk || r.bondReady ? `<div class="ss-row-btns"><button class="ss-btn sm pri" data-act="bond" data-arg="${esc(r.name)}" title="고백이 오갔으면 눌러 주세요"><i class="fa-solid fa-ring"></i> 연인 확정${r.bondAsk ? ' · 고백이 감지됐어요' : ' · 조건 충족'}</button></div>` : ''}
             ${set.romDrive && (r.likes || r.dislikes || r.concern) ? `<div class="ss-wants">${[r.likes && `<span class="like" title="끌리는 것"><i class="fa-solid fa-heart"></i>${esc(r.likes)}</span>`, r.dislikes && `<span class="hate" title="싫어하는 것"><i class="fa-solid fa-ban"></i>${esc(r.dislikes)}</span>`, r.concern && `<span class="mind" title="요즘 신경 쓰는 것"><i class="fa-solid fa-cloud"></i>${esc(r.concern)}</span>`].filter(Boolean).join('')}</div>` : ''}
@@ -160,6 +162,8 @@ export const REL_ACTIONS = {
         await commit('rel', nd, '💞 관계 단계에 연인 단계 추가');
         toastr.success(`맨 위에 「${esc(nd.stages.at(-1).name)}」 단계를 붙였어요. 이름·조건은 ✏️ 편집에서 바꿀 수 있어요.`, TITLE);
     },
+    nolove: async (el, arg) => { await addAdjust({ ops: [['_nolove', arg]], label: `💗 ${arg}: 애정 꺼 둠 (우정만)` }); toastr.info(`${esc(arg)}의 애정을 꺼 뒀어요. 이제 애정이 오르지 않고 연애 단계로 가지 않아요. AI에게도 「연애 감정 없음」으로 알려요.`, TITLE); },
+    love: async (el, arg) => { await addAdjust({ ops: [['_love', arg]], label: `💗 ${arg}: 애정 다시 켬` }); },
     bond: async (el, arg, btn, s) => { if (s?.data?.rel?.user?.find(x => x.name === arg)?.bond) return; await addAdjust({ ops: [['_bond', arg]], label: `💍 ${arg}와(과) 고백이 오가 연인이 되었다 (확정)` }); },
     fillwants: async (el, arg, btn, s) => {
         busyBtn(btn, true, '채우는 중…');
