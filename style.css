@@ -1140,3 +1140,24 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-scope .ss-meter.off .ss-meter-t::after { display: none; }
 .ss-scope .ss-ib.ss-nolove { color: var(--ss-love); }
 .ss-scope .ss-ib.ss-nolove.on { color: var(--ss-dim); }
+
+/* ───── 🐱 도우미: 안내서 답 카드 (v2.7.1 · AI 0회) ───── */
+.ss-scope .ss-hk { display: flex; flex-direction: column; gap: 4px; }
+.ss-scope .ss-hk + .ss-hk { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--ss-line); }
+.ss-scope .ss-hk-t { font-size: 1.02em; }
+.ss-scope .ss-hk-p { color: var(--ss-dim); font-size: .8em; margin-top: -3px; }
+.ss-scope .ss-hk p { margin: 2px 0; }
+.ss-scope .ss-hk-li { display: flex; gap: 6px; align-items: flex-start; }
+.ss-scope .ss-hk-li > span { flex: none; min-width: 1.1em; color: var(--ss-dim); }
+.ss-scope .ss-hk-li > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ss-scope .ss-hk-li.d1 { padding-left: 14px; } .ss-scope .ss-hk-li.d2 { padding-left: 28px; } .ss-scope .ss-hk-li.d3 { padding-left: 42px; }
+.ss-scope .ss-hk-q { color: var(--ss-dim); border-left: 3px solid var(--ss-line); padding-left: 8px; }
+.ss-scope .ss-hk code { font-size: .88em; padding: 0 4px; border-radius: 4px; background: var(--ss-surface2); }
+.ss-scope .ss-hk-pre { white-space: pre-wrap; font-size: .82em; background: var(--ss-surface2); padding: 6px 8px; border-radius: 6px; margin: 2px 0; }
+.ss-scope .ss-hk-tb { border-collapse: collapse; font-size: .82em; width: 100%; margin: 2px 0; }
+.ss-scope .ss-hk-tb th, .ss-scope .ss-hk-tb td { border: 1px solid var(--ss-line); padding: 3px 5px; text-align: left; vertical-align: top; }
+.ss-scope .ss-hk-diag { background: var(--ss-surface); border-radius: var(--ss-r); padding: 8px 10px; }
+.ss-scope .ss-hk-rel { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 8px; }
+.ss-scope .ss-hk-rel > small { color: var(--ss-dim); width: 100%; }
+.ss-scope .ss-hk-ai { margin-top: 6px; }
+.ss-scope .ss-hk-ai small { opacity: .7; }
