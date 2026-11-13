@@ -159,6 +159,7 @@ const TR_MAX = 3000;
 const TR_CHARS = 300000; // 사전 전체 글자 수 상한 (약 300KB)
 let trVer = 0; // 사전이 바뀔 때마다 +1 (화면 번역기 캐시 갱신)
 const hasLatin = (x) => /[A-Za-z]/.test(x);
+app.addTrPairs = (p) => addPairs(p); // 기본 틀 영어판이 화면 번역 짝을 넣을 때 (skeleton.js → 순환 import 없이)
 export function addPairs(pairs) {
     const meta = getMeta(true);
     if (!meta) return 0;

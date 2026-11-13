@@ -532,6 +532,11 @@ export async function openWizard() {
     const meta = getMeta();
     const curMods = meta?.mods ?? Object.fromEntries(MOD_IDS.map(id => [id, defaultModOn(id)]));
     const W = { base: hasSrc ? 'auto' : 'new', pmode: hasSrc ? 'minimal' : 'detailed', diff: meta?.difficulty ?? settings().difficulty, genre: '', cmode: 'auto', play: meta?.play ? playOf(meta).mode : 'auto', gm: GEN_MODES[settings().genMode] ? settings().genMode : 'hybrid' };
+    // v2.7.1 상태창 언어: 채팅이 거의 영어면 「영어로 저장 · 화면은 한국어」를 먼저 권한다
+    const recentTxt = (ctx().chat ?? []).slice(-12).map(m => String(m?.mes ?? '')).join(' ').replace(/<[^>]+>/g, ' ');
+    const latin = (recentTxt.match(/[A-Za-z]/g) ?? []).length, hangul = (recentTxt.match(/[가-힣]/g) ?? []).length;
+    const chatEn = latin > 200 && latin > hangul * 3;
+    W.lang = settings().ssGenLang === 'enview' || (settings().ssGenLang !== 'ko' && chatEn) ? 'enview' : settings().ssGenLang === 'ko' && !chatEn ? 'ko' : chatEn ? 'enview' : 'ko';
     const el = h(`<div class="ss-root ss-scope ss-wizard">
         <div class="ss-wz-head"><i class="fa-solid fa-wand-magic-sparkles"></i><div><b>상태창 만들기</b><small>어떤 카드든, 카드가 없어도 돼요. AI가 관련 칸끼리 묶어서 채워요.</small></div></div>
         <div class="ss-card ss-found">
@@ -543,6 +548,10 @@ export async function openWizard() {
         <section class="ss-sec"><div class="ss-sec-h"><h4>만드는 방식</h4></div>
             <div class="ss-seg wrap stack" data-w="gm">${Object.entries(GEN_MODES).map(([k, v]) => `<button data-v="${k}" class="${W.gm === k ? 'on' : ''}"><i class="fa-solid ${v.icon}"></i> ${v.name}<small>${v.desc}</small></button>`).join('')}</div>
             <p class="ss-hint ss-gmhint ${W.gm === 'ai' ? 'ss-hide' : ''}">기본 틀은 아래 「장르」에 맞춰져요 (안 고르면 현대). 수치 · 주사위 · 달력 · 업적 · 운명 카드처럼 어떤 세계관에도 맞는 칸은 검증된 모양으로 고정되고, 나머지는 「기본 틀만」이면 빈 뼈대로 · 「기본 틀 + AI」면 AI가 세계관에 맞게 채워요.</p>
+        </section>
+        <section class="ss-sec"><div class="ss-sec-h"><h4>상태창 언어</h4></div>
+            <div class="ss-seg wrap stack" data-w="lang"><button data-v="enview" class="${W.lang === 'enview' ? 'on' : ''}">🇺🇸 영어로 저장 · 화면은 한국어로<small>AI에게 영어로 가고(영어 롤플에 잘 맞음) · 상태창에선 한국어로 번역해 보여 줘요 · 기본 틀도 영어로</small></button><button data-v="ko" class="${W.lang === 'ko' ? 'on' : ''}">🇰🇷 한국어로 저장<small>저장도 화면도 한국어 · 번역 없음</small></button></div>
+            <p class="ss-hint">${chatEn ? '이 채팅은 영어로 보여서 「영어로 저장」을 골라 뒀어요. ' : ''}카드 · 로어북 · 지시가 어떤 언어든 고른 언어로 만들어요. 화면 번역 담당(실리 기본 번역 · 무료 / 번역 모델)은 확장 설정 › 상태창 언어 · 번역에서 골라요. 이 선택은 다른 채팅에도 적용돼요.</p>
         </section>
         <section class="ss-sec"><div class="ss-sec-h"><h4>세계관</h4></div>
             <div class="ss-seg wrap stack" data-w="base"><button data-v="auto" class="${W.base === 'auto' ? 'on' : ''}">기존 설정 그대로<small>카드·로어북·채팅을 읽어요</small></button><button data-v="new" class="${W.base === 'new' ? 'on' : ''}">새 세계관 만들기<small>아래 지시대로 새로</small></button></div>
@@ -664,6 +673,7 @@ export async function openWizard() {
         const btn = e.currentTarget;
         const src = Object.fromEntries([...el.querySelectorAll('[data-src]')].map(i => [i.dataset.src, i.checked]));
         mods = Object.fromEntries([...el.querySelectorAll('[data-mod]')].map(i => [i.dataset.mod, i.checked]));
+        if (W.lang && settings().ssGenLang !== W.lang) { settings().ssGenLang = W.lang; saveSettings(); } // 생성 전에 — 모든 AI 호출 · 기본 틀이 이 언어로
         const g = GENRES.find(x => x.id === W.genre);
         const canon = el.querySelector('.ss-w-canon').value.trim();
         let instruction = el.querySelector('.ss-w-ins').value.trim();

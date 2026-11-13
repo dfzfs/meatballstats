@@ -595,7 +595,7 @@ export const NORM = {
             threads, unread: d.unread && typeof d.unread === 'object' ? { ...d.unread } : {},
             recent: arr(d.recent).map(String).filter(Boolean).slice(0, 30),
             couriers: couriers.length ? couriers : clone(COURIER_PRESETS.slice(0, 1)),
-            express: { name: str(d.express?.name, '급행 (퀵)') || '급행 (퀵)', fee: Math.max(0, num(d.express?.fee, 100)) },
+            express: (() => { const dn = viewTr() ? 'Express' : '급행 (퀵)'; return { name: str(d.express?.name, dn) || dn, fee: Math.max(0, num(d.express?.fee, 100)) }; })(),
         };
     },
     quest: (d) => ({
@@ -867,7 +867,8 @@ export function addDays(cal, k) {
 export function weekday(cal, y, m, d) { const w = cal.week.length || 7; return cal.week[((dayIndex(cal, y, m, d) % w) + w) % w] ?? ''; }
 export function dateStr(cal, y = cal.y, m = cal.m, d = cal.d) {
     const mn = cal.months[m - 1]?.name ?? `${m}월`;
-    const isNumMonth = /^\d+월$/.test(mn);
+    const EN_M = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const isNumMonth = /^\d+월$/.test(mn) || (cal.months.length === 12 && String(mn).trim().toLowerCase().startsWith(EN_M[m - 1] ?? '\u0000')); // 「Mar」「March」도 → 「3월」 한 번만
     return `${cal.era ? cal.era + ' ' : ''}${y}년 ${isNumMonth ? mn : `${mn}(${m}월)`} ${d}일 (${weekday(cal, y, m, d)})`;
 }
 export function dateShort(cal) { return `${cal.m}/${cal.d}(${weekday(cal, cal.y, cal.m, cal.d)})`; }
