@@ -1205,3 +1205,7 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-toolrow-t { flex: 1 0 auto; min-width: 4.5em; white-space: nowrap; }
 .ss-tools { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; max-width: 100%; }
 .ss-tools .ss-tool[data-act="trfix"] span { display: none; }
+
+/* ───── 📰 신문 제목 글꼴 (v2.7.2) ─────
+   명조(세리프) 글꼴이 없는 윈도우에선 「바탕」에 굵기를 억지로 입혀 글자가 깨져 보였음 → 제목은 기본 글꼴 굵게 (어느 PC에서나 깔끔) */
+.ss-mast b, .ss-article .ss-art-h b { font-family: inherit; font-weight: 800; letter-spacing: -.02em; }
