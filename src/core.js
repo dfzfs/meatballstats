@@ -109,6 +109,7 @@ export const DEFAULTS = Object.freeze({
     romInit: false,          // 먼저 움직이기: 가끔 그 장면의 인물이 스스로 일을 벌이게
     romInitPct: 25,          // 그 확률 % (AI 답 1번마다)
     profHelp: '',            // 미트볼 도우미가 쓸 모델 (연결 프로필, '' = 확장 AI 모델)
+    helpMode: 'local',       // 도우미 답 방식: local (README 먼저 · 토큰 0) | ai (바로 AI)
     romDepth: 1,             // 로맨스 보정 주입 깊이 (0 = 맨 끝)
     offscreen: true,         // NPC 화면 밖 생활 (날이 지나면 가끔)
     favTabs: [],             // 즐겨찾기 탭

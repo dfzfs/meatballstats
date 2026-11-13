@@ -225,7 +225,13 @@ async function showWhatsNew(all = false, latestOnly = false) {
     el.className = 'ss-root ss-scope ss-whatsnew';
     el.innerHTML = `<div class="ss-wz-head">${mascot('happy', 'md')}<div><b>😼 미트볼 상태창이 업데이트됐어요</b><small>v${esc(VERSION)}</small></div></div>
         ${list.map(c => `<h4>v${esc(c.v)} — ${esc(c.title)}</h4><ul class="ss-newlist">${c.items.map(([h, d]) => `<li><b>${esc(h)}</b><br><small>${esc(d)}</small></li>`).join('')}</ul>`).join('')}
+        <div class="ss-row-btns"><button class="ss-btn sm" data-wn-help><i class="fa-solid fa-circle-question"></i> 🐱 도우미로 더 자세히 (AI 0회)</button></div>
         <p class="ss-hint">새 기능은 모두 선택 사항이라, 켜지 않으면 예전과 똑같이 동작해요. 다시 보려면 확장 설정 › 데이터 · 화면 › 「업데이트 내역」.</p>`;
+    el.addEventListener('click', (e) => {
+        if (!e.target.closest('[data-wn-help]')) return;
+        el.closest('dialog')?.querySelector('.popup-button-ok')?.click();
+        setTimeout(() => app.openHelp?.('이번 업데이트 뭐 바뀌었어요?'), 200);
+    });
     await popup(el, { okButton: '확인' });
 }
 // 내역 지문: 같은 버전이라도 내역이 바뀌면 다시 알린다

@@ -1,6 +1,7 @@
 // 🐱 미트볼 도우미: 모르는 기능을 물어보는 작은 챗창 (v2.6)
-// 내장 안내서 + 지금 설정을 같이 보내서, 「어디서 켜요?」 「왜 안 돼요?」에 답한다. 모델은 따로 고를 수 있다.
-import { app, settings, saveSettings, getMeta, modOn, MODS, esc, TITLE, LOG, VERSION, ssWarn } from './core.js';
+// v2.7.1: 먼저 README를 읽고 AI 없이 바로 답한다 (토큰 0) · 「왜 안 돼요?」는 지금 설정을 직접 확인 · 부족할 때만 「AI에게 더 물어보기」
+import { app, settings, saveSettings, getMeta, modOn, MODS, esc, TITLE, LOG, VERSION, ssWarn, isActive } from './core.js';
+import { parseReadme, search, intentOf, sectionHtml, versionsOf } from './helpkb.js';
 import { P, aiGenerate, listProfiles } from './prompts.js';
 import { popup, mascot } from './kit.js';
 import { openReport } from './report.js';
@@ -103,15 +104,96 @@ function snapshot() {
     return L.join('\n');
 }
 
-const QUICK = ['처음인데 뭐부터 하면 돼요?', '기본 틀이 뭐예요?', '로맨스 보정이 뭐예요? 뭘 켜면 좋아요?', '토큰을 아끼려면 어떻게 해요?', '상태창이 영어로 저장되게 하려면요?', '변동 칩이 안 떠요', '🐞 오류 보고문 써 줘'];
+const QUICK = ['이번 업데이트 뭐 바뀌었어요?', '처음인데 뭐부터 하면 돼요?', '토큰을 아끼려면?', '변동 칩이 안 떠요', '칸 가리기는 어떻게 해요?', '로맨스 보정이 뭐예요?', '쓰레기통 완전 삭제', '🐞 오류 보고문 써 줘'];
+
+// ───── README 읽기 (설치된 확장 폴더 안의 파일 · 인터넷 · AI 없음) ─────
+let kbP = null;
+export function loadKB() {
+    kbP ??= fetch(new URL('../README.md', import.meta.url), { cache: 'no-cache' })
+        .then(r => (r.ok ? r.text() : Promise.reject(new Error(`README ${r.status}`))))
+        .then(parseReadme)
+        .catch(e => { kbP = null; ssWarn(LOG, 'help kb', e); return []; });
+    return kbP;
+}
+
+// ───── 「왜 안 돼요?」 — 지금 설정을 직접 확인 (AI 0회) ─────
+const OK = '✅', NO = '❌', HM = '💡';
+function diagHtml(what) {
+    const s = settings(), meta = getMeta(), row = (ok, t) => `<div class="ss-hk-li"><span>${ok === true ? OK : ok === false ? NO : HM}</span><div>${t}</div></div>`;
+    const L = [];
+    if (what === 'chips' || what === 'sheet') {
+        L.push(row(!!s.enabled, `확장 설정 › <b>사용</b> ${s.enabled ? '켜짐' : '꺼짐 — 켜 주세요'}`));
+        L.push(row(isActive(), isActive() ? '이 채팅에서 켜져 있어요' : '이 채팅에서 꺼져 있어요 — 확장 설정 「이 채팅에서 켜기」'));
+        L.push(row(!!meta?.base, meta?.base ? '이 채팅에 상태창이 있어요' : '이 채팅엔 아직 상태창이 없어요 — 「상태창 만들기」'));
+        if (meta?.base) L.push(row(!meta.paused, meta.paused ? '⏸ <b>일시정지 중</b>이에요 — ▶로 재개' : '일시정지 아님'));
+    }
+    if (what === 'chips') {
+        L.push(row(s.sync !== 'off', `자동 반영: <b>${{ tag: 'A 태그', tagPlus: 'A+B', analyze: 'B 별도 분석', off: 'C 끔' }[s.sync] ?? s.sync}</b>${s.sync === 'off' ? ' — 꺼져 있어서 칩이 안 생겨요' : s.sync === 'tag' ? ' · 가벼운 모델이면 A+B 추천 (태그 빼먹은 답만 따로 분석)' : ''}`));
+        L.push(row(s.msgCard !== 'off', s.msgCard === 'off' ? '메시지 변동 칩이 <b>숨기기</b>예요 — 확장 설정 위쪽에서 「보이기」' : '메시지 변동 칩 보이기'));
+        L.push(row(null, '본문에 <code>&lt;meatball&gt;</code> 글이 그대로 보이면 확장 설정 › 다른 확장과 같이 쓰기 › 「정규식 설치」'));
+    }
+    if (what === 'sheet') {
+        L.push(row(!!(s.showHud || s.showSide || s.showFloat), `보이는 곳: HUD ${s.showHud ? '켬' : '끔'} · 사이드 ${s.showSide ? '켬' : '끔'} · 떠 있는 버튼 ${s.showFloat ? '켬' : '끔'} (꾸미기 › 보이는 곳)`));
+        L.push(row(null, '업데이트 뒤라면 새로고침(F5) · 그래도면 Ctrl+Shift+R'));
+    }
+    if (what === 'notice') {
+        L.push(row(s.toastMode !== 'off', `알림 방식: <b>${{ popup: '팝업', toastr: '실리 기본 알림', off: '끔 (알림함에만)' }[s.toastMode] ?? s.toastMode}</b>`));
+        L.push(row(null, `팝업이 떠 있는 시간: ${Number(s.toastSec) || 4}초 (확장 설정 › 알림) · 본문을 누르면 펼쳐져서 안 닫혀요`));
+        L.push(row(s.updateNotice !== false, `업데이트 알림 ${s.updateNotice !== false ? '켜짐 — 큰 업데이트 때만 떠요' : '꺼짐'}`));
+        L.push(row(s.featureTips !== false, `💡 팁 · 주의 알림 ${s.featureTips !== false ? '켜짐' : '꺼짐'}`));
+    }
+    if (what === 'tokens') {
+        const hidden = Object.keys(meta?.hide ?? {}).length;
+        L.push(row(s.injectMode !== 'full', `규칙 주입: <b>${{ full: '전체', lite: '간결', ultra: '초압축' }[s.injectMode] ?? s.injectMode}</b>${s.injectMode === 'full' ? ' — 매 턴 토큰이 많아요. 「간결」 추천' : ''}`));
+        L.push(row(!!s.deltaMode, `변화 위주로 보내기 ${s.deltaMode ? `켜짐 (${s.deltaEvery}턴마다 전체)` : '꺼짐 — 켜면 줄어요'}`));
+        L.push(row(!!s.sceneFilter, `장면 필터 ${s.sceneFilter ? '켜짐' : '꺼짐 — 켜면 줄어요'}`));
+        L.push(row(!s.injWorld, `세계관 요약 · 규칙 매 턴 보내기 ${s.injWorld ? '켜짐 — 카드 · 로어북에 있으면 끄세요' : '꺼짐'}`));
+        L.push(row(s.sync !== 'analyze', `자동 반영 ${s.sync === 'analyze' ? '<b>B 별도 분석</b> — 매 답마다 AI 1회 더. A+B 추천' : '괜찮아요'}`));
+        if (meta?.mods) { const n = MODS.filter(m => modOn(m.id, meta)).length; L.push(row(n < 15, `켜진 칸 ${n}개${hidden ? ` · 🙈 가린 칸 ${hidden}개` : ''}${n >= 15 ? ' — 안 쓰는 칸은 끄거나 가려 보세요' : ''}`)); }
+        L.push(row(null, '📜 프롬프트 · 토큰 창에서 지금 보내는 글과 토큰 수를 볼 수 있어요'));
+    }
+    return L.length ? `<div class="ss-hk ss-hk-diag"><b class="ss-hk-t">지금 내 설정을 확인해 봤어요</b>${L.join('')}</div>` : '';
+}
+const DIAG_SEC = { chips: /변동 칩이 안 떠요/, notice: /알림 · 알림함/, sheet: /상태창 여는 곳/, tokens: /토큰 아끼기/ };
+
+// ───── AI 없이 답 만들기 → { html, text, secs, ok } ─────
+export async function answerLocal(q) {
+    const kb = await loadKB();
+    const it = intentOf(q);
+    if (it.kind === 'hello') return { ok: true, html: '안녕하세요! 궁금한 기능을 물어보세요. 아래 버튼을 눌러도 돼요 🐾', text: '인사', secs: [] };
+    if (it.kind === 'thanks') return { ok: true, html: '천만에요! 또 궁금한 거 있으면 불러 주세요 🐾', text: '감사', secs: [] };
+    if (!kb.length) return { ok: false, html: 'README를 읽지 못했어요 (확장 폴더에 README.md가 없거나 막혀 있어요).', text: '', secs: [] };
+    const vers = versionsOf(kb);
+    if (it.kind === 'latest' || it.kind === 'version') {
+        const v = it.kind === 'version' ? vers.find(s => s.ver === it.v || s.ver?.startsWith(`${it.v}.`) || it.v.startsWith(`${s.ver}.`)) : vers[0];
+        if (v) return { ok: true, html: sectionHtml(v, esc), text: v.title, secs: [v], related: vers.filter(x => x !== v).slice(0, 4) };
+    }
+    if (it.kind === 'versions') {
+        return { ok: true, html: `<div class="ss-hk"><b class="ss-hk-t">버전별 바뀐 점</b><p>보고 싶은 버전을 눌러요.</p></div>`, text: '버전 목록', secs: [], related: vers };
+    }
+    const hits = search(kb, q);
+    let top = hits[0]?.sec;
+    if (it.kind === 'diag') {
+        const pref = DIAG_SEC[it.what] && !(it.what === 'sheet' && /업데이트|업뎃/.test(q)) ? kb.find(s => DIAG_SEC[it.what].test(s.title)) : null;
+        if (pref) top = pref;
+        return { ok: true, html: diagHtml(it.what) + (top ? sectionHtml(top, esc) : ''), text: `설정 확인 + ${top?.title ?? ''}`, secs: top ? [top] : [], related: hits.map(h => h.sec).filter(s => s !== top).slice(0, 3) };
+    }
+    const best = hits[0]?.sc ?? 0;
+    if (!top || best < 3) return { ok: false, html: '안내서에서 딱 맞는 걸 못 찾았어요 😿 다른 말로 물어보거나, AI에게 물어봐 주세요.', text: '못 찾음', secs: [], related: hits.slice(0, 4).map(h => h.sec) };
+    const related = hits.slice(1).filter(h => h.sc >= best * 0.45).slice(0, 3).map(h => h.sec);
+    return { ok: true, html: sectionHtml(top, esc), text: top.title, secs: [top], related };
+}
+export async function sectionById(id) { return (await loadKB()).find(s => s.id === id) ?? null; }
 const history = []; // 창을 닫아도 이번 접속 동안은 이어짐
 const fmt = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
 
-export async function askHelp(question) {
+export async function askHelp(question, secs = []) {
     const q = String(question ?? '').trim();
     if (!q) return '';
     const past = history.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Meatball'}: ${m.text}`).join('\n');
-    const prompt = [`=== GUIDE ===\n${GUIDE}`, `=== THIS USER'S CURRENT SETTINGS ===\n${snapshot()}`, past ? `=== CONVERSATION SO FAR ===\n${past}` : '', `=== QUESTION ===\n${q}`].filter(Boolean).join('\n\n');
+    // 안내서에서 찾은 칸(한국어)을 같이 보내서 AI 답이 정확해지게 (최대 3000자)
+    const man = secs.length ? secs.map(s => `## ${s.title}\n${s.body}`).join('\n\n').replace(/<!--[\s\S]*?-->/g, '').slice(0, 3000) : '';
+    const prompt = [`=== GUIDE ===\n${GUIDE}`, man ? `=== RELEVANT SECTIONS FROM THE KOREAN MANUAL (newest, trust these) ===\n${man}` : '', `=== THIS USER'S CURRENT SETTINGS ===\n${snapshot()}`, past ? `=== CONVERSATION SO FAR ===\n${past}` : '', `=== QUESTION ===\n${q}`].filter(Boolean).join('\n\n');
     const out = await aiGenerate('help', P('ai.help'), prompt, 900, { profile: settings().profHelp || '' });
     const text = String(out ?? '').replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '').trim() || '답을 받지 못했어요. 모델을 바꿔서 다시 물어봐 주세요.';
     history.push({ role: 'user', text: q }, { role: 'bot', text });
@@ -123,13 +205,15 @@ export async function openHelp(first = '') {
     const el = document.createElement('div');
     el.className = 'ss-root ss-scope ss-help ss-notr';
     const profs = () => `<option value="">확장 AI 모델 그대로</option>${listProfiles().map(p => `<option value="${esc(p.id)}" ${p.id === settings().profHelp ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}`;
-    el.innerHTML = `<div class="ss-wz-head">${mascot('happy', 'md')}<div><b>미트볼 도우미</b><small>모르는 기능을 물어보세요 · 질문 1번 = AI 1회</small></div></div>
+    const aiFirst = () => settings().helpMode === 'ai';
+    el.innerHTML = `<div class="ss-wz-head">${mascot('happy', 'md')}<div><b>미트볼 도우미 <small class="ss-dim">v${esc(VERSION)}</small></b><small data-help-sub>${aiFirst() ? '질문 1번 = AI 1회' : '안내서를 보고 AI 없이 바로 답해요 · 토큰 0'}</small></div></div>
         <div class="ss-row-btns ss-help-tools"><button class="ss-btn sm" data-help-report><i class="fa-solid fa-bug"></i> 🐞 오류 보고문 만들기</button><small class="ss-hint">오류 · 불만이 있으면 눌러요 · AI 0회 · 공개 게시판에 올려도 되는 내용만</small></div>
-        <label class="ss-help-model"><span><i class="fa-solid fa-microchip"></i> 답할 모델</span><select class="text_pole" data-help-model>${profs()}</select></label>
+        <label class="ss-help-model"><span><i class="fa-solid fa-book-open"></i> 답 방식</span><select class="text_pole" data-help-mode><option value="local" ${aiFirst() ? '' : 'selected'}>안내서 먼저 (토큰 0 · 부족하면 AI 버튼)</option><option value="ai" ${aiFirst() ? 'selected' : ''}>바로 AI에게 (질문마다 AI 1회)</option></select></label>
+        <label class="ss-help-model"><span><i class="fa-solid fa-microchip"></i> AI 답 모델</span><select class="text_pole" data-help-model>${profs()}</select></label>
         <div class="ss-help-log" data-help-log></div>
         <div class="ss-help-quick" data-help-quick>${QUICK.map(q => `<button class="ss-chip btn" data-help-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
         <div class="ss-help-in"><textarea class="text_pole" rows="2" data-help-input placeholder="예: 연인 확정 버튼은 어디 있어요?"></textarea><button class="ss-btn pri" data-help-send><i class="fa-solid fa-paper-plane"></i></button></div>
-        <p class="ss-hint">내장된 안내서와 지금 내 설정을 같이 보고 답해요. 채팅 내용은 보내지 않아요. <a data-help-clear>대화 지우기</a></p>`;
+        <p class="ss-hint">설치된 README(안내서)와 지금 내 설정을 보고 답해요. AI에게 물을 때도 채팅 내용은 보내지 않아요. <a data-help-clear>대화 지우기</a></p>`;
     const log = el.querySelector('[data-help-log]'), input = el.querySelector('[data-help-input]'), send = el.querySelector('[data-help-send]');
     const bubble = (role, html, cls = '') => {
         const b = document.createElement('div');
@@ -138,7 +222,10 @@ export async function openHelp(first = '') {
         log.appendChild(b); log.scrollTop = log.scrollHeight;
         return b;
     };
-    const paint = () => { log.innerHTML = ''; if (!history.length) bubble('bot', '안녕하세요! 미트볼 상태창에서 궁금한 걸 물어보세요. 아래 질문을 눌러도 돼요 🐾'); for (const m of history) bubble(m.role, fmt(m.text)); };
+    const paint = () => { log.innerHTML = ''; if (!history.length) bubble('bot', '안녕하세요! 미트볼 상태창에서 궁금한 걸 물어보세요. 아래 질문을 눌러도 돼요 🐾'); for (const m of history) bubble(m.role, m.html ?? fmt(m.text)); };
+    // 답 카드 밑: 관련 항목 칩 (AI 0회) + 「AI에게 더 물어보기」
+    const foot = (q, a) => `${a.related?.length ? `<div class="ss-hk-rel"><small>이것도 볼래요?</small>${a.related.map(s => `<button class="ss-chip btn" data-help-sec="${esc(s.id)}">${esc(s.title.replace(/^[^\p{L}\p{N}]+/u, '').slice(0, 26))}</button>`).join('')}</div>` : ''}<div class="ss-hk-ai"><button class="ss-btn sm ghost" data-help-ai="${esc(q)}" data-help-secs="${esc((a.secs ?? []).map(s => s.id).join(','))}"><i class="fa-solid fa-robot"></i> AI에게 더 물어보기 <small>(AI 1회)</small></button></div>`;
+    const answerBubble = (html) => { const b = bubble('bot', html); log.scrollTop = Math.max(0, b.offsetTop - log.offsetTop - 8); return b; }; // 긴 답은 맨 위부터 보이게
     let busy = false;
     const go = async (q) => {
         q = String(q ?? '').trim();
@@ -152,10 +239,27 @@ export async function openHelp(first = '') {
             history.push({ role: 'user', text: q });
             return openReport(mine);
         }
-        busy = true; send.disabled = true; input.value = '';
+        input.value = '';
         bubble('user', fmt(q));
+        if (!aiFirst()) {
+            // 안내서 먼저 — AI 0회
+            try {
+                const a = await answerLocal(q);
+                const html = a.html + foot(q, a);
+                history.push({ role: 'user', text: q }, { role: 'bot', text: `[안내서] ${a.text}`, html });
+                if (history.length > 40) history.splice(0, history.length - 40);
+                answerBubble(html);
+                return;
+            } catch (e) { ssWarn(LOG, 'help local', e); }
+        }
+        return goAI(q, [], false);
+    };
+    const goAI = async (q, secs, echo = true) => {
+        if (busy) return;
+        busy = true; send.disabled = true;
+        if (echo) bubble('user', fmt(`🤖 ${q}`));
         const wait = bubble('bot', '생각하는 중…', 'wait');
-        try { const a = await askHelp(q); wait.remove(); bubble('bot', fmt(a)); }
+        try { const a = await askHelp(q, secs); wait.remove(); answerBubble(fmt(a)); }
         catch (e) { ssWarn(LOG, 'help', e); wait.remove(); bubble('bot', `답하지 못했어요: ${esc(e?.message ?? e)}`, 'err'); }
         finally { busy = false; send.disabled = false; input.focus(); }
     };
@@ -163,6 +267,10 @@ export async function openHelp(first = '') {
         const q = e.target.closest('[data-help-q]')?.dataset.helpQ;
         if (q) return go(q);
         if (e.target.closest('[data-help-send]')) return go(input.value);
+        const sec = e.target.closest('[data-help-sec]')?.dataset.helpSec;
+        if (sec) return (async () => { const s = await sectionById(sec); if (!s) return; const html = sectionHtml(s, esc) + foot(s.title, { secs: [s] }); bubble('user', fmt(s.title)); history.push({ role: 'user', text: s.title }, { role: 'bot', text: `[안내서] ${s.title}`, html }); answerBubble(html); })();
+        const ai = e.target.closest('[data-help-ai]');
+        if (ai) return (async () => { const ids = (ai.dataset.helpSecs || '').split(',').filter(Boolean); const secs = (await Promise.all(ids.map(sectionById))).filter(Boolean); ai.disabled = true; goAI(ai.dataset.helpAi, secs); })();
         if (e.target.closest('[data-help-clear]')) { history.length = 0; paint(); }
         if (e.target.closest('[data-help-report]')) {
             // 도우미에게 적었던 내 말(최근 4개)을 증상 칸에 미리 넣어 둔다 — 보고문 창에서 고칠 수 있어요
@@ -170,9 +278,13 @@ export async function openHelp(first = '') {
             return openReport([mine, input.value.trim()].filter(Boolean).join('\n'));
         }
     });
-    el.addEventListener('change', (e) => { if (e.target.matches('[data-help-model]')) { settings().profHelp = e.target.value; saveSettings(); } });
+    el.addEventListener('change', (e) => {
+        if (e.target.matches('[data-help-model]')) { settings().profHelp = e.target.value; saveSettings(); }
+        if (e.target.matches('[data-help-mode]')) { settings().helpMode = e.target.value; saveSettings(); el.querySelector('[data-help-sub]').textContent = aiFirst() ? '질문 1번 = AI 1회' : '안내서를 보고 AI 없이 바로 답해요 · 토큰 0'; }
+    });
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); go(input.value); } });
     paint();
+    loadKB(); // 미리 읽어 두기
     if (first) setTimeout(() => go(first), 50);
     await popup(el, { okButton: '닫기' });
 }
