@@ -1,5 +1,5 @@
 // 프롬프트 템플릿 (모두 사용자가 수정 가능) · 확장 AI 호출 · 사용 기록
-import { ctx, settings, saveSettings, LOG, TITLE, esc, swapUser, ssWarn } from './core.js';
+import { app, ctx, settings, saveSettings, LOG, TITLE, esc, swapUser, ssWarn } from './core.js';
 
 // group: 어느 때 쓰이는지 / cost: 토큰 종류
 // inject = 본편(메인 AI) 요청에 매번 붙는 글 · call = 확장이 따로 AI를 부를 때 쓰는 글
@@ -138,6 +138,14 @@ export function profileFor(feature) {
     const k = FEATURE_GROUP[feature];
     return (k && s[k]) || s.aiProfile || '';
 }
+async function waitMainIdle(maxMs = 60000) {
+    const t0 = Date.now();
+    let told = false;
+    while (app.generatingAt && Date.now() - app.generatingAt < 300000 && Date.now() - t0 < maxMs) {
+        if (!told && Date.now() - t0 > 1500) { told = true; toastr.info('본편 AI가 답을 다 쓰면 이어서 할게요.', TITLE, { timeOut: 2500 }); }
+        await new Promise(r => setTimeout(r, 150));
+    }
+}
 // 똑같은 요청이 이미 가고 있으면 또 보내지 않는다 (버튼 연타로 두 번 과금 방지)
 const inflight = new Set();
 export async function aiGenerate(feature, systemPrompt, prompt, maxTokens, opts = {}) {
@@ -177,6 +185,9 @@ async function aiGenerateOnce(feature, systemPrompt, prompt, maxTokens, opts = {
             }
         }
         if (!text) {
+            // 메인 연결로 보낼 땐 본편 AI가 답을 쓰는 중이면 끝날 때까지 기다린다 (v2.7.7)
+            // — 로컬 백엔드(kobold 등)는 동시에 두 요청을 받으면 「바쁨」 오류, 무료 API는 분당 횟수 제한에 본편이 걸리던 것
+            await waitMainIdle();
             try { entry.model ||= c.getChatCompletionModel?.() ?? ''; } catch { /* ignore */ }
             text = String(await c.generateRaw({ systemPrompt, prompt, responseLength: max }) ?? '');
         }

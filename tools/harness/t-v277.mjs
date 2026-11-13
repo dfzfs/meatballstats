@@ -41,4 +41,12 @@ try {
     // 다른 칸(지갑)은 예전처럼 통째로
     await S(async () => { const { commit } = await import('/ext/src/engine.js'); const w = structuredClone(window.__SS_TEST__.api.app.current.state.data.wallet); w.cash = 777; await commit('wallet', w, 'w'); });
     check((await st()).data.wallet.cash === 777 && await S(() => !!window.__st.chatMetadata.statussim.adjust.at(-1).set.data), 'other panels still full snapshot');
+    // 지도 휠 확대: 문서 전체에 막는 휠 리스너 없이, 지도 위에서만
+    await S(() => { window.__SS_TEST__.api.app.openSheet('map'); }); await sleep(400);
+    const svg = await page.$('dialog svg.ss-map');
+    if (svg) {
+        const vb0 = await svg.evaluate(e => e.getAttribute('viewBox'));
+        const b = await svg.boundingBox(); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.wheel(0, -200); await sleep(200);
+        check((await svg.evaluate(e => e.getAttribute('viewBox'))) !== vb0, 'map wheel zoom still works');
+    } else check(false, 'map svg found');
 } finally { if (logs.length) console.log(logs.slice(0, 5).join('\n')); await close(); }
