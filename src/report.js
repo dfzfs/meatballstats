@@ -64,7 +64,7 @@ async function stVersion() {
     } catch { return '알 수 없음'; }
 }
 const ON = (b) => (b ? '켬' : '끔');
-const SET_KEYS = ['enabled', 'sync', 'injectMode', 'injectDepth', 'deltaMode', 'deltaEvery', 'sceneFilter', 'sceneTurns', 'pinCap', 'msgCard', 'injScan', 'autoBake', 'bakeAfter',
+const SET_KEYS = ['enabled', 'sync', 'injectMode', 'injectDepth', 'deltaMode', 'deltaEvery', 'sceneFilter', 'sceneTurns', 'pinCap', 'msgCard', 'injScan', 'injWorld', 'autoBake', 'bakeAfter',
     'stashTags', 'legacyStatus', 'autoRegex', 'skipQuiet', 'oocDetect', 'ssGenLang', 'trEngine', 'trAuto', 'contactReflect', 'autoPing', 'genMode', 'genBatch', 'genParallel',
     'aiMaxTokens', 'recentForGen', 'loreChars', 'retryJSON', 'aiFallbackMain', 'toastMode', 'stageLock', 'jealousy', 'offscreen',
     'romBond', 'romCap', 'romFatigue', 'romFacts', 'romDrive', 'romIntent', 'romInit', 'romDepth', 'showHud', 'showSide', 'showFloat', 'bottomNav', 'theme'];

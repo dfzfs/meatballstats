@@ -393,6 +393,7 @@ function renderSettings() {
             <label>생성 때 읽을 최근 채팅 수<input type="number" min="0" max="100" class="text_pole" data-s="recentForGen" value="${s.recentForGen}"></label>
             <label>생성 때 읽을 로어북 최대 글자 수<input type="number" min="0" max="100000" step="1000" class="text_pole" data-s="loreChars" value="${s.loreChars}"></label>
             <label>상태 주입 깊이 (0 = 맨 끝)<input type="number" min="0" max="20" class="text_pole" data-s="injectDepth" value="${s.injectDepth}"></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="injWorld" ${s.injWorld ? 'checked' : ''}> 세계관 요약·규칙도 매 턴 보내기 <small>(기본 끔 — 보통 카드·로어북에 이미 있어서 중복이에요. 카드·로어북에 세계관이 없을 때만 켜세요. 끄더라도 칸을 AI로 만들 때는 참고해요)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="injScan" ${s.injScan !== false ? 'checked' : ''}> 상태 주입문으로 로어북(월드인포) 켜기 <small>(끄면 근처 장소·의뢰인 이름 때문에 장면 밖 로어북이 켜지지 않아 토큰 절약 · 장소 로어북을 키워드로 켜고 있었다면 그대로 두세요)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="autoBake" ${s.autoBake !== false ? 'checked' : ''}> 긴 채팅 자동 정리 — 오래된 기록을 굳혀서 가볍게 <small>(최근 120개 메시지는 그대로 · 그보다 오래된 답의 스와이프·편집은 상태에 다시 반영되지 않아요)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="autoRegex" ${s.autoRegex ? 'checked' : ''}> &lt;meatball&gt; 숨김 정규식 자동 설치</label>

@@ -1531,7 +1531,7 @@ function buildUltra(r, opt = {}) {
     if (s.core.title && coreOn) head.push(`${s.core.title}${s.core.genre ? `(${s.core.genre})` : ''}`);
     L.push(head.join('|'));
     if (s.core.userRole && coreOn) L.push(`{{user}}=${short(s.core.userRole, 70)}`);
-    if (s.core.rules && coreOn) L.push(`규칙:${short(s.core.rules, 140)}`);
+    if (s.core.rules && coreOn && set.injWorld) L.push(`규칙:${short(s.core.rules, 140)}`);
     if (on('calendar')) {
         const c = d.calendar;
         const ev = eventsOn(c, c.y, c.m, c.d).map(e => e.title);
@@ -1704,9 +1704,9 @@ function buildInjection0(r, opt = {}) {
     L.push(P(`diff.${diffOf(meta)}`));
     if ((s.core.title || s.core.summary) && !isHidden('core', meta)) {
         L.push(`World: ${s.core.title}${s.core.genre ? ` (${s.core.genre})` : ''}${s.core.canon ? ` · canon: ${s.core.canon}` : ''}${s.core.tone ? ` · tone: ${s.core.tone}` : ''}`);
-        if (s.core.summary && !lite) L.push(`Setting: ${short(s.core.summary, 600)}`);
+        if (s.core.summary && !lite && set.injWorld) L.push(`Setting: ${short(s.core.summary, 600)}`); // 기본 끔 — 카드·로어북과 중복
         if (s.core.userRole) L.push(`{{user}}: ${s.core.userRole}`);
-        if (s.core.rules) L.push(`World rules: ${short(s.core.rules, lite ? 200 : 500)}`);
+        if (s.core.rules && set.injWorld) L.push(`World rules: ${short(s.core.rules, lite ? 200 : 500)}`);
     }
     if (on('calendar')) {
         const c = d.calendar;
