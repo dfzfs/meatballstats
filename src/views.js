@@ -3,7 +3,7 @@ import {
     app, ctx, settings, getMeta, saveMeta, modOn, MODS, MOD, MOD_IDS, DIFFS, diffOf, esc, short, clamp, norm, findBy, fmtNum, clone, splitBar, parseNum,
     dateStr, dateShort, dayIndex, eventsOn, nextTime, upcoming, userName, TITLE, VERSION, EMPTY, CONTACT_MODES, stamp, relAxes, DEFAULT_STAGES,
 } from './core.js';
-import { addAdjust, commit, unreadCount, dueLetters, inTransit, priceMul, peopleAt, hopsBetween, whereNow, seasonOf, SEASON_NAME, stageIndex } from './engine.js';
+import { addAdjust, commit, unreadCount, dueLetters, inTransit, priceMul, peopleAt, hopsBetween, whereNow, seasonOf, SEASON_NAME, stageIndex, purgeTrash } from './engine.js';
 import { walletView } from './money.js';
 import { fateView } from './fate.js';
 import { gauge, meter, sec, emptyBox, chip, avatar, ai1, seg, insertInput, closeIfPopup, askInput, askConfirm } from './kit.js';
@@ -213,7 +213,7 @@ VIEW.base = (s, d) => `<div class="ss-hero sm"><div class="ss-hero-t"><small>본
         <div class="ss-chips">${r.decor.map(x => `<span class="ss-chip">${esc(x)}<button class="ss-x" data-act="unplace" data-arg="${esc(x)}" title="창고로">↓</button></span>`).join('') || '<small class="ss-hint">비어 있음</small>'}</div></div>`).join('') || emptyBox('방·구역이 없어요', 'fa-house')}</div>
     ${sec(`창고 <small>${d.storage.length}</small>`, d.storage.length ? `<div class="ss-stack">${d.storage.map((x, i) => `<div class="ss-item"><div class="ss-item-b"><b>${esc(x)}</b></div><select class="ss-in sm" data-chg="place" data-arg="${i}"><option value="">배치할 곳…</option>${d.rooms.map(r => `<option>${esc(r.name)}</option>`).join('')}</select>
         <div class="ss-item-a">${s.data.wallet && modOn('wallet') ? `<button class="ss-btn sm ghost" data-act="sellused" data-arg="${esc(x)}" title="중고장터에 팔기 (헐값)">♻ 팔기</button>` : ''}<button class="ss-ib" data-act="trashit" data-arg="${esc(x)}" title="쓰레기통에 버리기"><i class="fa-solid fa-trash-can"></i></button></div></div>`).join('')}</div>` : emptyBox('상점에서 가구를 사면 여기에 들어와요', 'fa-couch'))}
-    ${d.trash?.length ? `<details class="ss-arc"><summary><i class="fa-solid fa-trash-can"></i> 쓰레기통 ${d.trash.length}개</summary><ul>${[...d.trash].reverse().map(t => `<li><b>${esc(t.name)}</b> <small>${esc(t.date)}</small> <button class="ss-btn sm ghost" data-act="restore" data-arg="${esc(t.name)}">되살리기</button></li>`).join('')}</ul></details>` : ''}`;
+    ${d.trash?.length ? `<details class="ss-arc"><summary><i class="fa-solid fa-trash-can"></i> 쓰레기통 ${d.trash.length}개</summary><ul>${[...d.trash].reverse().map(t => `<li><b>${esc(t.name)}</b> <small>${esc(t.date)}</small> <button class="ss-btn sm ghost" data-act="restore" data-arg="${esc(t.name)}">되살리기</button> <button class="ss-btn sm ghost danger" data-act="purge" data-arg="${esc(t.name)}" title="완전 삭제 — 되살릴 수 없어요"><i class="fa-solid fa-xmark"></i> 완전 삭제</button></li>`).join('')}</ul><div class="ss-row-btns"><button class="ss-btn sm ghost danger" data-act="purgeall"><i class="fa-solid fa-broom"></i> 쓰레기통 비우기 (완전 삭제)</button></div></details>` : ''}`;
 
 export function layoutPlaces(places) {
     const pos = new Map();
@@ -390,6 +390,16 @@ export const VIEW_ACTIONS = {
     },
     unplace: (el, arg) => addAdjust({ ops: [['_unplace', arg]], label: `${arg}을(를) 창고로` }),
     trashit: async (el, arg) => { if (!(await askConfirm(`「${esc(arg)}」을(를) 쓰레기통에 버릴까요? (되살릴 수 있어요)`))) return; return addAdjust({ ops: [['_trash', arg]], label: `${arg}을(를) 버렸다` }); },
+    purge: async (el, arg) => {
+        if (!(await askConfirm(`「${esc(arg)}」을(를) 완전히 지울까요? 되살릴 수 없어요.<br><small>쓰레기통·하루 기록에서도 사라지고, AI에게도 알리지 않아요.</small>`))) return;
+        if (await purgeTrash([arg])) toastr.info(`「${esc(arg)}」을(를) 완전히 지웠어요.`, TITLE);
+    },
+    purgeall: async () => {
+        const tr = app.current?.state?.data?.home?.trash ?? [];
+        if (!tr.length || !(await askConfirm(`쓰레기통 ${tr.length}개를 모두 완전히 지울까요? 되살릴 수 없어요.`))) return;
+        const n = await purgeTrash(tr.map(t => t.name));
+        toastr.info(`${n}개를 완전히 지웠어요.`, TITLE);
+    },
     restore: (el, arg) => addAdjust({ ops: [['_restore', arg]], label: `${arg}을(를) 쓰레기통에서 꺼냈다` }),
     sellused: async (el, arg, btn, s) => {
         // 중고 시세: 상점 가격의 이지 30% · 보통 20% · 하드 10% (모르면 직접 입력)
