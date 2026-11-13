@@ -24,6 +24,7 @@ export const DEFAULTS = Object.freeze({
     hudOpen: true,           // HUD 게이지 줄 펼침
     sideState: 'mini',       // closed | mini | full
     sideMini: ['bars', 'date', 'loc', 'cash', 'contact', 'quest'],
+    miniRel: { show: ['aff'], sort: 'aff', n: 3, pick: [] }, // 미니 관계 칸: 보일 수치 · 정렬 · 인원 · 고른 사람
     sideWidth: 400,
     floatPos: null,
     sync: 'tagPlus',         // tag | tagPlus | analyze | off (v2.7: 기본 = 가벼운 모델 맞춤)

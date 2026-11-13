@@ -6,7 +6,7 @@ import { compute, buildInjection, setInjection, commit, addAdjust, gatherSources
 import { genModule, instructModule, genGroup, GEN_GROUPS } from './ai.js';
 import { PROMPT_DEFS, P, setPrompt, countTokens, estTokens, FEATURE_NAMES } from './prompts.js';
 import { popup, confirmPopup, askConfirm, busyBtn, editorHTML, bindEditor, diffHTML, ai1, gauge, seg, applyTheme, THEMES, THEME_KEYS, themeVars, avatar, emptyBox, sec, mascot } from './kit.js';
-import { VIEW, VIEW_ACTIONS, VIEW_CHANGES, GROUPS, TAB_MOD, TAB_INFO, PSEUDO, manageHTML, miniWidgets, MINI } from './views.js';
+import { VIEW, VIEW_ACTIONS, VIEW_CHANGES, GROUPS, TAB_MOD, TAB_INFO, PSEUDO, manageHTML, miniWidgets, MINI, MINI_REL_VALS, MINI_REL_SORT, miniRelOpt } from './views.js';
 import { fullBackup, restoreFile, saveSlot, loadSlot, deleteSlot, attachToCard, detachFromCard, loadFromCard, cardPack, prepareCarry, startCarry, carryFor, diagnose } from './safe.js';
 import { applyPreset } from './extra.js';
 import { unreadNotes } from './notify.js';
@@ -806,18 +806,31 @@ export async function openThemeWindow() {
                 <div class="ss-f wide"><span>HUD 위치</span>${seg([['top', '채팅 위'], ['bottom', '입력창 위']], set.hudPos, 'hudpos')}</div>
                 <div class="ss-f wide"><span>사이드 패널 기본 상태</span>${seg([['closed', '닫힘 (손잡이만)'], ['mini', '미니 (안 열어도 보임)'], ['full', '펼침']], set.sideState, 'sidestate', 'class="ss-seg wrap"')}</div>`)}
             ${sec('사이드 미니창에 보일 것', `<div class="ss-pills">${Object.entries(MINI).map(([k, v]) => `<label class="ss-tog"><input type="checkbox" class="ss-switch" data-mini="${k}" ${set.sideMini.includes(k) ? 'checked' : ''}><span>${v.name}</span></label>`).join('')}</div>`)}
+            ${(() => {
+                const o = miniRelOpt();
+                const people = app.current?.state?.data?.rel?.user ?? [];
+                return sec('미니창 · 홈 「관계」 칸', `${set.sideMini.includes('rel') ? '' : '<p class="ss-hint">위에서 「관계」를 켜야 사이드 미니창에 보여요 (홈 탭에는 항상 보임).</p>'}
+                <div class="ss-f wide"><span>보일 수치 (여러 개 가능)</span><div class="ss-pills">${Object.entries(MINI_REL_VALS).map(([k, n]) => `<label class="ss-tog"><input type="checkbox" class="ss-switch" data-mrel="${k}" ${o.show.includes(k) ? 'checked' : ''}><span>${n}</span></label>`).join('')}</div></div>
+                <div class="ss-f wide"><span>순서</span>${seg(Object.entries(MINI_REL_SORT), o.sort, 'mrelsort', 'class="ss-seg wrap"')}</div>
+                <label class="ss-f wide"><span>보일 인원 ${o.n}명</span><input type="range" min="1" max="6" step="1" value="${o.n}" data-mreln="1"></label>
+                ${people.length ? `<div class="ss-f wide"><span>이 사람들만 보기 <small class="ss-dim">(안 고르면 위 순서대로 자동 · 고르면 인원 수 무시)</small></span><div class="ss-pills">${people.map(r => `<label class="ss-tog sm"><input type="checkbox" class="ss-switch" data-mrelp="${esc(r.name)}" ${o.pick.includes(r.name) ? 'checked' : ''}><span>${esc(r.name)}</span></label>`).join('')}</div></div>` : ''}`);
+            })()}
             <div class="ss-tw-preview">${sec('미리보기', `<div class="ss-card">${gauge({ name: '체력', cur: 72, max: 100 })}${gauge({ name: '마나', cur: 18, max: 60, color: '#5b7cfa' })}</div><div class="ss-row-btns"><button class="ss-btn pri">주 버튼</button><button class="ss-btn">버튼</button><span class="ss-chip">칩</span><span class="ss-chip hi">강조</span><span class="pos">+12</span><span class="neg">−8</span></div>`)}</div>`;
     };
     const apply = () => { saveSettings(); applyTheme(); ensureUI(); };
     el.addEventListener('input', (e) => {
         const t = e.target, set = settings();
         if (t.dataset.ck) { set.themeCustom = { ...(set.themeCustom ?? {}), [t.dataset.ck]: t.value }; apply(); }
+        if (t.dataset.mreln) { t.previousElementSibling.textContent = `보일 인원 ${t.value}명`; return; } // 끌 때는 글자만 · 놓으면 change에서 저장
         if (t.dataset.num) { set[t.dataset.num] = Number(t.value); apply(); t.previousElementSibling.textContent = t.previousElementSibling.textContent.replace(/[\d.]+(%|px)/, t.dataset.num === 'fontScale' ? `${Math.round(t.value * 100)}%` : `${t.value}px`); }
     });
     el.addEventListener('change', (e) => {
         const t = e.target, set = settings();
         if (t.dataset.bool) { set[t.dataset.bool] = t.checked; apply(); }
-        if (t.dataset.mini) { set.sideMini = Object.keys(MINI).filter(k => el.querySelector(`[data-mini="${k}"]`).checked); apply(); }
+        if (t.dataset.mini) { set.sideMini = Object.keys(MINI).filter(k => el.querySelector(`[data-mini="${k}"]`).checked); apply(); render(); }
+        if (t.dataset.mrel) { set.miniRel = { ...miniRelOpt(), show: Object.keys(MINI_REL_VALS).filter(k => el.querySelector(`[data-mrel="${k}"]`).checked) }; apply(); }
+        if (t.dataset.mrelp !== undefined) { const o = miniRelOpt(); const n = t.dataset.mrelp; set.miniRel = { ...o, pick: t.checked ? [...o.pick.filter(x => x !== n), n] : o.pick.filter(x => x !== n) }; apply(); }
+        if (t.dataset.mreln) { set.miniRel = { ...miniRelOpt(), n: Number(t.value) }; apply(); }
         if (t.dataset.ck) render();
     });
     el.addEventListener('click', (e) => {
@@ -825,6 +838,8 @@ export async function openThemeWindow() {
         const th = e.target.closest('[data-theme]'); if (th) { set.theme = th.dataset.theme; set.themeCustom = {}; apply(); render(); return; }
         const cr = e.target.closest('[data-cr]'); if (cr) { e.preventDefault(); const c = { ...set.themeCustom }; delete c[cr.dataset.cr]; set.themeCustom = c; apply(); render(); return; }
         if (e.target.closest('[data-creset]')) { set.themeCustom = {}; apply(); render(); return; }
+        const ms = e.target.closest('[data-act="mrelsort"]');
+        if (ms) { set.miniRel = { ...miniRelOpt(), sort: ms.dataset.arg }; apply(); render(); return; }
         const sg = e.target.closest('[data-act="hudpos"],[data-act="sidestate"]');
         if (sg) { if (sg.dataset.act === 'hudpos') set.hudPos = sg.dataset.arg; else set.sideState = sg.dataset.arg; apply(); render(); }
     });

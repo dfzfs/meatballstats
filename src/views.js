@@ -1,9 +1,9 @@
 // 칸별 화면 · 대시보드 · 관리 · 미니 위젯
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MODS, MOD, MOD_IDS, DIFFS, diffOf, esc, short, clamp, norm, findBy, fmtNum, clone, splitBar, parseNum,
-    dateStr, dateShort, dayIndex, eventsOn, nextTime, upcoming, userName, TITLE, VERSION, EMPTY, CONTACT_MODES, stamp,
+    dateStr, dateShort, dayIndex, eventsOn, nextTime, upcoming, userName, TITLE, VERSION, EMPTY, CONTACT_MODES, stamp, relAxes, DEFAULT_STAGES,
 } from './core.js';
-import { addAdjust, commit, unreadCount, dueLetters, inTransit, priceMul, peopleAt, hopsBetween, whereNow, seasonOf, SEASON_NAME } from './engine.js';
+import { addAdjust, commit, unreadCount, dueLetters, inTransit, priceMul, peopleAt, hopsBetween, whereNow, seasonOf, SEASON_NAME, stageIndex } from './engine.js';
 import { walletView } from './money.js';
 import { fateView } from './fate.js';
 import { gauge, meter, sec, emptyBox, chip, avatar, ai1, seg, insertInput, closeIfPopup, askInput, askConfirm } from './kit.js';
@@ -28,7 +28,7 @@ export const MINI = {
     cash: { name: '돈', on: (d) => d.wallet, html: (s) => `<div class="ss-mini-line"><i class="fa-solid fa-coins"></i><span><b>${fmtNum(s.data.wallet.cash)}</b> ${esc(s.data.wallet.currency)}</span></div>`, tab: 'wallet' },
     contact: { name: '연락', on: (d) => d.contact, html: (s) => { const n = unreadCount(s); const tr = inTransit(s).length; return `<div class="ss-mini-line ${n ? 'alert' : ''}"><i class="fa-solid ${s.data.contact.mode === 'letter' ? 'fa-envelope' : 'fa-comment'}"></i><span>${n ? `<b>새 ${s.data.contact.mode === 'letter' ? '편지' : '메시지'} ${n}</b>` : `${esc(s.data.contact.app)}`}${tr ? ` · 배달 중 ${tr}` : ''}</span></div>`; }, tab: 'contact' },
     quest: { name: '퀘스트', on: (d) => d.quest?.list.some(q => q.status === 'active'), html: (s) => `<div class="ss-mini-quests">${s.data.quest.list.filter(q => q.status === 'active').slice(0, 3).map(q => `<div class="ss-mini-line"><i class="fa-solid fa-scroll"></i><span>${esc(short(q.title, 26))}</span></div>`).join('')}</div>`, tab: 'quest' },
-    rel: { name: '관계 TOP 3', on: (d) => d.rel?.user.length, html: (s) => `<div class="ss-mini-rel">${[...s.data.rel.user].sort((a, b) => b.aff - a.aff).slice(0, 3).map(r => `<div>${avatar(r.name, 'xs')}<span>${esc(r.name)}</span><b class="${r.aff < 0 ? 'neg' : 'love'}">♥ ${r.aff}</b></div>`).join('')}</div>`, tab: 'rel' },
+    rel: { name: '관계', on: (d) => d.rel?.user.length, html: (s) => miniRelHTML(s), tab: 'rel' },
     cond: { name: '상태 이상', on: (d) => d.stats?.conds.length, html: (s) => `<div class="ss-chips">${s.data.stats.conds.slice(0, 5).map(c => chip(esc(c.name), 'warn')).join('')}</div>`, tab: 'stats' },
     news: { name: '최신 뉴스', on: (d) => d.news?.items.length, html: (s) => `<div class="ss-mini-line"><i class="fa-solid fa-newspaper"></i><span>${esc(short(s.data.news.items.at(-1).title, 34))}</span></div>`, tab: 'news' },
     fate: { name: '저주 · 빚', on: (d) => d.fate?.curses.length || d.wallet?.loans.some(l => l.status === 'open' || l.status === 'late'), html: (s) => { const cs = s.data.fate?.curses ?? []; const debt = (s.data.wallet?.loans ?? []).filter(l => l.status === 'open' || l.status === 'late'); return `<div class="ss-mini-line ${debt.some(l => l.status === 'late') ? 'alert' : ''}"><i class="fa-solid fa-hat-wizard"></i><span>${cs.map(c => esc(c.name)).join(', ')}${cs.length && debt.length ? ' · ' : ''}${debt.length ? `빚 ${fmtNum(debt.reduce((a, l) => a + l.owed, 0))}${debt.some(l => l.status === 'late') ? ' (연체)' : ''}` : ''}</span></div>`; }, tab: 'fate' },
@@ -36,6 +36,30 @@ export const MINI = {
     music: { name: '지금 BGM', on: (d) => d.music?.now, html: (s) => { const x = s.data.music.now; return `<div class="ss-mini-line"><i class="fa-solid fa-music"></i><span><b>${esc(short(x.title, 22))}</b>${x.artist ? ` · ${esc(short(x.artist, 14))}` : ''}</span><a class="ss-mini-play" href="${esc(songLink(x))}" target="_blank" rel="noopener" title="듣기"><i class="fa-solid fa-play"></i></a></div>`; }, tab: 'music' },
     custom: { name: '내 탭', on: (d) => d.custom?.tabs.some(t => t.fields.length), html: (s) => { const t = s.data.custom.tabs.find(x => x.fields.length); return `<div class="ss-mini-line"><span>${esc(t.icon)}</span><span>${t.fields.slice(0, 3).map(f => `${esc(f.k)} <b>${esc(f.type === 'text' ? short(f.v, 10) : fmtNum(f.v))}</b>`).join(' · ')}</span></div>`; }, tab: 'custom' },
 };
+// 미니 관계 칸: 무엇을 보일지 · 누구 순으로 · 몇 명 — 꾸미기에서 고름 (settings.miniRel)
+export const MINI_REL_VALS = { aff: '💗 애정', trust: '🤝 우정', stage: '단계', jealous: '질투' };
+export const MINI_REL_SORT = { aff: '애정 높은 순', trust: '우정 높은 순', sum: '둘 다 합쳐서' };
+export function miniRelOpt() {
+    const o = settings().miniRel ?? {};
+    const show = (Array.isArray(o.show) ? o.show : ['aff']).filter(k => MINI_REL_VALS[k]);
+    return { show, sort: MINI_REL_SORT[o.sort] ? o.sort : 'aff', n: clamp(Math.round(Number(o.n) || 3), 1, 6), pick: Array.isArray(o.pick) ? o.pick : [] };
+}
+function miniRelHTML(s) {
+    const rel = s.data.rel, o = miniRelOpt(), AX = relAxes(rel);
+    const st = rel.stages?.length ? rel.stages : DEFAULT_STAGES;
+    const key = { aff: (r) => r.aff, trust: (r) => r.trust, sum: (r) => r.aff + r.trust }[o.sort];
+    // 고른 사람이 있으면 그 사람들만(고른 순서대로), 없으면 정렬 기준 상위 n명
+    const picked = o.pick.map(n => rel.user.find(r => r.name === n)).filter(Boolean);
+    const list = picked.length ? picked : [...rel.user].sort((a, b) => key(b) - key(a)).slice(0, o.n);
+    const val = (r, k) => {
+        if (k === 'aff') return r.noLove ? '' : `<b class="${r.aff < 0 ? 'neg' : 'love'}" title="${esc(AX.aff)}">♥ ${r.aff}</b>`;
+        if (k === 'trust') return `<b class="${r.trust < 0 ? 'neg' : 'trust'}" title="${esc(AX.trust)}">🤝 ${r.trust}</b>`;
+        if (k === 'jealous') return r.jealous ? `<b class="neg" title="질투">💢 ${r.jealous}</b>` : '';
+        if (k === 'stage') { const i = clamp(r.stage >= 0 ? r.stage : stageIndex(st, r.aff, r.trust), 0, st.length - 1); return `<em class="ss-stage s${i}">${esc(st[i]?.name ?? '')}</em>`; }
+        return '';
+    };
+    return `<div class="ss-mini-rel">${list.map(r => `<div>${avatar(r.name, 'xs')}<span>${esc(r.name)}</span><i class="ss-mini-rel-v">${o.show.map(k => val(r, k)).join('')}</i></div>`).join('')}</div>`;
+}
 export function miniWidgets(s, keys, clickable = true) {
     const meta = getMeta();
     const d = s.data;

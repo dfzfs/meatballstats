@@ -133,7 +133,8 @@ const session = { n: 0, at: 0 }; // 이번 접속에서 보여 준 수 · 마지
 function seen(id, kind = 'tip') { const v = settings().hintSeen?.[id]; return v === true || v >= (kind === 'warn' ? 1 : 2); }
 function bump(id) { const s = settings(); s.hintSeen = { ...(s.hintSeen ?? {}) }; if (s.hintSeen[id] !== true) s.hintSeen[id] = (s.hintSeen[id] ?? 0) + 1; saveSettings(); }
 export function knowHint(id) { const s = settings(); s.hintSeen = { ...(s.hintSeen ?? {}), [id]: true }; saveSettings(); }
-function show(h, { save = false } = {}) {
+// 팁도 알림함에 남긴다 — 팝업을 놓쳐도 🔔 알림함에서 다시 읽을 수 있게
+function show(h, { save = true } = {}) {
     bump(h.id);
     if (h.kind !== 'warn') { session.n++; session.at = Date.now(); } // 주의는 팁 횟수 제한과 따로
     app.notify?.({ kind: 'hint', icon: h.kind === 'warn' ? '⚠️' : '💡', title: h.kind === 'warn' ? '알아 두세요' : '이것도 아세요?', text: h.text, hint: h.id }, { save });
