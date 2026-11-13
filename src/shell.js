@@ -101,7 +101,10 @@ export function renderPanel(el) {
     const tab = st.tab;
     const mod = TAB_MOD(tab);
     const fresh0 = app.current?.fresh;
-    if (fresh0 && fresh0.mods.has(mod)) fresh0.seen.add(mod); // 🔴 이 탭을 열었으니 탭 점은 끔 (칸 안의 줄 점은 다음 답까지)
+    if (fresh0 && fresh0.mods.has(mod) && !fresh0.seen.has(mod)) { // 🔴 이 탭을 열었으니 탭 점은 끔 (칸 안의 줄 점은 다음 답까지)
+        fresh0.seen.add(mod);
+        const m0 = getMeta(); if (m0) { m0.freshSeen = { key: fresh0.key, mods: [...fresh0.seen] }; try { ctx().saveMetadataDebounced?.(); } catch { /* 저장 못 해도 이번 접속엔 기억 */ } } // 새로고침해도 본 탭은 꺼진 채로 (v2.7.5 · 상태 계산엔 영향 없어서 rev는 안 올림)
+    }
     const pseudo = PSEUDO.has(tab) && tab !== 'home';
     const data = pseudo ? {} : mod === 'core' ? s.core : s.data[mod];
     const editable = !pseudo;

@@ -1,6 +1,7 @@
 // 미트볼 상태창 (Meatball Stats) — SillyTavern UI extension
 // 어떤 카드·세계관에도 붙는 상태창. 모든 칸은 AI가 처음 채우고, 직접 편집 · 추가 지시 · 다시 생성이 된다.
 import { rev, ctxReset, app, ctx, settings, saveSettings, getMeta, saveMeta, isActive, ready, modOn, MODS, MOD_IDS, MOD, esc, short, splitBar, findBy, TITLE, LOG, VERSION, MODULE, sub, rand, DIFFS, ssErr, ssWarn } from './src/core.js';
+import { opInfo } from './src/engine.js';
 import { compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, drawerOps, setDrawer, extractOps, ssValue, undoLast, hasStatus, autoBake } from './src/engine.js';
 import { analyzeMessage, instructModule } from './src/ai.js';
 import { listProfiles } from './src/prompts.js';
@@ -182,6 +183,13 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.5', title: '퀘스트 기한 · 진행 기록 · 이야기에서 빠진 사람 · 안 씹히게', items: [
+        ['⌛ 퀘스트 기한', '「3일 안에」 · 「3월 14일까지」 같은 기한을 달력으로 읽어 카드에 D-3처럼 보여 주고, 마지막 날엔 알림, 지나면 실패로 넘겨요. AI에게도 남은 날을 알려 줘요 (토큰 0 · 확장 설정에서 끌 수 있어요).'],
+        ['📜 진행 기록이 깔끔해졌어요', 'AI가 적는 진행 내용은 「해 둔 일」로 체크된 채 들어가고, 할 일 목록과 비슷하면 그 단계를 체크해요. 받지도 않은 퀘스트의 진행이 오면 진행 중으로 옮겨요.'],
+        ['🕊 이야기에서 빠진 사람', '관계 카드의 🕊 단추로 「세상을 떠남 · 떠남」을 표시하면, 기록은 남기고 AI에게는 「등장하지 않음」으로 알려요. 연락 · 장면 인물에서도 빠져요. 언제든 되돌릴 수 있어요.'],
+        ['🔍 안 씹히게', '태그는 있는데 모르는 키만 적힌 답도 A+B에서 따로 분석해요. 빈 태그(바뀐 것 없음)는 그대로 둬요.'],
+        ['🔴 본 탭 기억', '빨간 점을 본 탭은 새로고침해도 꺼진 채로 남아요.'],
+    ] },
     { v: '2.7.4', title: '다시 받기 · 호환 점검', items: [
         ['🔁 다시 받아 주세요', 'v2.7.3을 정리해서 다시 올렸어요. 기능은 v2.7.3과 같아요 — 칩 점검 · 퀘스트 판정 · 빨간 점 · 기능 끄기 · 버린 물건 · 번역 점검. 업데이트가 실패하면 확장을 지웠다가 다시 설치해 주세요.'],
         ['🧩 함께 쓰는 확장 호환 점검', '다른 확장이 기대는 이름 · 설정 칸 구조를 그대로 두었는지 개발할 때 자동으로 확인해요 (쓰는 분은 할 일 없음).'],
@@ -467,7 +475,7 @@ app.measureLoad = measureLoad;
 
 // ───── 확장 설정 서랍 ─────
 // 바꾸면 화면을 바로 다시 그려야 하는 스위치 (v2.7.3)
-const VIEW_KEYS = new Set(['memoOn', 'albumOn', 'peekOn', 'recordOn', 'freshDot', 'pipCheck', 'questJudge', 'msgCard', 'chipOutside']);
+const VIEW_KEYS = new Set(['questExpire', 'memoOn', 'albumOn', 'peekOn', 'recordOn', 'freshDot', 'pipCheck', 'questJudge', 'msgCard', 'chipOutside']);
 // 「부가 기능 한 번에 끄기」 — 상태 계산 · 본편 롤플에 꼭 필요하지 않은 것만
 const LIGHT_OFF = { memoOn: false, albumOn: false, peekOn: false, recordOn: false, daySummary: false, featureTips: false, showMascot: false, mascotBuddy: false, musicToast: false };
 function profileOptions(sel) {
@@ -517,6 +525,7 @@ function renderSettings() {
             <label class="checkbox_label"><input type="checkbox" data-s="pipCheck" ${s.pipCheck !== false ? 'checked' : ''}> 🔍 칩 점검 <small>(마지막 AI 답에 변동 칩이 없으면 작은 🔍 — 눌러서 「변화를 못 읽었나 / 화면에 안 보이나」 확인하고 다시 읽기 · 토큰 0)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="goneInject" ${s.goneInject !== false ? 'checked' : ''}> 🗑 버리거나 판 물건을 AI에게 「이제 없음」으로 알려 주기 <small>(창고에서 버린 가구 · 판 물건을 AI가 다시 꺼내 쓰지 않게 · 주입 한 줄)</small></label>
             <label>🎲 퀘스트 완료 판정<select class="text_pole" data-s="questJudge">${o('questJudge', 'ask', '물어보기 — 완료 누르면 「판정하고 완료 / 판정 없이 완료」 (기본)')}${o('questJudge', 'roll', '늘 판정 — 대성공 1.5배 · 성공 · 실패 절반 · 대실패 보상 없음')}${o('questJudge', 'off', '끔 — 판정 없이 바로 보상')}</select></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="questExpire" ${s.questExpire !== false ? 'checked' : ''}> ⌛ 퀘스트 기한이 지나면 실패로 · 마지막 날 알림 <small>(「3일 안에」 · 「3월 14일까지」 같은 기한을 달력으로 읽어요 · 달력이 켜져 있을 때 · 토큰 0)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="questJudgeAI" ${s.questJudgeAI ? 'checked' : ''}> 본편 AI가 「완료」라고 적은 퀘스트도 자동으로 보상 판정 <small>(토큰 0 · 같은 답은 늘 같은 결과)</small></label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="lightall" title="메모 · 앨범 · 속마음 · 플레이 기록 · 하루 정리 · 팁 · 마스코트를 한 번에 꺼요"><i class="fa-solid fa-feather"></i> 부가 기능 한 번에 끄기</button><button class="menu_button" data-s-act="perf"><i class="fa-solid fa-gauge-simple-high"></i> 부하 재기</button></div>
             <b class="ss-set-h">상태창 언어 · 번역</b>
@@ -888,8 +897,11 @@ function onCharRendered(id, type) {
     }
     if (set.sync !== 'analyze' && set.sync !== 'tagPlus') return;
     if (app.lastGenSkipped) return; // OOC·건너뛴 턴의 답은 분석하지 않음
-    if (set.sync === 'tagPlus' && hasStatus(m.mes)) return;
-    if (m.extra?.[MODULE]?.bySwipe?.[m.swipe_id ?? 0]) return;
+    // v2.7.5: 태그가 있어도 읽은 줄이 하나도 쓸모없으면(깨진 태그 · 모르는 키만) 따로 분석 — 예전엔 「태그 있음」이라 그냥 씹혔어요
+    const useful = (ops) => Array.isArray(ops) && (!ops.length || ops.some(([k]) => opInfo(app.current?.state, k).key)); // 빈 태그 = 「바뀐 것 없음」이라 괜찮아요
+    if (set.sync === 'tagPlus' && hasStatus(m.mes) && useful(extractOps(m.mes))) return;
+    const drawer = m.extra?.[MODULE]?.bySwipe?.[m.swipe_id ?? 0];
+    if (drawer && (useful(drawer) || drawer.analyzed)) return;
     const key = `${ctx().getCurrentChatId?.()}:${i}:${m.swipe_id ?? 0}:${m.mes.length}`;
     if (analyzed.has(key)) return;
     analyzed.add(key);

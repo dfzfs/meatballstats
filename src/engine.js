@@ -315,6 +315,7 @@ function checkEndings(s, info) {
 }
 function checkRules(s, info) {
     checkEndings(s, info);
+    questClock(s, info);
     const f = s.data.fate;
     if (!f?.rules.length || info.mods?.fate === false || info.inRule) return;
     info.inRule = true;
@@ -1082,15 +1083,26 @@ export function applyOp(s, rawKey, rawVal, info) {
                 if (!q && (qs.archive ?? []).some(a => norm(a.title) === key)) return;
             }
             if (!q) {
+                if (info.ai && !st) { // 처음 보는 퀘스트의 「진행 내용」만 온 것 → 진행 중인 퀘스트로 (예전엔 진행 글이 설명이 된 「받을 수 있음」이 생겼어요)
+                    q = { id: `${info.seed}:q${qs.list.length}`, title: title.trim(), giver: '', desc: '', place: '', deadline: '', reward: '', cash: 0, items: [], status: 'active', steps: [{ text: st0, done: true }], paid: false, since: today(s) ?? undefined };
+                    qs.list.push(q); L(`📜 ${QNAME.active}: ${q.title}`);
+                    return;
+                }
                 q = { id: `${info.seed}:q${qs.list.length}`, title: title.trim(), giver: '', desc: desc ?? (st ? '' : st0 ?? ''), place: '', deadline: '', reward: '', cash: 0, items: [], status: st ?? 'open', steps: [], paid: false };
+                if (today(s) !== null) q.since = today(s);
                 qs.list.push(q);
                 L(`📜 ${QNAME[q.status]}: ${q.title}`);
                 if (q.status === 'open' || q.status === 'active') info.alerts.push(`퀘스트 — ${q.title}`);
             } else if (st && st !== q.status) {
                 q.status = st; L(`📜 ${q.title}: ${QNAME[st]}`);
             } else if (!st && st0) {
-                if (q.steps.some(x => norm(x.text) === norm(st0))) return; // 같은 진행을 매 턴 다시 적어도 한 번만
-                q.steps.push({ text: st0, done: false }); L(`📜 ${q.title}: ${short(st0, 20)}`);
+                if (q.steps.some(x => norm(x.text) === norm(st0) && x.done)) return; // 같은 진행을 매 턴 다시 적어도 한 번만
+                // v2.7.5: AI가 적는 「진행 내용」은 이미 한 일 → 해 둔 단계로. 할 일 목록에 같은(비슷한) 단계가 있으면 그걸 체크해요
+                const k = norm(st0);
+                const todo = q.steps.find(x => !x.done && (norm(x.text) === k || (k.length >= 4 && (norm(x.text).includes(k) || k.includes(norm(x.text))))));
+                if (todo) { todo.done = true; L(`📜 ${q.title}: ✔ ${short(todo.text, 20)}`); }
+                else { q.steps.push({ text: st0, done: true }); L(`📜 ${q.title}: ${short(st0, 20)}`); }
+                if (q.status === 'open') q.status = 'active'; // 받지도 않은 의뢰를 진행했다면 수락한 것
             }
             if (desc && st) q.desc ||= desc;
             if (q.status === 'done' && !q.paid) {
@@ -1098,6 +1110,13 @@ export function applyOp(s, rawKey, rawVal, info) {
                 if (info.ai && settings().questJudgeAI) { const r = questRoll(s, q, `${info.seed}:${q.title}`); q.judge = r.cls; L(`🎲 ${q.title}: ${JUDGE_NAME[r.cls]}`); if (r.cls === 'fumble') { q.status = 'failed'; return; } payQuest(s, q, info, JUDGE_MUL[r.cls]); }
                 else payQuest(s, q, info);
             }
+            return;
+        }
+        case '_leave': { // 🕊 이야기에서 빠진 사람 (관계 카드 단추 · v2.7.5): 이름|dead · left · back
+            const rl = s.data.rel; if (!rl) return;
+            const [nm, how] = splitBar(val);
+            const r = findBy(rl.user, nm); if (!r) return;
+            if (how === 'back') delete r.out; else r.out = how === 'dead' ? 'dead' : 'left';
             return;
         }
         case '_questpay': { // id · id|판정(crit·ok·fail·fumble)
@@ -1151,6 +1170,36 @@ export function applyOp(s, rawKey, rawVal, info) {
             return;
         }
         default: return;
+    }
+}
+// ⌛ 퀘스트 기한 (v2.7.5): 「3월 14일까지」 · 「3일 안에」 같은 기한을 달력 날짜로 바꿔 두고, 지나면 실패 · 마지막 날엔 알림
+// 기한 글을 못 읽으면(「이번 축제 전」 같은 것) 그냥 글로만 둬요. 달력이 꺼져 있으면 아무것도 안 해요.
+export function questDue(s, q) {
+    if (Number.isFinite(q.due) && q.dueFor === q.deadline) return q.due;
+    const cal = s.data.calendar; const t = String(q.deadline ?? '').trim();
+    if (!cal || !t) return null;
+    const rel = t.match(/(\d+)\s*(?:일|days?)\s*(?:안|내|이내|뒤|후|까지|within|later|left)?/i) || t.match(/^D\s*-\s*(\d+)$/i) || t.match(/within\s+(\d+)\s+days?/i);
+    if (rel && !/월/.test(t)) return Number.isFinite(q.since) ? q.since + Number(rel[1]) : null;
+    const pd = parseDate(cal, t);
+    if (!pd || !pd.m || !pd.d) return null;
+    try { const y = pd.y ?? cal.y; let idx = dayIndex(cal, y, pd.m, pd.d); if (pd.y === null && Number.isFinite(q.since) && idx < q.since) idx = dayIndex(cal, y + 1, pd.m, pd.d); return idx; } catch { return null; }
+}
+function questClock(s, info) {
+    const qs = s.data.quest, now = today(s);
+    if (!qs?.list?.length || now === null || settings().questExpire === false || info.mods?.quest === false) return;
+    for (const q of qs.list) {
+        if (q.status !== 'active' && q.status !== 'open') continue;
+        const due = questDue(s, q);
+        if (due === null) continue;
+        q.due = due; q.dueFor = q.deadline;
+        if (now > due) {
+            q.status = 'failed'; q.expired = true;
+            info.labels.push(`⌛ ${q.title}: 기한 지남`);
+            info.alerts.push(`⌛ 퀘스트 기한이 지났어요 — ${q.title}`);
+        } else if (now === due && q.warned !== due && q.status === 'active') {
+            q.warned = due;
+            info.alerts.push(`⏳ 오늘까지예요 — ${q.title}`);
+        }
     }
 }
 // 🎲 퀘스트 완료 판정 (v2.7.3): 대성공 1.5배 · 성공 그대로 · 실패 돈 절반(아이템 없음) · 대실패 보상 없이 실패
@@ -1304,6 +1353,17 @@ function trackGone(s, had, how = 'discarded') {
     if (had) for (const [k, n] of had) if (!now.has(k) && !s.gone.some(g => norm(g.name) === k)) s.gone.push({ name: n, how, turn: s.turn });
     if (s.gone.length) s.gone = s.gone.filter(g => !now.has(norm(g.name)) && s.turn - g.turn <= 30).slice(-12);
 }
+// 🕊 이야기에서 빠진 사람: 상태창 데이터는 남기고(되돌릴 수 있게) AI에게 가는 글에서만 빼고 한 줄로 알려 줘요
+export const outLine = (s) => { const out = (s?.data?.rel?.user ?? []).filter(r => r.out); return out.length ? `Out of the story (${out.map(r => `${r.name} — ${r.out === 'dead' ? 'died' : 'left'}`).join(', ')}): they cannot appear, talk, send messages or act in scenes unless the story explicitly brings them back.` : ''; };
+function withoutOut(r) {
+    const rl = r?.state?.data?.rel;
+    if (!rl?.user?.some(x => x.out)) return r;
+    const out = new Set(rl.user.filter(x => x.out).map(x => norm(x.name)));
+    const data = { ...r.state.data, rel: { ...rl, user: rl.user.filter(x => !x.out), pairs: (rl.pairs ?? []).filter(p => !out.has(norm(p.a)) && !out.has(norm(p.b))) } };
+    if (data.contact?.contacts) data.contact = { ...data.contact, contacts: data.contact.contacts.filter(c => !out.has(norm(c.name))) };
+    if (data.profile?.list) data.profile = { ...data.profile, list: data.profile.list.filter(p => !out.has(norm(p.name))) };
+    return { ...r, state: { ...r.state, data } };
+}
 export const goneLine = (s) => (settings().goneInject === false || !s?.gone?.length ? '' : `No longer owned by {{user}} (used up, thrown away or sold — do not use, wear, place or mention them as still owned, and do not re-add them unless the story gets them back): ${s.gone.map(g => g.name).join(', ')}`);
 // ───── 🔴 방금 AI 답에서 바뀐 곳 (v2.7.3) ─────
 // 마지막 AI 답의 변화를 적용하기 전 · 후를 칸마다 비교해서, 바뀐 칸(mod) · 줄(이름 있는 항목) · 값(key)을 모은다. 마지막 답 하나만 · 계산 1번에 1번.
@@ -1333,7 +1393,7 @@ export function freshDiff(before, s, key) {
     }
     if (!mods.size) return null;
     let seen = freshKeep.get(key);
-    if (!seen) { seen = new Set(); freshKeep.set(key, seen); if (freshKeep.size > 6) freshKeep.delete(freshKeep.keys().next().value); }
+    if (!seen) { const sv = getMeta()?.freshSeen; seen = new Set(sv?.key === key ? sv.mods : []); freshKeep.set(key, seen); if (freshKeep.size > 6) freshKeep.delete(freshKeep.keys().next().value); }
     return { key, mods, items, seen };
 }
 // 화면에서: 이 칸 · 이 값 · 이 이름의 줄이 방금 바뀌었나
@@ -1785,8 +1845,9 @@ function buildDelta(r, plan, opt = {}) {
 export function buildInjection(r, opt = {}) {
     const was = INJ.on; INJ.on = true; // 🙈 가린 칸은 이 안에서만 꺼진 것처럼
     try {
-        const inj = withGone(buildInjection1(r, opt), r);
-        if (r && !opt.noOutput) { try { inj.romance = swapUser(romanceBlock(r)); } catch (e) { ssWarn(LOG, 'romance', e); } }
+        const r2 = withoutOut(r);
+        const inj = withGone(buildInjection1(r2, opt), r);
+        if (r && !opt.noOutput) { try { inj.romance = swapUser(romanceBlock(r2)); } catch (e) { ssWarn(LOG, 'romance', e); } }
         return inj;
     } finally { INJ.on = was; }
 }
@@ -1848,7 +1909,7 @@ function buildInjection1(r, opt = {}) {
 }
 // 모든 주입 방식(전체 · 간결 · 초압축 · 변화 위주)에 「이제 없는 물건」 한 줄 (v2.7.3)
 function withGone(inj, r) {
-    const g = goneLine(r?.state);
+    const g = [goneLine(r?.state), outLine(r?.state)].filter(Boolean).join('\n');
     if (!g || !inj.main) return inj;
     const lines = inj.main.split('\n');
     lines.splice(Math.min(2, lines.length), 0, swapUser(g));
@@ -1911,7 +1972,7 @@ function buildInjection0(r, opt = {}) {
     if (on('quest')) {
         const act = d.quest.list.filter(q => q.status === 'active');
         const open = d.quest.list.filter(q => q.status === 'open');
-        if (act.length) L.push(`Active quests: ${act.slice(0, 5).map(q => `${q.title}${q.giver ? ` (from ${q.giver})` : ''}${q.deadline ? ` · due ${q.deadline}` : ''}${!lite && q.steps.length ? ` · next: ${q.steps.find(x => !x.done)?.text ?? 'report back'}` : ''}`).join(' / ')}`);
+        if (act.length) L.push(`Active quests: ${act.slice(0, 5).map(q => `${q.title}${q.giver ? ` (from ${q.giver})` : ''}${q.deadline ? ` · due ${q.deadline}${Number.isFinite(q.due) && today(s) !== null ? ` (${q.due - today(s) <= 0 ? 'TODAY is the last day' : `${q.due - today(s)} day(s) left`})` : ''}` : ''}${!lite && q.steps.length ? ` · next: ${q.steps.find(x => !x.done)?.text ?? 'report back'}` : ''}`).join(' / ')}`);
         if (open.length && !lite) L.push(`Requests available (not accepted yet): ${open.slice(0, 4).map(q => q.title).join(', ')}`);
     }
     if (on('news') && d.news.items.length && !lite) L.push(`Recent news (${d.news.name || 'news'}): ${d.news.items.slice(-3).map(x => x.title).join(' / ')}`);

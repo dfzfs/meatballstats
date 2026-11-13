@@ -1,9 +1,18 @@
 // 📜 퀘스트 · 📰 뉴스 · 🍷 가십지 · 📋 게시판
-import { app, esc, short, clone, uid, fmtNum, stamp, userName, TITLE, modOn, ssErr, settings, norm, DIFFS, diffOf } from './core.js';
-import { commit, addAdjust, isFresh, questRoll, JUDGE_NAME, JUDGE_MUL } from './engine.js';
+import { app, esc, short, clone, uid, fmtNum, stamp, userName, TITLE, modOn, ssErr, settings, norm, DIFFS, diffOf, dayIndex } from './core.js';
+import { commit, addAdjust, isFresh, questRoll, JUDGE_NAME, JUDGE_MUL, questDue } from './engine.js';
 import { newNews, newGossip, newPosts, newQuests, boardReplies } from './ai.js';
 import { ai1, emptyBox, seg, busyBtn, askConfirm, chip, choosePopup, insertInput, mascot } from './kit.js';
 
+// ⌛ 기한 칩: D-3 · 오늘까지 · 기한 지남 (달력이 있고 기한을 읽을 수 있을 때)
+function dueChip(s, q) {
+    if (q.expired) return ' ' + chip('기한 지남', 'neg');
+    if (q.status !== 'active' && q.status !== 'open') return '';
+    const cal = s.data.calendar; if (!cal) return '';
+    const due = questDue(s, q); if (due === null) return '';
+    const left = due - dayIndex(cal);
+    return ' ' + chip(left <= 0 ? '오늘까지' : `D-${left}`, left <= 1 ? 'warn' : '');
+}
 // 🎲 퀘스트 판정 목표 (d20 · 난이도 보정 전)
 const Q_DC = [[8, '쉬움'], [12, '보통'], [15, '어려움'], [18, '매우 어려움']];
 const JUDGE_ICON = { crit: '🌟', ok: '✅', fail: '😅', fumble: '💥' };
@@ -32,7 +41,7 @@ export function questView(s, d, ui) {
         ${seg([['active', `진행 중 <small>${count('active')}</small>`], ['open', `받을 수 있음 <small>${count('open')}</small>`], ['end', `끝남 <small>${count('end')}</small>`]], ui.qf, 'qf')}
         <div class="ss-stack">${list.map(q => `<article class="ss-quest ${q.status}">
             <div class="ss-quest-h"><i class="fa-solid ${(Q_ST[q.status] ?? Q_ST.open)[1]}"></i><b>${isFresh(fr, 'quest', 'list', q.title) ? '<i class="ss-fresh" title="방금 AI 답에서 바뀌었어요"></i>' : ''}${esc(q.title)}</b>${chip((Q_ST[q.status] ?? Q_ST.open)[0], q.status)}</div>
-            <div class="ss-meta">${q.giver ? `<span><i class="fa-solid fa-user"></i> ${esc(q.giver)}</span>` : ''}${q.place ? `<span><i class="fa-solid fa-location-dot"></i> ${esc(q.place)}</span>` : ''}${q.deadline ? `<span><i class="fa-regular fa-clock"></i> ${esc(q.deadline)}</span>` : ''}</div>
+            <div class="ss-meta">${q.giver ? `<span><i class="fa-solid fa-user"></i> ${esc(q.giver)}</span>` : ''}${q.place ? `<span><i class="fa-solid fa-location-dot"></i> ${esc(q.place)}</span>` : ''}${q.deadline ? `<span><i class="fa-regular fa-clock"></i> ${esc(q.deadline)}${dueChip(s, q)}</span>` : ''}</div>
             ${q.desc ? `<p class="ss-pre">${esc(q.desc)}</p>` : ''}
             ${q.steps.length ? `<ul class="ss-steps">${q.steps.map((st, i) => `<li class="${st.done ? 'done' : ''}" data-act="qstep" data-arg="${esc(q.id)}|${i}"><i class="fa-${st.done ? 'solid fa-square-check' : 'regular fa-square'}"></i>${esc(st.text)}</li>`).join('')}</ul>` : ''}
             ${q.reward || q.cash || q.items.length ? `<div class="ss-reward"><i class="fa-solid fa-gift"></i>${q.cash ? `<b>${fmtNum(q.cash)} ${esc(cur)}</b>` : ''}${q.items.map(x => chip(esc(x))).join('')}${q.reward ? `<span>${esc(q.reward)}</span>` : ''}${q.paid ? chip('받음', 'done') : ''}</div>` : ''}
@@ -44,7 +53,7 @@ export function questView(s, d, ui) {
         </article>`).join('') || emptyBox(ui.qf === 'active' ? '진행 중인 퀘스트가 없어요' : ui.qf === 'open' ? '받을 수 있는 의뢰가 없어요' : '끝난 퀘스트가 없어요', 'fa-scroll')}</div>
         ${ui.qf === 'end' ? arcBox(d, '오래된 퀘스트') : ''}
         <div class="ss-row-btns"><button class="ss-btn" data-act="qfind">${ai1} 의뢰 찾기</button><button class="ss-btn ghost" data-act="qnew"><i class="fa-solid fa-plus"></i> 직접 추가</button></div>
-        ${ui.qnew ? `<div class="ss-card ss-form"><input class="ss-in ss-q-t" placeholder="이름 (예: 잃어버린 고양이 찾기)"><textarea class="ss-in ss-q-d" rows="2" placeholder="내용"></textarea><div class="ss-inline"><input class="ss-in ss-q-g" placeholder="의뢰인"><input class="ss-in n ss-q-c" type="number" placeholder="보상금"></div><button class="ss-btn pri" data-act="qadd">추가 (바로 진행)</button></div>` : ''}
+        ${ui.qnew ? `<div class="ss-card ss-form"><input class="ss-in ss-q-t" placeholder="이름 (예: 잃어버린 고양이 찾기)"><textarea class="ss-in ss-q-d" rows="2" placeholder="내용"></textarea><div class="ss-inline"><input class="ss-in ss-q-g" placeholder="의뢰인"><input class="ss-in n ss-q-c" type="number" placeholder="보상금"></div><input class="ss-in ss-q-dl" placeholder="기한 (선택 · 예: 3일 안에 · 3월 14일)"><button class="ss-btn pri" data-act="qadd">추가 (바로 진행)</button></div>` : ''}
     </div>`;
 }
 
@@ -170,7 +179,7 @@ export const FEED_ACTIONS = {
         const t = el.querySelector('.ss-q-t').value.trim(); if (!t) return;
         const nd = clone(s.data.quest ?? { list: [] });
         nd.gone = (nd.gone ?? []).filter(g => norm(g) !== norm(t)); // 지웠던 이름을 직접 다시 추가하면 되살림
-        nd.list.push({ id: uid(), title: t, desc: el.querySelector('.ss-q-d').value.trim(), giver: el.querySelector('.ss-q-g').value.trim(), place: '', deadline: '', reward: '', cash: Number(el.querySelector('.ss-q-c').value) || 0, items: [], status: 'active', steps: [], paid: false });
+        nd.list.push({ id: uid(), title: t, desc: el.querySelector('.ss-q-d').value.trim(), giver: el.querySelector('.ss-q-g').value.trim(), place: '', reward: '', cash: Number(el.querySelector('.ss-q-c').value) || 0, items: [], status: 'active', steps: [], paid: false, deadline: el.querySelector('.ss-q-dl')?.value.trim() ?? '', ...(s.data.calendar ? { since: dayIndex(s.data.calendar) } : {}) });
         el._ss.ui.qnew = false; el._ss.ui.qf = 'active';
         await commit('quest', nd, `새 목표: ${t}`);
     },

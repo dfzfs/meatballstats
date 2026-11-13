@@ -4,7 +4,7 @@ import { loveIndex, ensureLove, relAxes, romanceStart } from './core.js';
 import { addAdjust, commit, stageIndex, stripStatus, isFresh } from './engine.js';
 const FRESH_I = '<i class="ss-fresh" title="방금 AI 답에서 바뀌었어요"></i>';
 import { newSns, snsReactions, musicPicks, peekMind, fillWants } from './ai.js';
-import { sec, emptyBox, chip, avatar, ai1, seg, gauge, meter, askInput, askConfirm, busyBtn, insertInput, closeIfPopup, mascot } from './kit.js';
+import { sec, emptyBox, chip, avatar, ai1, seg, gauge, meter, askInput, askConfirm, busyBtn, insertInput, closeIfPopup, mascot, choosePopup } from './kit.js';
 import { MUSIC_APPS, songLink } from './notify.js';
 
 const play = (x, label = '') => `<a class="ss-btn sm ss-play" href="${esc(songLink(x))}" target="_blank" rel="noopener" title="${esc((MUSIC_APPS[settings().musicApp] ?? MUSIC_APPS.youtube).name)}에서 찾기"><i class="fa-solid fa-play"></i>${label ? ` ${label}` : ''}</a>`;
@@ -130,9 +130,10 @@ export function relView(s, d, ui) {
         const k = clamp(r.stage ?? stageIndex(st, r.aff, r.trust), 0, st.length - 1);
         const g = st[k], rs = r.noLove ? romanceStart(d) : -1, nx = rs > 0 && k + 1 >= rs ? null : st[k + 1]; // 애정 꺼 둔 사람은 연애 단계를 다음 목표로 안 보여 줌
         const need = nx ? [r.aff < nx.at ? `${AX.aff} ${nx.at - r.aff}` : '', r.trust < nx.trust ? `${AX.trust} ${nx.trust - r.trust}` : ''].filter(Boolean).join(' · ') : '';
-        return `<div class="ss-card ss-relc"><div class="ss-relc-h">${avatar(r.name)}<div class="ss-ct-b"><b>${isFresh(app.current?.fresh, 'rel', 'user', r.name) ? FRESH_I : ''}${esc(r.name)} <span class="ss-stage s${k}">${esc(g.name)}</span>${set.romBond && r.bond && k < (L < 0 ? Infinity : L) ? ' <span class="ss-stage love">💞 연인</span>' : ''}</b>${r.label ? `<small>${esc(r.label)}</small>` : ''}</div>
+        return `<div class="ss-card ss-relc ${r.out ? 'out' : ''}">${r.out ? `<div class="ss-outbar">🕊 ${r.out === 'dead' ? '세상을 떠났어요' : '이야기에서 떠났어요'} — AI에게는 「등장하지 않음」으로 알려요</div>` : ''}<div class="ss-relc-h">${avatar(r.name)}<div class="ss-ct-b"><b>${isFresh(app.current?.fresh, 'rel', 'user', r.name) ? FRESH_I : ''}${esc(r.name)} <span class="ss-stage s${k}">${esc(g.name)}</span>${set.romBond && r.bond && k < (L < 0 ? Infinity : L) ? ' <span class="ss-stage love">💞 연인</span>' : ''}</b>${r.label ? `<small>${esc(r.label)}</small>` : ''}</div>
             ${set.peekOn !== false ? `<button class="ss-ib" data-act="peek" data-arg="${esc(r.name)}" title="속마음 엿보기 (AI 1회${set.peekPerDay ? ` · 오늘 ${left}번 남음` : ''})" ${set.peekPerDay && left <= 0 ? 'disabled' : ''}><i class="fa-solid fa-heart-circle-question"></i></button>` : ''}
             ${modOn('contact') ? `<button class="ss-ib" data-act="talk" data-arg="${esc(r.name)}" title="연락"><i class="fa-solid fa-envelope"></i></button>` : ''}
+            <button class="ss-ib ss-leave ${r.out ? 'on' : ''}" data-act="leave" data-arg="${esc(r.name)}" title="${r.out ? '이야기에 다시 등장시키기' : '이야기에서 빠짐 (사망 · 떠남) — AI가 이 사람을 다시 등장시키지 않게'}"><i class="fa-solid fa-dove"></i></button>
             <button class="ss-ib ss-nolove ${r.noLove ? 'on' : ''}" data-act="${r.noLove ? 'love' : 'nolove'}" data-arg="${esc(r.name)}" title="${r.noLove ? `💗 ${esc(AX.aff)} 다시 켜기` : `💗 ${esc(AX.aff)} 꺼 두기 — 이 사람은 우정만 (연애 없음)`}"><i class="fa-solid ${r.noLove ? 'fa-heart-crack' : 'fa-heart'}"></i></button></div>
             ${r.noLove ? `<div class="ss-meter love off"><span>${esc(AX.aff)}</span><div class="ss-meter-t"></div><em>꺼 둠</em></div>` : meter(AX.aff, r.aff, 'love')}${meter(AX.trust, r.trust, 'trust')}${set.jealousy && r.jealous ? `<div class="ss-meter jealous"><span>질투</span><div class="ss-meter-t"><b style="left:0;width:${r.jealous}%"></b></div><em>${r.jealous}</em></div>` : ''}
             ${g.unlock ? `<p class="ss-unlock"><i class="fa-solid fa-lock-open"></i> ${esc(g.unlock)}</p>` : ''}
@@ -177,6 +178,17 @@ export const REL_ACTIONS = {
             await commit('rel', nd, '인물의 욕구를 채웠다');
             toastr.success(`${n}칸을 채웠어요. 마음에 안 들면 ✏️ 편집에서 고치거나 되돌리기를 눌러 주세요.`, TITLE);
         } catch (e) { busyBtn(btn, false); toastr.error(`채우지 못했어요: ${esc(e.message)}`, TITLE); }
+    },
+    leave: async (el, arg, btn, s) => { // 🕊 이야기에서 빠짐 (v2.7.5) — 데이터는 남기고 AI에게만 「등장하지 않음」
+        const r = s?.data?.rel?.user?.find(x => x.name === arg); if (!r) return;
+        const box = document.createElement('div');
+        box.className = 'ss-root ss-scope ss-leavebox';
+        box.innerHTML = `<div class="ss-wz-head"><i class="fa-solid fa-dove"></i><div><b>${esc(arg)} — 이야기에서 빠짐</b><small>상태창 기록은 그대로 두고, AI에게만 「이 사람은 등장하지 않음」으로 알려요 (주입 한 줄)</small></div></div>
+            <p class="ss-hint">상태창을 지워도 AI는 지난 대화를 읽고 이 사람이 아직 있다고 여겨요. 그래서 지우는 대신 「빠짐」으로 표시해 두면 다시 등장시키지 않아요. 연락 · 장면 인물 목록에서도 빠져요.</p>
+            <div class="ss-row-btns">${r.out ? '<button class="ss-btn pri" data-choice="back"><i class="fa-solid fa-rotate-left"></i> 다시 등장시키기</button>' : '<button class="ss-btn" data-choice="dead">🕊 세상을 떠남</button><button class="ss-btn" data-choice="left">🚪 이야기에서 떠남</button>'}</div>`;
+        const pick = await choosePopup(box, '취소');
+        if (!pick) return;
+        await addAdjust({ ops: [['_leave', `${arg}|${pick}`]], label: pick === 'back' ? `🕊 ${arg}: 다시 이야기에 등장` : `🕊 ${arg}: ${pick === 'dead' ? '세상을 떠났다' : '이야기에서 떠났다'}` });
     },
     unbond: async (el, arg) => { await addAdjust({ ops: [['_unbond', arg]], label: `💔 ${arg}와(과)는 연인이 아니다 (확정 취소)` }); },
     peek: async (el, arg, btn, s) => {

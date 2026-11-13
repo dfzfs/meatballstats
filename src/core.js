@@ -3,7 +3,7 @@ import { toEnglish, usedPairs } from './skeleton_en.js'; // 영어 저장일 때
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.7.4';
+export const VERSION = '2.7.5';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
 export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
@@ -134,6 +134,7 @@ export const DEFAULTS = Object.freeze({
     freshDot: true,          // 🔴 방금 AI 답에서 바뀐 칸 · 줄에 작은 빨간 점
     questJudge: 'ask',       // 🎲 퀘스트 완료 판정: ask (완료 누르면 판정할지 물어봄) · roll (늘 판정) · off (판정 없이 완료)
     questJudgeAI: false,     // 본편 AI가 「완료」라고 적은 퀘스트도 보상 판정을 자동으로 굴림 (토큰 0)
+    questExpire: true,       // ⌛ 퀘스트 기한이 지나면 실패 · 마지막 날 알림 (달력이 켜져 있을 때 · v2.7.5)
     goneInject: true,        // 🗑 버리거나 판 물건을 AI에게 「이제 없음」으로 알려 주기 (다시 꺼내 쓰지 않게)
     chipOutside: false,      // 변동 칩을 본문(.mes_text) 밖 아래에 붙이기 — 번역 확장이 원문을 숨겨 칩이 안 보일 때
 });
@@ -575,7 +576,7 @@ export const NORM = {
     rel: (d) => {
         const stages = arr(d.stages).filter(x => x?.name).map(x => ({ name: str(x.name), at: clamp(Math.round(num(x.at, 0)), -100, 100), trust: clamp(Math.round(num(x.trust, -100)), -100, 100), unlock: str(x.unlock), ...(x.love === true || x.love === 'true' ? { love: true } : x.love === false || x.love === 'false' ? { love: false } : {}) })).sort((a, b) => a.at - b.at);
         return {
-            user: arr(d.user).filter(r => r?.name).map(r => ({ name: str(r.name), label: str(r.label), aff: clamp(Math.round(num(r.aff, 0)), -100, 100), trust: clamp(Math.round(num(r.trust, 0)), -100, 100), memo: str(r.memo), stage: Number.isFinite(Number(r.stage)) && r.stage !== null && r.stage !== '' ? Math.round(Number(r.stage)) : -1, jealous: clamp(Math.round(num(r.jealous, 0)), 0, 100), met: str(r.met), bond: r.bond === true || r.bond === 'true', ...(r.noLove === true || r.noLove === 'true' ? { noLove: true } : {}), likes: str(r.likes), dislikes: str(r.dislikes), concern: str(r.concern) })),
+            user: arr(d.user).filter(r => r?.name).map(r => ({ name: str(r.name), label: str(r.label), aff: clamp(Math.round(num(r.aff, 0)), -100, 100), trust: clamp(Math.round(num(r.trust, 0)), -100, 100), memo: str(r.memo), stage: Number.isFinite(Number(r.stage)) && r.stage !== null && r.stage !== '' ? Math.round(Number(r.stage)) : -1, jealous: clamp(Math.round(num(r.jealous, 0)), 0, 100), met: str(r.met), bond: r.bond === true || r.bond === 'true', ...(r.noLove === true || r.noLove === 'true' ? { noLove: true } : {}), likes: str(r.likes), dislikes: str(r.dislikes), concern: str(r.concern), ...(['dead', 'left'].includes(r.out) ? { out: r.out } : {}) })),
             pairs: arr(d.pairs).filter(p => p?.a && p?.b).map(p => ({ a: str(p.a), b: str(p.b), label: str(p.label), memo: str(p.memo) })),
             stages: stages.length ? stages : (() => { const st = clone(str(d.affName) ? LOVE_STAGES : DEFAULT_STAGES); if (!viewTr()) return st; const en = toEnglish(st); try { app.addTrPairs?.(usedPairs(en)); } catch { /* 사전 없어도 저장은 영어 */ } return en; })(), // 영어 저장이면 기본 단계도 영어로
             affName: short(str(d.affName), 12), trustName: short(str(d.trustName), 12),
@@ -623,6 +624,9 @@ export const NORM = {
             paid: !!q.paid,
             ...(q.check && typeof q.check === 'object' ? { check: { attr: str(q.check.attr), dc: Math.max(2, Math.min(30, num(q.check.dc, 12))) } } : {}), // 🎲 완료 판정 (v2.7.3)
             ...(['crit', 'ok', 'fail', 'fumble'].includes(q.judge) ? { judge: q.judge } : {}),
+            ...(Number.isFinite(Number(q.since)) && q.since !== null && q.since !== '' ? { since: Math.round(Number(q.since)) } : {}), // 받은 날 (달력 날짜 번호 · 「3일 안에」 계산용 · v2.7.5)
+            ...(Number.isFinite(Number(q.due)) && q.due !== null && q.due !== '' && str(q.dueFor) === str(q.deadline) ? { due: Math.round(Number(q.due)), dueFor: str(q.deadline) } : {}), // 기한 날 (달력 날짜 번호 · 기한 글이 바뀌면 다시 계산)
+            ...(q.expired ? { expired: true } : {}),
         })),
         archive: arr(d.archive),
         gone: arr(d.gone).map(String).filter(Boolean).slice(-60), // 내가 지운 퀘스트 이름 — AI가 다시 살리지 못하게 (v2.7.3)

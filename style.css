@@ -1236,3 +1236,7 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-perf .ss-perf-t { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .92em; }
 .ss-perf .ss-perf-t td { padding: 4px 6px; border-bottom: 1px solid var(--ss-line); }
 .ss-perf .ss-perf-t td:nth-child(2) { text-align: right; white-space: nowrap; }
+/* 🕊 이야기에서 빠진 사람 (v2.7.5) */
+.ss-relc.out { opacity: .62; }
+.ss-relc .ss-outbar { font-size: .82em; color: var(--ss-dim); margin: -2px 0 6px; }
+.ss-ib.ss-leave.on { color: var(--ss-hi); }

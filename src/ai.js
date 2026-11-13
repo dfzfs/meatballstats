@@ -1,5 +1,5 @@
 // 확장 AI가 하는 일 (모두 토큰이 드는 호출)
-import { app, ctx, settings, getMeta, MOD, NORM, normalize, ensureLove, LOVE_AXES, relAxes, fixLoveLadder, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay, ssWarn } from './core.js';
+import { app, ctx, settings, getMeta, MOD, NORM, normalize, ensureLove, LOVE_AXES, relAxes, fixLoveLadder, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay, ssWarn, dayIndex } from './core.js';
 import { P, aiGenerate, parseJSON, aiJSON } from './prompts.js';
 import { SCHEMA } from './core.js';
 import { compute, buildInjection, tagKeysFor, extractOps, stripStatus, recentChat, chatCharacters } from './engine.js';
@@ -135,6 +135,7 @@ export async function analyzeMessage(idx) {
         m.extra[MODULE] ??= { bySwipe: {} };
         m.extra[MODULE].bySwipe ??= {};
         m.extra[MODULE].bySwipe[sid] = ops;
+        Object.defineProperty(ops, 'analyzed', { value: true, enumerable: false }); // 같은 답을 다시 분석하지 않게 (이번 접속 동안)
         app.pipState.set(pk, ops.length ? 'done' : 'empty');
         await (c.saveChat?.() ?? c.saveChatDebounced?.());
         app.refreshNow?.();
@@ -299,7 +300,7 @@ export async function newPosts(state) {
 }
 export async function newQuests(state) {
     const o = normalize('quest', await freshItems('quest', 'quest', state));
-    return o.list.map(q => ({ ...q, id: uid(), status: 'open', paid: false }));
+    return o.list.map(q => ({ ...q, id: uid(), status: 'open', paid: false, ...(state.data.calendar ? { since: dayIndex(state.data.calendar) } : {}) })); // 받은 날 — 「3일 안에」 기한 계산용
 }
 export async function boardReplies(state, post) {
     const L = [
