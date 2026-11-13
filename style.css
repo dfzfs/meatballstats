@@ -343,6 +343,11 @@ dialog.ss-dlg .popup-content > .ss-root, dialog.ss-dlg .popup-content > .ss-pane
 .ss-item-b small, .ss-good-b small { color: var(--ss-dim); }
 .ss-item-b em { font-style: normal; color: var(--ss-hi); font-weight: 700; }
 .ss-item-a, .ss-good-a { display: flex; align-items: center; gap: 4px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+/* 이름이 한 글자씩 세로로 찌그러지지 않게: 이름은 최소 8글자 폭, 모자라면 고르기 칸·버튼이 아래 줄로 */
+.ss-item, .ss-good { flex-wrap: wrap; row-gap: 8px; }
+.ss-item-b, .ss-good-b { flex: 1 1 8em; overflow-wrap: anywhere; word-break: keep-all; }
+.ss-item > select.ss-in, .ss-good > select.ss-in { max-width: 100%; min-width: 0; flex: 0 1 11em; }
+.ss-item-a, .ss-good-a { margin-left: auto; }
 .ss-good.out { opacity: .55; }
 .ss-price { font-variant-numeric: tabular-nums; margin-right: 4px; }
 .ss-goods { display: flex; flex-direction: column; gap: 6px; }
