@@ -2,7 +2,16 @@
 // AI 없이 바로 만드는 범용 상태창 뼈대. 장르마다 화폐·게이지·장소 이름만 살짝 다르고, 나머지는 어떤 세계관에도 맞는 공통 틀이다.
 //   tpl    = 전부 기본 틀 (AI 0회 · 토큰 0) → 나중에 칸마다 「AI로 채우기」로 살을 붙인다
 //   hybrid = 게임 규칙 칸(수치·주사위·달력·업적·운명·메모·내 탭)은 기본 틀, 세계관 칸(인물·지도·상점·소식…)만 AI
-import { ctx, short, clone, LOVE_STAGES, LOVE_AXES, DEFAULT_MONTHS, DEFAULT_WEEK, DEFAULT_TIMES, COURIER_PRESETS, CONTACT_MODES, GENRES, dayIndex } from './core.js';
+import { ctx, short, clone, LOVE_STAGES, LOVE_AXES, DEFAULT_MONTHS, DEFAULT_WEEK, DEFAULT_TIMES, COURIER_PRESETS, CONTACT_MODES, GENRES, dayIndex, viewTr, app } from './core.js';
+import { toEnglish, usedPairs, enStr, ALWAYS_PAIRS } from './skeleton_en.js';
+
+// v2.7.1: 「영어로 저장 · 화면만 번역」이면 기본 틀도 영어로 저장하고, 같은 짝을 화면 번역 사전에 넣어 한국어로 보이게 (AI 0회)
+function lang(out) {
+    if (!out || !viewTr()) return out;
+    const en = toEnglish(out);
+    try { app.addTrPairs?.([...usedPairs(en), ...ALWAYS_PAIRS]); } catch { /* 사전은 없어도 저장은 영어로 */ }
+    return en;
+}
 
 export const GEN_MODES = {
     ai: { name: '전부 AI', icon: 'fa-wand-magic-sparkles', desc: '세계관에 꼭 맞게 · 모든 칸을 AI가 새로' },
@@ -122,7 +131,8 @@ function todayCal() {
 }
 
 // 세계 핵심 (기본 틀만일 때)
-export function skeletonCore(genre, opt = {}) {
+export function skeletonCore(genre, opt = {}) { return lang(skeletonCore0(genre, opt)); }
+function skeletonCore0(genre, opt = {}) {
     const gr = GENRES.find(x => x.id === genre);
     const cast = castOf();
     const c = ctx();
@@ -135,7 +145,8 @@ export function skeletonCore(genre, opt = {}) {
 }
 
 // 한 칸의 기본 틀 (normalize 전 모양 · SCHEMA와 같음)
-export function skeleton(id, genre, opt = {}) {
+export function skeleton(id, genre, opt = {}) { return lang(skeleton0(id, genre, opt)); }
+function skeleton0(id, genre, opt = {}) {
     const g = G[genreOf(genre)];
     const m = (n) => Math.round(n * g.k);
     const cast = castOf();
@@ -193,6 +204,11 @@ export function skeleton(id, genre, opt = {}) {
 export function skeletonHint(genre, ids) {
     const g = G[genreOf(genre)];
     const L = [];
+    if (viewTr()) { // 영어 저장이면 AI에게도 영어 이름으로 (안 그러면 AI가 한국어 이름을 그대로 써서 섞인다)
+        if (ids.includes('stats')) L.push(`Gauges are already fixed as ${g.bars.map(enStr).join(' · ')} and attributes as ${g.attrs.map(enStr).join(' · ')} — use exactly these names in item effects, rolls, etc.`);
+        if (ids.includes('calendar')) L.push('The calendar uses the default 12-month calendar (Jan–Dec).');
+        return L.join(' ');
+    }
     if (ids.includes('stats')) L.push(`게이지는 ${g.bars.join(' · ')}, 능력치는 ${g.attrs.join(' · ')}로 이미 정해져 있다 — 아이템 효과·판정 등에서 이 이름을 그대로 쓸 것.`);
     if (ids.includes('calendar')) L.push('달력은 기본 달력(1~12월)을 쓴다.');
     return L.join(' ');

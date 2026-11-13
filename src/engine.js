@@ -4,6 +4,7 @@ import {
     signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, trBack, viewTr, weekday,
     PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser, ssWarn, relAxes, romanceStart, INJ, isHidden, modOnRaw } from './core.js';
 import { P } from './prompts.js';
+import { enStr } from './skeleton_en.js';
 
 export const KEYMAP = {
     stat: 'stat', '수치': 'stat', '게이지': 'stat', gauge: 'stat', hp: 'stat',
@@ -342,7 +343,7 @@ function pickWeather(cal, seed) {
     const table = WEATHER[seasonOf(cal)];
     const total = table.reduce((a, [, w]) => a + w, 0);
     let x = seeded(seed)() * total;
-    for (const [n, w] of table) { if ((x -= w) < 0) return n; }
+    for (const [n, w] of table) { if ((x -= w) < 0) return viewTr() ? enStr(n) : n; } // 영어 저장이면 영어 날씨 (화면은 한국어로)
     return table[0][0];
 }
 // ───── 사람 위치: 사는 곳 · 일과 ─────

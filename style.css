@@ -586,6 +586,11 @@ dialog.ss-dlg .popup-content > .ss-root, dialog.ss-dlg .popup-content > .ss-pane
 .ss-reward span { color: var(--ss-dim); }
 .ss-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .ss-mast { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 8px; padding: 6px 0 10px; margin-bottom: 12px; border-bottom: 3px double var(--ss-ink); }
+/* 긴 신문 이름(「세계경제신문 (모르간즈 발행)」)이 가운데 칸을 다 먹어서 날짜가 한 글자씩 세로로 찌그러지던 것 → 날짜는 이름 위 한 줄로 */
+.ss-mast { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 2px; }
+.ss-mast > small { grid-row: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ss-mast > b { grid-row: 2; overflow-wrap: anywhere; word-break: keep-all; }
+.ss-mast > span:empty { display: none; }
 .ss-mast b { font-family: var(--ss-serif); font-size: 1.6em; font-weight: 800; letter-spacing: -.01em; text-align: center; line-height: 1.1; }
 .ss-mast small { color: var(--ss-dim); font-size: .76em; }
 .ss-article { padding: 10px 2px 8px; border-bottom: 1px solid var(--ss-line); }
