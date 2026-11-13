@@ -120,7 +120,7 @@ export function renderPanel(el) {
     const nNew = unreadNotes(meta);
     el.innerHTML = `<div class="ss-root ss-scope ${inSide ? 'in-side' : ''} ${meta.paused ? 'paused' : ''} ${settings().bottomNav ? 'navbottom' : ''}">
         <header class="ss-head">
-            ${settings().mascotBuddy !== false ? mascot(meta.paused ? 'sleep' : nNew ? 'surprise' : 'idle', 'head', 'bob') : ''}
+            ${settings().mascotBuddy !== false ? `<span class="ss-head-cat" data-act="help" title="궁금한 게 있으면 저를 눌러요 🐾 (미트볼 도우미)">${mascot(meta.paused ? 'sleep' : nNew ? 'surprise' : 'idle', 'head', 'bob')}</span>` : ''}
             <div class="ss-head-t"><b>${esc(c.title || TITLE)}</b>${sub2 ? `<small>${esc(sub2)}</small>` : ''}</div>
             <div class="ss-head-a">
                 <button class="ss-chip btn diff-${diffOf(meta)}" data-act="tab" data-arg="manage" title="난이도"><i class="fa-solid ${d0.icon}"></i> ${d0.name}</button>
@@ -128,7 +128,7 @@ export function renderPanel(el) {
                 <button class="ss-ib" data-act="search" title="검색"><i class="fa-solid fa-magnifying-glass"></i></button>
                 <button class="ss-ib ${meta.paused ? 'on' : ''}" data-act="pause" title="${meta.paused ? '재개' : '일시정지 (AI에게 상태를 보내지 않음)'}"><i class="fa-solid ${meta.paused ? 'fa-play' : 'fa-pause'}"></i></button>
                 <button class="ss-ib" data-act="prompts" title="프롬프트 · 토큰"><i class="fa-solid fa-scroll"></i></button>
-                <button class="ss-ib" data-act="help" title="미트볼 도우미 — 모르는 기능 물어보기 (AI)"><i class="fa-solid fa-circle-question"></i></button>
+                <button class="ss-helpchip" data-act="help" title="미트볼 도우미 — 모르는 기능을 물어보면 바로 답해요 (AI 0회)"><i class="fa-solid fa-circle-question"></i><span>도우미</span></button>
                 <button class="ss-ib" data-act="fullscreen" title="${!inSide && settings().sheetFull ? '전체화면 끄기' : '전체화면'}"><i class="fa-solid ${!inSide && settings().sheetFull ? 'fa-compress' : 'fa-expand'}"></i></button>
                 ${inSide ? `<button class="ss-ib" data-act="sidemini" title="작게"><i class="fa-solid fa-down-left-and-up-right-to-center"></i></button>` : ''}
             </div>

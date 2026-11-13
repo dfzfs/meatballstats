@@ -1178,3 +1178,12 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-fxw .ss-fx-eq .ss-unit { flex: 0 1 5em; min-width: 3.5em; }
 .ss-fxw .ss-fx-ex { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: var(--ss-r); background: var(--ss-surface); font-variant-numeric: tabular-nums; }
 .ss-fxw .ss-fx-ex span { color: var(--ss-dim); margin: 0 4px; }
+
+/* ───── 🐱 도우미를 눈에 띄게 (v2.7.2 · 방해는 안 되게) ───── */
+.ss-scope .ss-helpchip { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 11px 0 9px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--ss-hi) 35%, var(--ss-line)); background: color-mix(in srgb, var(--ss-hi) 9%, var(--ss-bg)); color: var(--ss-hi); font-size: .82em; font-weight: 650; cursor: pointer; white-space: nowrap; margin: 0 2px; }
+.ss-scope .ss-helpchip:hover { background: color-mix(in srgb, var(--ss-hi) 16%, var(--ss-bg)); }
+.ss-scope .ss-head-cat { cursor: pointer; display: inline-flex; border-radius: 50%; }
+.ss-scope .ss-head-cat:hover { filter: brightness(1.05); transform: scale(1.04); transition: transform .15s; }
+.ss-scope .ss-callout.help { border-color: color-mix(in srgb, var(--ss-hi) 30%, var(--ss-line)); background: color-mix(in srgb, var(--ss-hi) 5%, var(--ss-bg)); }
+.ss-scope .ss-callout.help > i { color: var(--ss-hi); }
+@media (max-width: 380px) { .ss-scope .ss-helpchip span { display: none; } .ss-scope .ss-helpchip { padding: 0 8px; } }
