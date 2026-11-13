@@ -1,5 +1,5 @@
 // 📜 퀘스트 · 📰 뉴스 · 🍷 가십지 · 📋 게시판
-import { app, esc, short, clone, uid, fmtNum, stamp, userName, TITLE, modOn } from './core.js';
+import { app, esc, short, clone, uid, fmtNum, stamp, userName, TITLE, modOn, ssErr } from './core.js';
 import { commit, addAdjust } from './engine.js';
 import { newNews, newGossip, newPosts, newQuests, boardReplies } from './ai.js';
 import { ai1, emptyBox, seg, busyBtn, askConfirm, chip } from './kit.js';
@@ -88,7 +88,7 @@ export function boardView(s, d, ui) {
 const st = () => app.current?.state;
 async function aiAdd(btn, label, fn) {
     busyBtn(btn, true, label);
-    try { await fn(); } catch (e) { console.error(e); toastr.error(`실패: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
+    try { await fn(); } catch (e) { ssErr(e); toastr.error(`실패: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
 }
 export const FEED_ACTIONS = {
     qf: (el, arg) => { el._ss.ui.qf = arg; app.renderPanel(el); },

@@ -2,8 +2,7 @@
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
     signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, trBack, viewTr, weekday,
-    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser,
-} from './core.js';
+    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser, ssWarn} from './core.js';
 import { P } from './prompts.js';
 
 export const KEYMAP = {
@@ -87,13 +86,16 @@ export const hasStatus = (text) => ourBlocks(text).length > 0;
 export const removeStatus = (text) => cut(text, scanBlocks(text).filter(b => b.ours));
 export function extractOps(text) {
     const ops = [];
+    const seen = new Set(); // 이어 쓰기 등으로 블록이 두 개면, 앞 블록에 똑같이 있던 줄은 다시 세지 않는다
     for (const m of ourBlocks(text)) {
+        const mine = [];
         for (const line of m[2].split(/\r?\n/)) {
             // 가벼운 모델이 붙이는 꾸밈(**굵게**, `코드`, 번호)을 벗겨 낸다
             const clean = line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/\*\*|__|`/g, '');
             const lm = clean.match(/^\s*([^:：\n]{1,24}?)\s*[:：]\s*(.+?)\s*$/);
-            if (lm && !/^```/.test(lm[1])) ops.push([lm[1].trim(), lm[2]]);
+            if (lm && !/^```/.test(lm[1])) { const k = `${norm(lm[1])}\u0000${norm(lm[2])}`; if (!seen.has(k)) { ops.push([lm[1].trim(), lm[2]]); mine.push(k); } }
         }
+        for (const k of mine) seen.add(k);
     }
     return ops;
 }
@@ -125,7 +127,9 @@ export function stashStatus(m, { replace = false } = {}) {
     const ops = extractOps(m.mes);
     const old = replace ? [] : (drawerOps(m) ?? []);
     m.mes = removeStatus(m.mes).replace(/\s+$/, ''); // 다른 프리셋의 <status>는 본문에 그대로
-    setDrawer(m, [...old, ...ops]);
+    // 이어 쓰기: 모델이 앞에서 쓴 변화를 다시 적으면 두 번 세지 않게 (새로 생긴 줄만 덧붙임)
+    const had = new Set(old.map(([k, v]) => `${norm(k)}\u0000${norm(v)}`));
+    setDrawer(m, [...old, ...ops.filter(([k, v]) => !had.has(`${norm(k)}\u0000${norm(v)}`))]);
     return true;
 }
 // 한 메시지의 모든 스와이프에서 태그를 보관 (옛 채팅 정리용) → 옮긴 개수
@@ -253,6 +257,7 @@ function dayTick(s, info, from, to) {
         }
         if (f && info.mods?.fate !== false) {
             for (const c of [...f.curses]) {
+                if (c.days && c.since === null) c.since = from; // 처음부터 있던(만들 때 생긴) 저주도 기간이 흐르게
                 for (const e of c.effects) { const m = e.match(/^(?:매일|daily|every\s*day)\s*[:：]?\s*(.+)$/i); if (m) applyLines(s, m[1], info); }
                 if (c.days && c.since !== null && day >= c.since + c.days) {
                     f.curses.splice(f.curses.indexOf(c), 1);
@@ -519,6 +524,23 @@ function startDay(s) {
     return { cash: s.data.wallet?.cash ?? null, aff: Object.fromEntries((s.data.rel?.user ?? []).map(r => [norm(r.name), r.aff])), labels: [] };
 }
 
+// AI가 이름 자리에 이상한 걸 쓰면(「+3」, 「체력 max」, 태그, 유저 자신) 유령 인물이 생기지 않게 (v2.7)
+function personName(s, raw) {
+    const nm = String(raw ?? '').replace(/<[^>]*>|\*\*|__|`/g, '').replace(/^[\s+\-−=]+|[\s:：]+$/g, '').trim();
+    if (!nm || nm.length > 30 || !/\p{L}/u.test(nm) || /[|,%=<>{}]|^\d/.test(nm) || /^(nan|null|undefined|none|없음)$/i.test(nm)) return '';
+    const n = norm(nm);
+    if (/^(max|최대|user|유저|나|me|you|\{\{user\}\}|\{\{char\}\})$/i.test(nm)) return '';
+    try { if (n === norm(ctx().name1)) return ''; } catch { /* 이름 모름 */ }
+    for (const g of [...(s.data.stats?.bars ?? []), ...(s.data.stats?.attrs ?? [])]) { const k = norm(g.name); if (k && (n === k || n.startsWith(k))) return ''; }
+    return nm;
+}
+// AI가 부호를 빼먹은 숫자 (「cash: 120」 「aff: 레온 35」): 예전엔 그 값으로 「바꿈」 → 돈·호감이 통째로 날아갈 수 있었음 (v2.7)
+// 지금 값과 가까우면 「새 합계」로 보고 바꾸고, 아니면 빼먹은 「+」로 보고 더한다. 직접 편집·버튼(=)은 그대로.
+function bareFix(p, cur, info) {
+    if (!p || p.mode !== 'bare' || !info?.ai) return p;
+    const c = Number(cur) || 0;
+    return c !== 0 && Math.abs(p.v - c) <= Math.abs(p.v) * 0.3 ? { mode: 'set', v: p.v } : { mode: 'add', v: p.v };
+}
 export function applyOp(s, rawKey, rawVal, info) {
     let key = KEYMAP[String(rawKey).trim().toLowerCase()] ?? (String(rawKey).startsWith('_') ? String(rawKey) : null);
     let val = String(rawVal ?? '').trim();
@@ -720,8 +742,9 @@ export function applyOp(s, rawKey, rawVal, info) {
             if (!m) return;
             let bar = findBy(st.bars, m[1]);
             if (!bar) { bar = { name: m[1].trim(), cur: 100, max: 100, color: '', desc: '' }; st.bars.push(bar); }
-            const p = parseNum(m[3]);
+            let p = parseNum(m[3]);
             if (!p) return;
+            if (!m[2]) p = bareFix(p, bar.cur, info);
             if (m[2]) { const b = bar.max; bar.max = Math.max(1, p.mode === 'add' ? bar.max + p.v : p.v); bar.cur = Math.min(bar.cur, bar.max); L(`${bar.name} 최대 ${signed(bar.max - b)}`); return; }
             const before = bar.cur;
             bar.cur = clamp(p.mode === 'add' ? bar.cur + p.v : p.v, 0, bar.max);
@@ -735,7 +758,7 @@ export function applyOp(s, rawKey, rawVal, info) {
             if (!m) return;
             let a = findBy(st.attrs, m[1]);
             if (!a) { a = { name: m[1].trim(), val: 0, desc: '' }; st.attrs.push(a); }
-            const p = parseNum(m[2]); if (!p) return;
+            const p = bareFix(parseNum(m[2]), a.val, info); if (!p) return;
             const b = a.val; a.val = Math.round(p.mode === 'add' ? a.val + p.v : p.v);
             if (a.val !== b) L(`${a.name} ${signed(a.val - b)}`);
             return;
@@ -754,7 +777,7 @@ export function applyOp(s, rawKey, rawVal, info) {
         }
         case 'cash': {
             const w = ensure(s, 'wallet');
-            const p = parseNum(val); if (!p) return;
+            const p = bareFix(parseNum(val), w.cash, info); if (!p) return;
             const b = w.cash; w.cash = Math.max(0, p.mode === 'add' ? w.cash + p.v : p.v);
             if (w.cash > b) T.earn += w.cash - b; else T.spend += b - w.cash;
             if (w.cash !== b) L(`${w.currency} ${signed(w.cash - b)}`);
@@ -765,7 +788,8 @@ export function applyOp(s, rawKey, rawVal, info) {
             const parts = val.includes('|') ? [val] : val.split(/\s*[,，/]\s*/);
             for (const part of parts) {
                 const [head, desc] = splitBar(part);
-                const m = head.match(/^([+\-−]?)\s*(.+?)(?:\s*[x×*]?\s*(\d+)\s*(?:개|장|병|권|통)?)?$/);
+                // 수량은 띄어 쓰거나 x를 붙인 1~3자리 숫자만 (「AK-47」 「S24」처럼 이름 끝 숫자를 수량으로 읽지 않게)
+                const m = head.match(/^([+\-−]?)\s*(.+?)(?:(?:\s+[x×*]?|\s*[x×*])\s*(\d{1,3})\s*(?:개|장|병|권|통)?)?$/);
                 if (!m) continue;
                 const rm = m[1] === '-' || m[1] === '−';
                 const name = m[2].trim(); const q = Math.max(1, parseInt(m[3] || '1', 10));
@@ -860,10 +884,11 @@ export function applyOp(s, rawKey, rawVal, info) {
             const rl = ensure(s, 'rel');
             const m = val.match(/^(.+?)\s*([=+\-−]\s*[\d.]+|\d[\d.]*)\s*(?:\|\s*(.*))?$/);
             if (!m) return;
-            const nm = m[1].trim();
+            const nm = personName(s, m[1]);
+            if (!nm) return;
             let r = findBy(rl.user, nm);
             if (!r) { r = { name: nm, label: '', aff: 0, trust: 0, memo: '', stage: -1, jealous: 0, met: s.data.calendar ? dateShort(s.data.calendar) : '' }; rl.user.push(r); }
-            const p = parseNum(m[2].replace(/\s+/g, '')); if (!p) return;
+            const p = bareFix(parseNum(m[2].replace(/\s+/g, '')), r[key], info); if (!p) return;
             if (key === 'aff' && p.mode === 'add' && p.v > 0) p.v = p.v * affMul(s); // 저주·축복의 호감 % 효과
             const b = r[key];
             let nv = clamp(Math.round(p.mode === 'add' ? b + p.v : p.v), -100, 100);
@@ -880,6 +905,7 @@ export function applyOp(s, rawKey, rawVal, info) {
             let nm, label, memo;
             if (val.includes('=')) { [nm, label] = val.split('=').map(x => x.trim()); [label, memo] = splitBar(label); }
             else [nm, label, memo] = splitBar(val);
+            nm = personName(s, nm);
             if (!nm) return;
             let r = findBy(rl.user, nm);
             if (!r) { r = { name: nm, label: '', aff: 0, trust: 0, memo: '', stage: -1, jealous: 0, met: s.data.calendar ? dateShort(s.data.calendar) : '' }; rl.user.push(r); updateStage(s, r, info, true); }
@@ -899,7 +925,9 @@ export function applyOp(s, rawKey, rawVal, info) {
         }
         case 'date': {
             const cal = ensure(s, 'calendar');
-            const p = /^[+\-−]\s*\d/.test(val) ? parseNum(val.replace(/일.*$/, '')) : null;
+            // 「days: 2」처럼 부호 없이 와도 「며칠 지남」으로 (예전엔 그달 2일로 날아갔음)
+            const daysKey = /^(days|날짜이동)$/i.test(String(rawKey).trim());
+            const p = /^[+\-−]\s*\d/.test(val) ? parseNum(val.replace(/일.*$/, '')) : daysKey && /^\d{1,3}\s*(일|days?)?$/i.test(val) ? parseNum(`+${parseInt(val, 10)}`) : null;
             const before = dayIndex(cal);
             if (p) addDays(cal, p.v);
             else {
@@ -980,7 +1008,8 @@ export function applyOp(s, rawKey, rawVal, info) {
         }
         case 'npc': {
             const pf = ensure(s, 'profile');
-            const [nm, summary] = splitBar(val);
+            const [nm0, summary] = splitBar(val);
+            const nm = personName(s, nm0);
             if (!nm) return;
             const ex = findBy(pf.list, nm);
             if (ex) { if (summary && !ex.summary) ex.summary = summary; return; }
@@ -1014,6 +1043,7 @@ export function applyOp(s, rawKey, rawVal, info) {
             } else if (st && st !== q.status) {
                 q.status = st; L(`📜 ${q.title}: ${QNAME[st]}`);
             } else if (!st && st0) {
+                if (q.steps.some(x => norm(x.text) === norm(st0))) return; // 같은 진행을 매 턴 다시 적어도 한 번만
                 q.steps.push({ text: st0, done: false }); L(`📜 ${q.title}: ${short(st0, 20)}`);
             }
             if (desc && st) q.desc ||= desc;
@@ -1170,7 +1200,7 @@ export function compute(limit, opts = {}) {
     const adjLimit = opts.bake ? n : Infinity;
     while (ai < adj.length && adj[ai].at <= adjLimit) runAdjust(adj[ai++]);
     for (const m of ['news', 'gossip', 'board', 'quest', 'sns']) if (s.data[m]) tidy(m, s.data[m]);
-    try { birthdays(s); } catch (e) { console.warn(LOG, 'bday', e); }
+    try { birthdays(s); } catch (e) { ssWarn(LOG, 'bday', e); }
     const cal = s.data.calendar;
     if (cal?.autoWeather && !cal.weather && modOn('calendar', meta)) cal.weather = pickWeather(cal, `${seed}:w${dayIndex(cal)}`);
     return { state: s, snaps, lastAI, rest: adj.slice(ai) };
@@ -1207,10 +1237,10 @@ export function commit(mod, data, label, extra = {}) {
     return addAdjust({ set: { mod, data: mod === 'core' ? NORM.core(data) : normalize(mod, data) }, label, ...extra });
 }
 const SQUASH_KEEP = 10; // 최근 이만큼의 메시지는 굳히지 않는다 (스와이프·다시 생성이 제대로 되게)
-export function squash(meta) {
+export function squash(meta, keep = SQUASH_KEEP) {
     const chat = ctx().chat ?? [];
     const start = resolveStart(meta, chat);
-    let cut = Math.max(start, chat.length - SQUASH_KEEP);
+    let cut = Math.max(start, chat.length - keep);
     let r = compute(cut, { bake: true });
     if (!r) return;
     if (r.rest.length > 150) { cut = chat.length; r = compute(cut, { bake: true }); } // 최근 기록이 너무 많으면 전부 굳힘
@@ -1223,6 +1253,18 @@ export function squash(meta) {
     meta.startAt = cut;
     meta.startKey = chat[cut - 1]?.send_date ?? null;
     meta.adjust = r.rest;
+}
+// 긴 채팅: 굳히지 않은 메시지가 너무 많으면 오래된 쪽을 굳혀서 매 턴 다시 계산하는 양을 줄인다 (v2.7)
+// 최근 BAKE_KEEP개는 그대로 → 그 안의 스와이프·편집·삭제는 예전처럼 바로 반영된다
+export const BAKE_KEEP = 120;
+export function autoBake(meta = getMeta()) {
+    const set = settings();
+    if (!meta?.base || set.autoBake === false) return false;
+    const chat = ctx().chat ?? [];
+    const limit = clamp(parseInt(set.bakeAfter, 10) || 400, 200, 5000);
+    if (chat.length - resolveStart(meta, chat) <= limit) return false;
+    squash(meta, BAKE_KEEP);
+    return true;
 }
 
 // ───── 편지 계산 ─────
@@ -1558,7 +1600,7 @@ function buildDelta(r, plan, opt = {}) {
 // 플레이 방식: 다인봇·풀사칭이면 머리에 한 줄, 풀사칭이면 {{user}} → 주인공
 export function buildInjection(r, opt = {}) {
     const inj = buildInjection1(r, opt);
-    if (r && !opt.noOutput) { try { inj.romance = swapUser(romanceBlock(r)); } catch (e) { console.warn(LOG, 'romance', e); } }
+    if (r && !opt.noOutput) { try { inj.romance = swapUser(romanceBlock(r)); } catch (e) { ssWarn(LOG, 'romance', e); } }
     return inj;
 }
 // ───── 로맨스 보정 주입 (v2.6 · 따로 주입 · 깊이 따로) ─────
@@ -1689,7 +1731,8 @@ function buildInjection0(r, opt = {}) {
         if (pairs.length && !lite) PP.push(`Between others: ${pairs.slice(0, 10).map(p => `${p.a}↔${p.b} ${p.label}`).join(' · ')}`);
         const life = rl.life.filter(x => inScene(x.who)).slice(-2);
         if (life.length && !lite) PP.push(`Off-screen lately: ${life.map(x => `${x.who} — ${short(x.text, 70)}`).join(' / ')}`);
-        if (s.newDay && set.offscreen && lastDayChanged(r)) L.push(P('inj.life'));
+        // <meatball>에 쓰라는 줄이라 태그 방식일 때만 (사칭·별도 분석·끔에선 빼기)
+        if (s.newDay && set.offscreen && !opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus') && lastDayChanged(r)) L.push(P('inj.life'));
     }
     if (on('custom')) L.push(...customLines(s, false));
     if (on('sns') && d.sns.posts.length && !lite) L.push(`Recent posts on ${d.sns.name || 'SNS'}: ${d.sns.posts.slice(-3).map(p => `${p.author}: ${short(p.text || `${viewTr() ? '[photo]' : '[사진]'} ${p.pic}`, 50)}`).join(' / ')}`);
@@ -1737,7 +1780,8 @@ function buildInjection0(r, opt = {}) {
 export function setInjection(inj) {
     const c = ctx();
     const depth = clamp(parseInt(settings().injectDepth, 10) || 0, 0, 20);
-    c.setExtensionPrompt(INJECT_KEY, inj?.main ?? '', PROMPT_IN_CHAT, depth, true, ROLE_SYSTEM);
+    // 월드인포 스캔: 켜면 주입문 속 장소·인물 이름으로 로어북 항목이 켜진다 (편하지만 장면 밖 항목까지 켜져 토큰이 늘 수 있음)
+    c.setExtensionPrompt(INJECT_KEY, inj?.main ?? '', PROMPT_IN_CHAT, depth, settings().injScan !== false, ROLE_SYSTEM);
     c.setExtensionPrompt(INJECT_KEY2, inj?.people ?? '', PROMPT_IN_CHAT, depth, false, ROLE_SYSTEM);
     const rd = clamp(parseInt(settings().romDepth, 10) || 0, 0, 20);
     c.setExtensionPrompt(INJECT_KEY3, inj?.romance ?? '', PROMPT_IN_CHAT, rd, false, ROLE_SYSTEM);
@@ -1781,7 +1825,7 @@ export async function loreText(limit) {
                 const body = String(e.content ?? '').replace(/\s+/g, ' ').trim();
                 if (head || body) items.push({ head, body });
             }
-        } catch (e) { console.warn(LOG, 'lore', name, e); }
+        } catch (e) { ssWarn(LOG, 'lore', name, e); }
     }
     if (!items.length) return '';
     // 넘치면 뒤 항목을 통째로 버리지 않고, 모든 항목을 조금씩 줄인다 (뒤쪽 캐릭터가 사라지던 문제)

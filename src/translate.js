@@ -1,6 +1,6 @@
 // 🌐 상태창 번역: 확장 AI가 상태창을 영어로 만들면 → 번역 모델(따로 고른 싼 모델)이 한국어로 옮긴다
 // 「상태창 전체 번역」 버튼은 이미 있는 칸들을 통째로 번역한다.
-import { app, ctx, settings, esc, TITLE, LOG, MOD_IDS, MOD, modOn, getMeta, saveMeta, viewTr, trDict } from './core.js';
+import { app, ctx, settings, esc, TITLE, LOG, MOD_IDS, MOD, modOn, getMeta, saveMeta, viewTr, trDict, ssWarn } from './core.js';
 import { P, aiGenerate, parseJSON } from './prompts.js';
 import { commit } from './engine.js';
 
@@ -56,9 +56,9 @@ async function stMany(list, rev = false) {
     if (cur.length) batches.push(cur);
     for (const b of batches) {
         let lines = null;
-        try { lines = (await stTranslate(b.map(flat).join('\n'), rev)).split(/\r?\n/).map(x => x.trim()).filter(Boolean); } catch (e) { console.warn(LOG, 'st batch', e); }
+        try { lines = (await stTranslate(b.map(flat).join('\n'), rev)).split(/\r?\n/).map(x => x.trim()).filter(Boolean); } catch (e) { ssWarn(LOG, 'st batch', e); }
         if (lines && lines.length === b.length) b.forEach((s, i) => out.set(s, lines[i]));
-        else for (const s of b) { try { out.set(s, (await stTranslate(s, rev)).trim()); } catch (e) { console.warn(LOG, 'st one', e); } }
+        else for (const s of b) { try { out.set(s, (await stTranslate(s, rev)).trim()); } catch (e) { ssWarn(LOG, 'st one', e); } }
     }
     return out;
 }
@@ -128,7 +128,7 @@ export async function trJSON(obj, extra) {
             for (const s of all) { if (fixed.has(s.trim())) map.set(s, fixed.get(s.trim())); else if (!map.has(s) && known(s)) map.set(s, known(s)); }
             return rebuild(obj, map);
         } catch (e) {
-            console.warn(LOG, 'st translate json', e);
+            ssWarn(LOG, 'st translate json', e);
             toastr.warning(`번역하지 못해 원문으로 둬요: ${esc(e.message)}`, TITLE);
             return obj;
         }
@@ -138,7 +138,7 @@ export async function trJSON(obj, extra) {
         const out = await aiGenerate('translate', P('ai.translate', { lang: set.trLang || '한국어', glossary: glossary(extra) }) + llmRules(), src, Math.min(16000, Math.max(1000, Math.ceil(src.length * 1.3))), trOpts());
         return parseJSON(out);
     } catch (e) {
-        console.warn(LOG, 'translate json', e);
+        ssWarn(LOG, 'translate json', e);
         toastr.warning(`번역하지 못해 원문으로 둬요: ${esc(e.message)}`, TITLE);
         return obj;
     }
@@ -147,12 +147,12 @@ export async function trText(text) {
     const set = settings();
     if (!String(text ?? '').trim()) return text;
     if (engineST()) {
-        try { return (await stTranslate(String(text))).trim() || text; } catch (e) { console.warn(LOG, 'st translate text', e); toastr.warning(`번역하지 못해 원문으로 둬요: ${esc(e.message)}`, TITLE); return text; }
+        try { return (await stTranslate(String(text))).trim() || text; } catch (e) { ssWarn(LOG, 'st translate text', e); toastr.warning(`번역하지 못해 원문으로 둬요: ${esc(e.message)}`, TITLE); return text; }
     }
     try {
         const out = await aiGenerate('translate', P('ai.translateText', { lang: set.trLang || '한국어', glossary: glossary() }) + llmRules(), String(text), Math.min(4000, Math.max(400, Math.ceil(String(text).length * 1.5))), trOpts());
         return String(out ?? '').replace(/^```[a-z]*\s*|```\s*$/g, '').trim() || text;
-    } catch (e) { console.warn(LOG, 'translate text', e); return text; }
+    } catch (e) { ssWarn(LOG, 'translate text', e); return text; }
 }
 // ───── 화면만 번역 (enview): 번역본은 저장하지 않고 사전(meta.tr)에만 남긴다 ─────
 const TR_MAX = 3000;
@@ -331,7 +331,7 @@ export function scheduleFill() {
     const mode = settings().trAuto === true ? 'st' : settings().trAuto === false ? 'off' : (settings().trAuto || 'st');
     if (mode === 'off' || (mode === 'st' && !engineST())) return; // 토큰이 드는 번역 모델은 「항상」을 골랐을 때만
     clearTimeout(fillTimer);
-    fillTimer = setTimeout(() => { fillNew().catch(e => console.warn(LOG, 'fill', e)); }, 2500);
+    fillTimer = setTimeout(() => { fillNew().catch(e => ssWarn(LOG, 'fill', e)); }, 2500);
 }
 async function fillNew() {
     if (filling || running || !viewTr()) return;
@@ -388,7 +388,7 @@ export async function convertToEnglish(btn) {
                 addPairs(pairs); // 영어 → 원래 있던 한국어
                 await commit(id, out, '');
                 k++;
-            } catch (e) { fail++; failed.push(id === 'core' ? '세계 핵심' : MOD[id]?.name ?? id); console.warn(LOG, 'to english', id, e); }
+            } catch (e) { fail++; failed.push(id === 'core' ? '세계 핵심' : MOD[id]?.name ?? id); ssWarn(LOG, 'to english', id, e); }
         }
         addPairs(rulePairs());
     } finally { running = false; if (btn) btn.innerHTML = old; }

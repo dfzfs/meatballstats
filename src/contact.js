@@ -1,5 +1,5 @@
 // 📱/✉️ 연락: 메신저 · 즉시 통신 · 편지 (배달 수단 · 도착 시간 · 급행)
-import { app, settings, getMeta, modOn, esc, short, clone, findBy, norm, uid, randInt, rand, clamp, num, fmtNum, nowTick, tickUnit, stamp, CONTACT_MODES, TITLE, COURIER_PRESETS, touchContact, msgText } from './core.js';
+import { app, settings, getMeta, modOn, esc, short, clone, findBy, norm, uid, randInt, rand, clamp, num, fmtNum, nowTick, tickUnit, stamp, CONTACT_MODES, TITLE, COURIER_PRESETS, touchContact, msgText, ssErr, ssWarn } from './core.js';
 import { commit, addAdjust, dueLetters, inTransit, affMul } from './engine.js';
 import { phoneReply, letterReply, pingMessage, summarizeThread } from './ai.js';
 import { avatar, ai1, emptyBox, askInput, askConfirm, busyBtn } from './kit.js';
@@ -171,7 +171,7 @@ async function maybeSummarize(who, force = false) {
         nd.summaries = { ...(nd.summaries ?? {}), [who]: { text, n } };
         await commit('contact', nd, '');
         if (force) toastr.success('대화를 요약했어요.', TITLE);
-    } catch (e) { console.warn(e); if (force) toastr.error(`요약 실패: ${esc(e.message)}`, TITLE); }
+    } catch (e) { ssWarn(e); if (force) toastr.error(`요약 실패: ${esc(e.message)}`, TITLE); }
 }
 async function getPhoneReply(el, who, replaceId = null) {
     const thread = el.querySelector('.ss-thread');
@@ -195,7 +195,7 @@ async function getPhoneReply(el, who, replaceId = null) {
         touchContact(nd, who);
         await commit('contact', nd, `${who}의 답장: ${short(lines.join(' '), 40)}`);
         maybeSummarize(who);
-    } catch (e) { console.error(e); toastr.error(`답장을 받지 못했어요: ${esc(e.message)}`, TITLE); app.renderPanel(el); }
+    } catch (e) { ssErr(e); toastr.error(`답장을 받지 못했어요: ${esc(e.message)}`, TITLE); app.renderPanel(el); }
 }
 async function sendLetter(el, s, who, text) {
     const ui = el._ss.ui;
@@ -229,7 +229,7 @@ async function sendLetter(el, s, who, text) {
     await commit('contact', nd, `${c.icon} ${c.name}(으)로 ${who}에게 편지를 부쳤다${express ? ' — 오늘 도착' : ` — ${arrive - now}${tickUnit(s)} 뒤 도착`}${enc.length ? ` (동봉: ${enc.map(x => x.label).join(', ')})` : ''}`);
     if (fee && w && modOn('wallet')) await addAdjust({ ops: [['cash', `-${fee}`]], label: `편지 요금 −${fmtNum(fee)} ${w.currency}` });
     const encOps = [];
-    for (const x of enc) { if (x.kind === 'gift') encOps.push(['item', `-${x.text} 1`]); if (x.kind === 'money') encOps.push(['cash', `-${x.amount}`]); }
+    for (const x of enc) { if (x.kind === 'gift') encOps.push(['item', `-${x.text} 1|`]); if (x.kind === 'money') encOps.push(['cash', `-${x.amount}`]); }
     if (encOps.length) await addAdjust({ ops: encOps, silent: true });
     toastr.success(`${esc(c.icon)} 편지를 부쳤어요${express ? ' (오늘 도착)' : ` (${arrive - now}${tickUnit(s)} 뒤 도착)`}`, TITLE);
     if (rushNote) setTimeout(() => toastr.info('…어쩐지 답장이 빨리 올 것 같은 예감이 들어요.', TITLE), 600);
@@ -263,7 +263,7 @@ export const CONTACT_ACTIONS = {
         el._ss.ui.noReply = !(el.querySelector('.ss-creply')?.checked ?? true);
         if (a.kind === 'gift') {
             const r = s.data.rel ? findBy(s.data.rel.user, who) : null;
-            await addAdjust({ ops: [['item', `-${a.text} 1`], ...(r || s.data.rel ? [['aff', `${who} +${Math.max(1, Math.round(2 * affMul(s)))}`]] : [])], silent: true });
+            await addAdjust({ ops: [['item', `-${a.text} 1|`], ...(r || s.data.rel ? [['aff', `${who} +${Math.max(1, Math.round(2 * affMul(s)))}`]] : [])], silent: true });
         }
         if (a.kind === 'money') await addAdjust({ ops: [['cash', `-${a.amount}`]], silent: true });
         await sendPhone(el, curState(), who, a.text, { kind: a.kind, amount: a.amount ?? 0 });
@@ -324,7 +324,7 @@ export const CONTACT_ACTIONS = {
             Object.assign(g.m, { text, pending: false, date: stamp(curState()), edited: false });
             touchContact(nd, f.who);
             await commit('contact', nd, `${f.who}의 편지를 읽었다${f.m.rush ? ' (웃돈 주고 급행으로 온 편지)' : ''}: ${short(text, 40)}`);
-        } catch (e) { console.error(e); toastr.error(`편지를 열지 못했어요: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
+        } catch (e) { ssErr(e); toastr.error(`편지를 열지 못했어요: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
     },
     cping: async (el, arg, btn, s) => {
         const d = s.data.contact;
@@ -341,7 +341,7 @@ export const CONTACT_ACTIONS = {
         if (findBy(d.contacts, who)?.blocked) { toastr.info(`${esc(who)}은(는) 차단했어요.`, TITLE); return; }
         busyBtn(btn, true, '기다리는 중…');
         try { await receivePing(who, false); el._ss.ui = { who }; el._ss.tab = 'contact'; app.renderPanel(el); }
-        catch (e) { console.error(e); toastr.error(`실패: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
+        catch (e) { ssErr(e); toastr.error(`실패: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
     },
     cmsgedit: (el, arg) => { el._ss.ui.editId = arg; el._ss.mode = 'typing'; app.renderPanel(el); el.querySelector('.ss-bub-ed')?.focus(); },
     cmsgcancel: (el) => { el._ss.ui.editId = null; el._ss.mode = 'view'; app.renderPanel(el); },

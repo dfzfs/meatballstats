@@ -349,8 +349,8 @@ export const VIEW_ACTIONS = {
         return addAdjust({ ops: [['cash', p.mode === 'add' ? String(v) : `=${p.v}`]], label: `소지금 ${p.mode === 'add' ? v : `→ ${p.v}`}` });
     },
     use: (el, arg) => { insertInput(`(${arg}을(를) 사용한다)`); closeIfPopup(el); },
-    dec: (el, arg) => addAdjust({ ops: [['item', `-${arg} 1`]], label: `${arg} 1개 버림` }),
-    sell: (el, arg, btn, s) => { const p = sellPrice(s, arg); return addAdjust({ ops: [['item', `-${arg} 1`], ['cash', `+${p}`]], label: `${arg} 판매 +${p} ${s.data.wallet.currency}` }); },
+    dec: (el, arg) => addAdjust({ ops: [['item', `-${arg} 1|`]], label: `${arg} 1개 버림` }),
+    sell: (el, arg, btn, s) => { const p = sellPrice(s, arg); return addAdjust({ ops: [['item', `-${arg} 1|`], ['cash', `+${p}`]], label: `${arg} 판매 +${p} ${s.data.wallet.currency}` }); },
     shoptab: (el, arg) => { el._ss.ui.shop = Number(arg); app.renderPanel(el); },
     buy: async (el, arg, btn, s) => {
         const [i, j] = arg.split('|').map(Number);
@@ -359,7 +359,7 @@ export const VIEW_ACTIONS = {
         const price = Math.round(it.price * priceMul(s));
         if (w && w.cash < price) { toastr.warning('돈이 모자라요.', TITLE); return; }
         const ops = [['cash', `-${price}`]];
-        if (it.kind === 'deco' && modOn('home')) ops.push(['decor', `+${it.name}`]); else ops.push(['item', `+${it.name} 1${it.desc ? ` | ${it.desc}` : ''}`]);
+        if (it.kind === 'deco' && modOn('home')) ops.push(['decor', `+${it.name}`]); else ops.push(['item', `+${it.name} 1|${it.desc ? ` ${it.desc}` : ''}`]);
         if (it.stock > 0) { const nd = clone(s.data.shop); nd.shops[i].items[j].stock--; await addAdjust({ set: { mod: 'shop', data: nd }, silent: true }); }
         await addAdjust({ ops, label: `${sh.name}에서 ${it.name} 구매 (−${fmtNum(price)} ${w?.currency ?? ''})` });
         toastr.success(`${esc(it.name)} 구매!`, TITLE);

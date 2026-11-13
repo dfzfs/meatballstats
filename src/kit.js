@@ -178,7 +178,9 @@ export function applyTheme() {
     let st = document.getElementById('ss-theme-vars');
     if (!st) { st = document.createElement('style'); st.id = 'ss-theme-vars'; document.head.appendChild(st); }
     const dark = s.theme === 'ink' || (s.themeCustom?.bg && isDark(s.themeCustom.bg));
-    st.textContent = `:root .ss-scope{${THEME_KEYS.map(([k]) => `--ss-${k}:${t[k]};`).join('')}--ss-r:${clamp(Number(s.radius) || 12, 0, 24)}px;--ss-fs:${clamp(Number(s.fontScale) || 1, 0.8, 1.4)};--ss-shadow:${dark ? '0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45)' : '0 1px 2px rgba(20,20,20,.05),0 8px 28px rgba(20,20,20,.10)'};color-scheme:${dark ? 'dark' : 'light'}}`;
+    const css = `:root .ss-scope{${THEME_KEYS.map(([k]) => `--ss-${k}:${t[k]};`).join('')}--ss-r:${clamp(Number(s.radius) || 12, 0, 24)}px;--ss-fs:${clamp(Number(s.fontScale) || 1, 0.8, 1.4)};--ss-shadow:${dark ? '0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45)' : '0 1px 2px rgba(20,20,20,.05),0 8px 28px rgba(20,20,20,.10)'};color-scheme:${dark ? 'dark' : 'light'}}`;
+    // 매 갱신마다 불려서, 같은 글이면 건드리지 않는다 (다시 쓰면 페이지 전체 스타일을 다시 계산함)
+    if (st.textContent !== css) st.textContent = css;
 }
 function isDark(hex) {
     const m = String(hex).match(/^#?([0-9a-f]{6})$/i); if (!m) return false;

@@ -2,7 +2,7 @@
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.6.1';
+export const VERSION = '2.7.0';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
 export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
@@ -26,9 +26,9 @@ export const DEFAULTS = Object.freeze({
     sideMini: ['bars', 'date', 'loc', 'cash', 'contact', 'quest'],
     sideWidth: 400,
     floatPos: null,
-    sync: 'tag',             // tag | tagPlus | analyze | off
+    sync: 'tagPlus',         // tag | tagPlus | analyze | off (v2.7: 기본 = 가벼운 모델 맞춤)
     injectDepth: 1,
-    injectMode: 'full',      // full | lite
+    injectMode: 'lite',      // lite (기본·추천) | ultra | full (비추천 · 토큰 많음)
     msgCard: 'compact',      // compact | off
     aiProfile: '',
     aiMaxTokens: 6000,
@@ -54,7 +54,15 @@ export const DEFAULTS = Object.freeze({
     trEngine: 'llm',         // 번역 담당: llm = 번역 모델 (지침 이해) | st = 실리 기본 번역 (Chat Translation의 Google·DeepL 등 · 무료) (v2.6)
     trCode: 'ko',            // 실리 기본 번역에 넘길 언어 코드
     trRules: '',
-    legacyStatus: true,      // 옛 <status>도 미트볼 것으로 읽기 (v2.5 이전 채팅 호환 · 다른 프리셋이 <status>를 쓰면 끄기)
+    legacyStatus: false,     // 옛 <status>도 미트볼 것으로 읽기 (v2.5 이전 채팅 호환 · 정규식이 모든 채팅에 걸려서 새로 설치하면 꺼진 채로 · v2.7)
+    injScan: true,           // 상태 주입문으로 월드인포(로어북) 키워드를 켤지 (끄면 장면 밖 항목이 덜 켜져 토큰 절약 · v2.7)
+    autoBake: true,          // 긴 채팅: 오래된 기록을 자동으로 굳혀 계산을 가볍게 (v2.7)
+    bakeAfter: 400,          // 굳히지 않은 메시지가 이만큼 넘으면 (최근 120개는 늘 그대로)
+    featureTips: true,       // 💡 이야기에 맞는 순간 안 쓰는 기능을 한 번씩 추천 (기능마다 한 번 · AI 0회 · v2.7)
+    tipGap: 20,              // 추천 사이 최소 턴 (관련 말 없이 권하는 건 이 두 배)
+    tipNever: {},            // 「괜찮아요」 누른 기능 (모든 채팅에서 다시 안 권함)
+    hintSeen: {},            // 💡 팁 · ⚠️ 주의: true = 「알아요」 · 숫자 = 보여 준 횟수 (2번이면 그만)
+    genMode: 'hybrid',       // 만들기 방식: ai = 전부 AI | hybrid = 기본 틀 + 세계관 칸만 AI (기본·추천) | tpl = 기본 틀만 (AI 0회) (v2.7)
     trAuto: 'st',            // 화면만 번역: 새로 생긴 영어 글 자동 번역 — st = 실리 기본 번역일 때만 (무료) | always = 번역 모델이어도 (AI 호출) | off             // 번역 지침 — LLM: 그대로 전달 · 실리 기본 번역: 「원문 = 번역」 줄만 (이름 고정)
     prompts: {},             // 사용자 수정 프롬프트
     stashTags: true,         // <meatball>을 읽은 뒤 본문에서 떼어 메시지 숨은 칸에 보관 (다른 확장·요약에 안 보임)
@@ -79,7 +87,7 @@ export const DEFAULTS = Object.freeze({
     musicApp: 'youtube',     // 추천 곡 ▶ 누르면 열 곳: youtube | ytmusic | spotify | melon
     musicTaste: '',          // 좋아하는 음악 장르 (예: K-pop, 영화 OST)
     musicToast: true,        // 추천 곡이 바뀌면 팝업
-    deltaMode: false,        // 변화 위주로 보내기 (N턴마다 전체)
+    deltaMode: true,         // 변화 위주로 보내기 (N턴마다 전체)
     deltaEvery: 4,
     injEvery: {},            // 칸별 보내는 때: { news: 'kw', ... } — always(기본) | kw(관련 말이 나올 때만) | n3 | n5
     retryJSON: true,         // 확장 AI 답이 깨지면 고쳐 보고, 안 되면 1번 더
@@ -111,9 +119,7 @@ export const DEFAULTS = Object.freeze({
     lastSeenNote: '',        // 그때 본 내역의 지문 (같은 버전이라도 내역이 바뀌면 다시 알림)
     showMascot: true,        // 마스코트 고양이 보이기
     mascotBuddy: true,       // 상태창 머리에 마스코트 항상 (누르면 반응)
-    mascotSound: 'mix',      // 누르면 나는 소리: mix · squeak · meow · kitten · custom · pop · purr · bell · off
-    mascotSoundFile: '',     // 내 소리 파일 (data URL)
-    mascotSoundName: '',
+    mascotSound: 'meow',     // 누르면 나는 소리: meow (냥냥) · off (v2.7: 다른 소리 · 내 소리 파일은 뺌)
     mascotVolume: 60,        // 효과음 크기 0~100
 });
 
@@ -184,6 +190,9 @@ export function ensureLove(rel) {
     rel.stages.push({ name: en ? 'Lovers' : '연인', at: Math.min(100, Math.max(85, top.at + 5)), trust: Math.min(100, Math.max(55, top.trust + 5)), unlock: en ? 'after a confession · romantic affection and touch' : '고백 이후 · 연인다운 행동', love: true });
     return rel;
 }
+// 처음 켜져 있는 기능 (v2.7): 어떤 채팅에도 꼭 필요한 6개만 — 나머지는 이야기에 맞는 순간 💡 기능 추천 알림으로 권한다 (tips.js)
+export const REC_MODS = ['profile', 'stats', 'wallet', 'rel', 'map', 'calendar'];
+export const defaultModOn = (id) => { const def = settings().defaultMods; return def ? def[id] !== false : REC_MODS.includes(id); };
 export const MOD = Object.fromEntries(MODS.map(m => [m.id, m]));
 export const MOD_IDS = MODS.map(m => m.id);
 
@@ -223,7 +232,30 @@ export const COURIER_PRESETS = [
 ];
 
 // ───── 유틸 ─────
-export const ctx = () => SillyTavern.getContext();
+// getContext()는 부를 때마다 큰 객체를 새로 만든다 → 같은 동기 실행 안에서는 하나를 같이 쓴다 (계산 한 번에 수천 번 불림 · v2.7)
+// await 뒤나 다음 이벤트에선 새로 받으니 채팅이 바뀌어도 옛 값이 남지 않는다
+let ctxCache = null;
+export const ctx = () => {
+    if (ctxCache) return ctxCache;
+    ctxCache = SillyTavern.getContext();
+    queueMicrotask(() => { ctxCache = null; });
+    return ctxCache;
+};
+// 상태가 바뀔 수 있는 저장이 있었는지 세는 번호 (갱신 때 같은 계산을 또 하지 않게)
+export const rev = { n: 0 };
+export const ctxReset = () => { ctxCache = null; }; // 채팅이 바뀌는 이벤트 시작에서 확실히 새로 받기
+
+// ───── 오류 기록 (v2.7): 미트볼에서 난 오류·경고만 최근 30개 · 오류 보고문에 씀 (메모리에만 · 저장 안 함) ─────
+export const errLog = [];
+function recErr(level, args) {
+    try {
+        const parts = args.filter(a => a !== LOG).map(a => (a instanceof Error ? `${a.name}: ${a.message}${a.stack ? `\n${a.stack}` : ''}` : typeof a === 'string' ? a : (() => { try { return JSON.stringify(a); } catch { return String(a); } })()));
+        errLog.push({ t: Date.now(), level, text: parts.join(' ').slice(0, 1500) });
+        if (errLog.length > 30) errLog.shift();
+    } catch { /* 기록 실패는 무시 */ }
+}
+export function ssErr(...a) { recErr('error', a); console.error(...a); }
+export function ssWarn(...a) { recErr('warn', a); console.warn(...a); }
 export const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 export const clone = (o) => (o === undefined ? undefined : structuredClone(o));
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -309,27 +341,32 @@ export function swapUser(text, meta) {
 }
 
 // ───── 설정 / 메타 ─────
+let filled = null; // 기본값 채우기는 설정 객체마다 한 번만 (예전엔 부를 때마다 110개 키를 훑었음 · 가장 자주 불리는 함수)
 export function settings() {
     const { extensionSettings } = ctx();
     if (!extensionSettings[MODULE]) extensionSettings[MODULE] = structuredClone(DEFAULTS);
     const s = extensionSettings[MODULE];
+    if (s === filled) return s;
     if (s.uiMode && s.showHud === undefined) { // v1 → v2
         s.showFloat = s.uiMode !== 'side'; s.showSide = s.uiMode !== 'float'; delete s.uiMode;
     }
     if (s.theme && !['white', 'cream', 'ink', 'rose', 'mint', 'st', 'custom'].includes(s.theme)) s.theme = 'white';
+    // v2.7: 소리는 냥냥 하나만 — 예전 선택은 냥냥으로, 설정 파일을 무겁게 하던 내 소리 파일은 지운다
+    if (s.mascotSound && s.mascotSound !== 'meow' && s.mascotSound !== 'off') s.mascotSound = 'meow';
+    if (Object.hasOwn(s, 'mascotSoundFile') || Object.hasOwn(s, 'mascotSoundName')) { delete s.mascotSoundFile; delete s.mascotSoundName; }
     const fresh = !Object.hasOwn(s, 'contactReflect');
     for (const k of Object.keys(DEFAULTS)) if (!Object.hasOwn(s, k)) s[k] = clone(DEFAULTS[k]);
     if (fresh && s.contactInject === false) s.contactReflect = 'off'; // v2.2 이전 '연락 알려 주기' 끔 → 반영 끔
+    filled = s;
     return s;
 }
-export const saveSettings = () => ctx().saveSettingsDebounced();
+export const saveSettings = () => { rev.n++; ctx().saveSettingsDebounced(); };
 
 export function getMeta(create = false) {
     const md = ctx().chatMetadata;
     if (!md) return null;
     if (!md[MODULE] && create) {
-        const def = settings().defaultMods;
-        md[MODULE] = { v: DATA_V, base: null, startAt: 0, startKey: null, adjust: [], mods: Object.fromEntries(MOD_IDS.map(id => [id, def ? def[id] !== false : true])), off: false, difficulty: settings().difficulty, paused: false, skipOnce: false };
+        md[MODULE] = { v: DATA_V, base: null, startAt: 0, startKey: null, adjust: [], mods: Object.fromEntries(MOD_IDS.map(id => [id, defaultModOn(id)])), off: false, difficulty: settings().difficulty, paused: false, skipOnce: false };
     }
     const m = md[MODULE];
     if (m) {
@@ -352,10 +389,11 @@ function migrate(m) {
         if (m.base?.data) for (const id of Object.keys(m.base.data)) if (m.base.data[id] && NORM[id]) m.base.data[id] = normalize(id, m.base.data[id]);
         if (m.base?.core) m.base.core = NORM.core(m.base.core);
         for (const a of m.adjust ?? []) if (a.set?.data && NORM[a.set.mod]) a.set.data = a.set.mod === 'core' ? NORM.core(a.set.data) : normalize(a.set.mod, a.set.data);
-    } catch (e) { console.warn(LOG, 'migrate', e); }
+    } catch (e) { ssWarn(LOG, 'migrate', e); }
     m.v = DATA_V;
 }
 export async function saveMeta(now = false) {
+    rev.n++;
     const c = ctx();
     if (now || !c.saveMetadataDebounced) await c.saveMetadata();
     else c.saveMetadataDebounced();
@@ -572,7 +610,7 @@ export const NORM = {
     }),
 };
 export function normalize(mod, d) {
-    try { return tidy(mod, NORM[mod](d && typeof d === 'object' ? d : {})); } catch (e) { console.warn(LOG, 'normalize', mod, e); return EMPTY[mod](); }
+    try { return tidy(mod, NORM[mod](d && typeof d === 'object' ? d : {})); } catch (e) { ssWarn(LOG, 'normalize', mod, e); return EMPTY[mod](); }
 }
 // ───── 자동 정리: 오래된 소식·끝난 퀘스트는 보관함(제목만)으로 ─────
 export const ARC_KEEP = { news: 40, gossip: 30, board: 40, quest: 15, sns: 40 };

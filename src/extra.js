@@ -339,9 +339,9 @@ app.openSearch = openSearch;
 // ───── 🤖 모델 맞춤 설정 (한 번에) ─────
 const KWALL = { news: 'kw', gossip: 'kw', board: 'kw', shop: 'kw', home: 'kw', ach: 'n5', sns: 'kw' };
 export const PRESETS = {
-    light: { name: '가벼운 모델 (플래시 · 아르곤)', icon: 'fa-bolt', desc: '간결 주입 + 태그 빠지면 따로 분석 + 4턴마다 전체 + 소식·상점은 관련 말이 나올 때만 + 깨진 답 고쳐 받기', set: { injectMode: 'lite', sync: 'tagPlus', sceneFilter: true, sceneTurns: 5, deltaMode: true, deltaEvery: 4, injEvery: { ...KWALL }, retryJSON: true, genBatch: true, genParallel: 3, pinCap: 6 } },
-    saver: { name: '최대 절약', icon: 'fa-piggy-bank', desc: '초압축 + 5턴마다 전체 + 거의 모든 칸을 관련 말이 나올 때만 (긴 채팅·싼 모델)', set: { injectMode: 'ultra', sync: 'tagPlus', sceneFilter: true, sceneTurns: 4, deltaMode: true, deltaEvery: 5, injEvery: { ...KWALL, ach: 'kw', quest: 'kw', custom: 'kw', memo: 'n3' }, retryJSON: true, genBatch: true, genParallel: 3, pinCap: 4 } },
-    rich: { name: '고급 모델 (토큰 넉넉)', icon: 'fa-gem', desc: '전체 주입 · 매 턴 전체 · 모든 칸 항상 (가장 정확)', set: { injectMode: 'full', sync: 'tag', sceneFilter: true, sceneTurns: 8, deltaMode: false, injEvery: {}, retryJSON: true, genBatch: true, genParallel: 4, pinCap: 8 } },
+    light: { name: '기본 (추천)', icon: 'fa-bolt', desc: '처음 설치하면 이거예요 · 플래시·아르곤 같은 가벼운 모델에 맞춤 — 간결 주입 + 태그 빠지면 따로 분석 + 4턴마다 전체 + 소식·상점은 관련 말이 나올 때만 + 깨진 답 고쳐 받기', set: { injectMode: 'lite', sync: 'tagPlus', sceneFilter: true, sceneTurns: 5, deltaMode: true, deltaEvery: 4, injEvery: { ...KWALL }, retryJSON: true, genBatch: true, genParallel: 3, pinCap: 6 } },
+    saver: { name: '최대 절약', icon: 'fa-piggy-bank', desc: '긴 채팅·싼 모델 — 초압축 + 5턴마다 전체 + 거의 모든 칸을 관련 말이 나올 때만', set: { injectMode: 'ultra', sync: 'tagPlus', sceneFilter: true, sceneTurns: 4, deltaMode: true, deltaEvery: 5, injEvery: { ...KWALL, ach: 'kw', quest: 'kw', custom: 'kw', memo: 'n3' }, retryJSON: true, genBatch: true, genParallel: 3, pinCap: 4 } },
+    rich: { name: '고급 모델 (비추천 · 토큰 많음)', icon: 'fa-gem', desc: '토큰이 넉넉할 때만 — 전체 주입 · 매 턴 전체 · 모든 칸 항상 (가장 정확)', set: { injectMode: 'full', sync: 'tag', sceneFilter: true, sceneTurns: 8, deltaMode: false, injEvery: {}, retryJSON: true, genBatch: true, genParallel: 4, pinCap: 8 } },
 };
 export function applyPreset(k) {
     const p = PRESETS[k]; if (!p) return;

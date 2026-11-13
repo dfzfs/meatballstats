@@ -1,15 +1,16 @@
 // 🐱 미트볼 도우미: 모르는 기능을 물어보는 작은 챗창 (v2.6)
 // 내장 안내서 + 지금 설정을 같이 보내서, 「어디서 켜요?」 「왜 안 돼요?」에 답한다. 모델은 따로 고를 수 있다.
-import { app, settings, saveSettings, getMeta, modOn, MODS, esc, TITLE, LOG, VERSION } from './core.js';
+import { app, settings, saveSettings, getMeta, modOn, MODS, esc, TITLE, LOG, VERSION, ssWarn } from './core.js';
 import { P, aiGenerate, listProfiles } from './prompts.js';
 import { popup, mascot } from './kit.js';
+import { openReport } from './report.js';
 
 // 모델이 읽는 안내서 (영어) — 화면에 보이는 한국어 이름은 「」 안에 그대로 적는다
 const GUIDE = `MEATBALL STATS (미트볼 상태창) v${VERSION} — FEATURE GUIDE
 A SillyTavern extension: a status sheet that attaches to any character card. All panels are first filled by AI, then can be edited by hand (✏️ 편집), changed by instruction (✨ AI로 수정), or regenerated (🔄 다시 생성).
 
 WHERE THINGS ARE
-- Extension settings: SillyTavern top bar › Extensions (블록 아이콘) › 「🍝 미트볼 상태창」 drawer. Most toggles live here.
+- Extension settings: SillyTavern top bar › Extensions (블록 아이콘) › 「😼 미트볼 상태창」 drawer. Most toggles live here.
 - Status sheet (상태창): opened from the HUD above the chat, the side panel, or /ss. Tabs are grouped: 홈 · 나 · 세계 · 사람 · 소식 · 관리.
 - Sheet header buttons: 난이도 chip · 🔔 알림함 · 🔎 검색 · ⏸ 일시정지 · 📜 프롬프트·토큰 · ⛶ 전체화면 · ❓ 도우미.
 - 「프롬프트 · 토큰」 window: shows when tokens are spent, the exact text being injected now, lets the user edit every prompt, and keeps a usage log.
@@ -75,7 +76,16 @@ COMMON PROBLEMS
 - Numbers look wrong / sheet missing: 자가 진단.
 - AI forgets <meatball> on light models: set sync to A+B; avoid 초압축.
 - A person is not described in the prompt: 장면 필터 only details people named in the recent messages.
-- Update notice: shown once per version; reopen with 「업데이트 내역」 (settings › 데이터 · 화면).`;
+- Update notice: shown once per version; reopen with 「업데이트 내역」 (settings › 데이터 · 화면).
+- Something is broken or the user is unhappy: tell them to press 「🐞 오류 보고문」 at the top of this helper window (or /ss-report). It builds a report with no AI call that is safe to post publicly (names become [유저]/[인물N]; no chat text, lorebook, persona, API keys or addresses). They describe what they did and what happened, then copy the report and send it to the developer.
+
+NEW IN v2.7
+- 「만드는 방식」 in the wizard: 전부 AI · 기본 틀 + AI (recommended: rule panels like 수치/주사위/달력/업적/운명 use a fixed generic template, only world panels use AI) · 기본 틀만 (0 AI calls, instant; fill panels later with AI).
+- Default settings are now 「기본 (추천)」 for light models (간결 injection). 「전체」 injection is not recommended (many tokens every turn).
+- Long chats are auto-compacted (최근 120 messages stay editable). Option to stop the injection from triggering lorebook entries.
+- Mascot sound: only 냥냥 or off.
+- New chats start with only 6 essential panels on (프로필 수치 재산 관계 지도 달력). Other panels are suggested later by a 💡 「이런 기능도 있어요」 notification when the story fits (e.g. texting → 연락, shopping → 상점); 「써 볼래요」 turns it on and fills it with the basic template (0 AI calls), 「괜찮아요」 never suggests that one again. Toggle: settings › 「💡 안 쓰는 기능 추천」. Any panel can also be turned on in 관리 탭 › 쓸 기능.
+- If the AI forgets the sign (「cash: 120」), a number close to the current value is read as the new total, otherwise as +N.`;
 
 // 지금 설정 한 줄 요약 → 「왜 안 돼요?」에 답할 수 있게
 function snapshot() {
@@ -92,7 +102,7 @@ function snapshot() {
     return L.join('\n');
 }
 
-const QUICK = ['처음인데 뭐부터 하면 돼요?', '로맨스 보정이 뭐예요? 뭘 켜면 좋아요?', '토큰을 아끼려면 어떻게 해요?', '상태창이 영어로 저장되게 하려면요?', '변동 칩이 안 떠요'];
+const QUICK = ['처음인데 뭐부터 하면 돼요?', '기본 틀이 뭐예요?', '로맨스 보정이 뭐예요? 뭘 켜면 좋아요?', '토큰을 아끼려면 어떻게 해요?', '상태창이 영어로 저장되게 하려면요?', '변동 칩이 안 떠요', '🐞 오류 보고문 써 줘'];
 const history = []; // 창을 닫아도 이번 접속 동안은 이어짐
 const fmt = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
 
@@ -113,6 +123,7 @@ export async function openHelp(first = '') {
     el.className = 'ss-root ss-scope ss-help ss-notr';
     const profs = () => `<option value="">확장 AI 모델 그대로</option>${listProfiles().map(p => `<option value="${esc(p.id)}" ${p.id === settings().profHelp ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}`;
     el.innerHTML = `<div class="ss-wz-head">${mascot('happy', 'md')}<div><b>미트볼 도우미</b><small>모르는 기능을 물어보세요 · 질문 1번 = AI 1회</small></div></div>
+        <div class="ss-row-btns ss-help-tools"><button class="ss-btn sm" data-help-report><i class="fa-solid fa-bug"></i> 🐞 오류 보고문 만들기</button><small class="ss-hint">오류 · 불만이 있으면 눌러요 · AI 0회 · 공개 게시판에 올려도 되는 내용만</small></div>
         <label class="ss-help-model"><span><i class="fa-solid fa-microchip"></i> 답할 모델</span><select class="text_pole" data-help-model>${profs()}</select></label>
         <div class="ss-help-log" data-help-log></div>
         <div class="ss-help-quick" data-help-quick>${QUICK.map(q => `<button class="ss-chip btn" data-help-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
@@ -131,11 +142,20 @@ export async function openHelp(first = '') {
     const go = async (q) => {
         q = String(q ?? '').trim();
         if (!q || busy) return;
+        // 「보고문 써 줘」 · 「제보할래」 → AI 대신 보고문 창 (토큰 0 · 지금까지 한 말을 증상으로)
+        if (/보고문|제보|버그\s*리포트|오류\s*보고|report/i.test(q)) {
+            input.value = '';
+            bubble('user', fmt(q));
+            bubble('bot', '오류 보고문 창을 열게요! 지금까지 말해 준 내용을 증상 칸에 넣어 뒀어요. 이름은 자동으로 가려지니까, 확인하고 복사해서 보내 주세요 🐾');
+            const mine = history.filter(m => m.role === 'user').slice(-4).map(m => m.text).join('\n');
+            history.push({ role: 'user', text: q });
+            return openReport(mine);
+        }
         busy = true; send.disabled = true; input.value = '';
         bubble('user', fmt(q));
         const wait = bubble('bot', '생각하는 중…', 'wait');
         try { const a = await askHelp(q); wait.remove(); bubble('bot', fmt(a)); }
-        catch (e) { console.warn(LOG, 'help', e); wait.remove(); bubble('bot', `답하지 못했어요: ${esc(e?.message ?? e)}`, 'err'); }
+        catch (e) { ssWarn(LOG, 'help', e); wait.remove(); bubble('bot', `답하지 못했어요: ${esc(e?.message ?? e)}`, 'err'); }
         finally { busy = false; send.disabled = false; input.focus(); }
     };
     el.addEventListener('click', (e) => {
@@ -143,6 +163,11 @@ export async function openHelp(first = '') {
         if (q) return go(q);
         if (e.target.closest('[data-help-send]')) return go(input.value);
         if (e.target.closest('[data-help-clear]')) { history.length = 0; paint(); }
+        if (e.target.closest('[data-help-report]')) {
+            // 도우미에게 적었던 내 말(최근 4개)을 증상 칸에 미리 넣어 둔다 — 보고문 창에서 고칠 수 있어요
+            const mine = history.filter(m => m.role === 'user').slice(-4).map(m => m.text).join('\n');
+            return openReport([mine, input.value.trim()].filter(Boolean).join('\n'));
+        }
     });
     el.addEventListener('change', (e) => { if (e.target.matches('[data-help-model]')) { settings().profHelp = e.target.value; saveSettings(); } });
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); go(input.value); } });

@@ -51,7 +51,8 @@ const curState = () => app.current?.state;
 export const MONEY_ACTIONS = {
     useitem: (el, arg, btn, s) => {
         const it = findBy(s.data.wallet.items, arg); if (!it) return;
-        return addAdjust({ ops: [['_effect', it.effect], ['item', `-${it.name} 1`]], label: `${it.name} 사용 (${it.effect})` });
+        return addAdjust({ ops: [['_effect', it.effect], ['item', `-${it.name} 1|`]], // | 를 붙여야 이름 속 쉼표·빗금으로 나뉘지 않음
+            label: `${it.name} 사용 (${it.effect})` });
     },
     mcur: async (el, arg, btn, s) => {
         const w = s.data.wallet;

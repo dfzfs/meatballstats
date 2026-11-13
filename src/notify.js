@@ -19,7 +19,8 @@ const GUESS = [
 // 어떤 알림에 어떤 고양이 표정을 쓸지
 function moodOf(n) {
     if (n.kind === 'ending' || n.kind === 'stage') return 'party';
-    if (n.kind === 'update') return 'happy';
+    if (n.kind === 'update' || n.kind === 'tip') return 'happy';
+    if (n.kind === 'hint') return n.icon === '⚠️' ? 'think' : 'happy';
     if (n.kind === 'day') return 'idle';
     if (n.kind !== 'text') return '';
     if (n.icon === '🏆' || /^퀘스트 완료/.test(n.title)) return 'happy';
@@ -38,6 +39,8 @@ export function toNote(a) {
         case 'music': return { kind: 'music', icon: '♪', title: a.title, text: [a.artist, a.text].filter(Boolean).join(' · '), tab: 'music', song: { title: a.title, artist: a.artist } };
         case 'stage': return { kind: 'stage', icon: '💞', title: `${a.who} — 「${a.name}」 단계`, text: a.text ? `해금: ${a.text}` : '', tab: 'rel' };
         case 'ending': return { kind: 'ending', icon: '🎬', title: `엔딩 조건 달성 — ${a.name}`, text: a.text ?? '', tab: 'ach', ending: a.name };
+        case 'hint': return { kind: 'hint', icon: a.icon ?? '💡', title: a.title, text: a.text ?? '', tab: '', hint: a.hint };
+        case 'tip': return { kind: 'tip', icon: '💡', title: a.title, text: a.text ?? '', tab: 'manage', mod: a.mod };
         case 'sns': return { kind: 'sns', icon: '#️⃣', title: `${a.who}님의 새 게시물`, text: short(a.text, 60), tab: 'sns' };
         case 'life': return { kind: 'life', icon: '🌙', title: `화면 밖 — ${a.who}`, text: short(a.text, 70), tab: 'rel' };
         case 'day': {
@@ -72,7 +75,7 @@ export function notify(a, { save = true } = {}) {
     if (save) remember(n);
     if (set.toastMode === 'off') return app.renderHud?.();
     if (set.toastMode === 'toastr' || typeof document === 'undefined') {
-        toastr.info(`${esc(n.icon)} ${esc(n.title)}${n.text ? `<br><small>${esc(n.text)}</small>` : ''}`, TITLE, { escapeHtml: false });
+        toastr.info(`${esc(n.icon)} ${esc(n.title)}${n.text ? `<br><small>${esc(n.text)}</small>` : ''}${n.kind === 'tip' ? '<br><small><b>눌러서 켜기</b></small>' : n.kind === 'hint' ? '<br><small>눌러서 「알아요」 (다시 안 보기)</small>' : ''}`, TITLE, { escapeHtml: false, ...(n.kind === 'tip' && n.mod ? { timeOut: 12000, onclick: () => app.enableTip?.(n.mod) } : n.kind === 'hint' && n.hint ? { timeOut: 10000, onclick: () => app.knowHint?.(n.hint) } : {}) });
         return app.renderHud?.();
     }
     showToast(n);
@@ -101,7 +104,9 @@ function toastHTML(n) {
     const extra = n.kind === 'music' && n.song ? `<a class="ss-t-play" href="${esc(songLink(n.song))}" target="_blank" rel="noopener" data-stop="1" title="검색해서 듣기"><i class="fa-solid fa-play"></i></a>`
         : n.kind === 'ending' ? `<button class="ss-t-btn" data-ending="${esc(n.ending)}">엔딩 쓰기</button>`
             : n.kind === 'day' ? '<button class="ss-t-btn" data-open="record">자세히</button>'
-                : n.kind === 'update' ? '<button class="ss-t-btn" data-whatsnew="1">자세히</button>' : '';
+                : n.kind === 'update' ? '<button class="ss-t-btn" data-whatsnew="1">자세히</button>'
+                    : n.kind === 'hint' && n.hint ? `<button class="ss-t-btn" data-hintok="${esc(n.hint)}" title="이 문구는 다시 안 보여요">알아요</button>`
+                    : n.kind === 'tip' && n.mod ? `<span class="ss-t-tip"><button class="ss-t-btn" data-tipon="${esc(n.mod)}">써 볼래요</button><button class="ss-t-btn ghost" data-tipno="${esc(n.mod)}" title="이 기능은 다시 권하지 않아요">괜찮아요</button></span>` : '';
     const mood = settings().showMascot === false ? '' : moodOf(n);
     return `<div class="ss-t-ico ${mood ? 'cat' : ''}">${mood ? `<img src="${mascotUrl(mood)}" alt="">` : esc(n.icon)}</div><div class="ss-t-b"><b>${esc(n.title)}</b>${n.text ? `<small>${esc(n.text)}</small>` : ''}</div>${extra}<button class="ss-t-x" data-x="1" title="닫기">×</button>`;
 }
@@ -114,7 +119,7 @@ export function showToast(n) {
     el.innerHTML = toastHTML(n);
     b.appendChild(el);
     requestAnimationFrame(() => el.classList.add('in'));
-    const life = Math.max(2, Number(settings().toastSec) || 4) * 1000 * (n.kind === 'update' ? 3 : n.kind === 'day' || n.kind === 'ending' ? 1.6 : 1);
+    const life = Math.max(2, Number(settings().toastSec) || 4) * 1000 * (n.kind === 'update' || n.kind === 'tip' ? 3 : n.kind === 'hint' ? 2.5 : n.kind === 'day' || n.kind === 'ending' ? 1.6 : 1);
     let timer = setTimeout(() => close(), life);
     const close = () => {
         clearTimeout(timer);
@@ -133,6 +138,12 @@ export function showToast(n) {
         e.preventDefault();
         if (e.target.closest('[data-x]')) return close();
         if (n.kind === 'update') { close(); app.showWhatsNew?.(); return; } // 업데이트 알림: 누르면 바뀐 점 자세히
+        const on = e.target.closest('[data-tipon]')?.dataset.tipon, no = e.target.closest('[data-tipno]')?.dataset.tipno;
+        if (on) { close(); app.enableTip?.(on); return; }
+        const ok = e.target.closest('[data-hintok]')?.dataset.hintok;
+        if (ok) { close(); app.knowHint?.(ok); return; }
+        if (n.kind === 'hint') return close();
+        if (no) { close(); app.neverTip?.(no); return; }
         const en = e.target.closest('[data-ending]');
         if (en) { app.writeEnding?.(en.dataset.ending); return close(); }
         const tab = e.target.closest('[data-open]')?.dataset.open ?? n.tab;

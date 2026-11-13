@@ -1,7 +1,7 @@
 // 미트볼 상태창 (Meatball Stats) — SillyTavern UI extension
 // 어떤 카드·세계관에도 붙는 상태창. 모든 칸은 AI가 처음 채우고, 직접 편집 · 추가 지시 · 다시 생성이 된다.
-import { app, ctx, settings, saveSettings, getMeta, saveMeta, isActive, ready, modOn, MODS, MOD_IDS, MOD, esc, short, splitBar, findBy, TITLE, LOG, VERSION, MODULE, sub, rand, DIFFS } from './src/core.js';
-import { compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, drawerOps, setDrawer, extractOps, ssValue, undoLast, hasStatus } from './src/engine.js';
+import { rev, ctxReset, app, ctx, settings, saveSettings, getMeta, saveMeta, isActive, ready, modOn, MODS, MOD_IDS, MOD, esc, short, splitBar, findBy, TITLE, LOG, VERSION, MODULE, sub, rand, DIFFS, ssErr, ssWarn } from './src/core.js';
+import { compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, drawerOps, setDrawer, extractOps, ssValue, undoLast, hasStatus, autoBake } from './src/engine.js';
 import { analyzeMessage, instructModule } from './src/ai.js';
 import { listProfiles } from './src/prompts.js';
 import { diffHTML, confirmPopup, applyTheme, askInput, mascot, popup } from './src/kit.js';
@@ -14,20 +14,35 @@ import { offerCard, followBranch, saveSlot, fullBackup, diagnose } from './src/s
 import { starred, toggleStar, PRESETS, applyPreset } from './src/extra.js';
 import { FREQ_MODS } from './src/engine.js';
 import { setBase } from './src/shell.js';
-import { initMascot, MASCOT_SOUNDS, playMascotSound, clearSoundCache } from './src/mascot.js';
+import { initMascot, MASCOT_SOUNDS, playMascotSound } from './src/mascot.js';
+import { startErrorCapture, openReport } from './src/report.js';
+import { maybeTip, maybeLaterWarn, hintSetting } from './src/tips.js';
+
+try { startErrorCapture(); } catch { /* 오류 기록은 없어도 동작 */ }
 
 const REGEX_IDS = { show: 'b7c1a0e2-5a1d-4f0e-9a51-55a1a0c05501', strip: 'b7c1a0e2-5a1d-4f0e-9a51-55a1a0c05502' };
 
 // ───── 메시지 변동 칩 ─────
+// 칩이 없는 옛 답(굳힌 기록)은 한 번 손본 뒤엔 건너뛴다 — 긴 채팅에서 갱신마다 수천 개를 훑던 것 줄이기 (v2.7)
+let doneEl = new WeakMap();
+app.redecorate = () => { doneEl = new WeakMap(); };
 function decorateAll() {
     if (!app.current) return;
     const set = settings();
+    const baked = getMeta()?.startAt ?? 0; // 굳힌 기록 안의 답은 고쳐도 반영되지 않으니 ✏️를 숨긴다
+    const chat = ctx().chat ?? [];
+    const album = new Set((getMeta()?.album ?? []).filter(x => x.kind === 'mes').map(x => x.key)); // 앨범 확인을 답마다 다시 찾지 않게
     document.querySelectorAll('#chat .mes').forEach(mesEl => {
         const i = Number(mesEl.getAttribute('mesid'));
-        const textEl = mesEl.querySelector('.mes_text');
-        if (!textEl || Number.isNaN(i)) return;
+        if (Number.isNaN(i)) return;
         const snap = app.current.snaps.get(i);
-        const m = ctx().chat?.[i];
+        const m = chat[i];
+        const on0 = !!m && album.has(`${m.send_date}|${m.name}`);
+        const sig = snap ? null : `n|${on0}|${set.msgCard}`;
+        if (sig && doneEl.get(mesEl) === sig && mesEl._ssStar?.isConnected !== false) return;
+        const textEl = mesEl.querySelector('.mes_text');
+        if (!textEl) return;
+        if (sig) doneEl.set(mesEl, sig);
         // 🖼️ 추억 앨범 버튼 (메시지 ⋯ 메뉴 옆)
         const btns = mesEl.querySelector('.mes_buttons');
         if (btns && m && !m.is_system) {
@@ -37,16 +52,20 @@ function decorateAll() {
                 const edit = btns.querySelector(':scope > .mes_edit');
                 if (edit) btns.insertBefore(st, edit); else (btns.querySelector('.extraMesButtons') ?? btns).prepend(st);
             }
-            const on = !!starred(i);
-            st.classList.toggle('fa-solid', on); st.classList.toggle('fa-regular', !on); st.classList.toggle('on', on);
+            const on = on0; mesEl._ssStar = st;
+            if (st.classList.contains('on') !== on) { st.classList.toggle('fa-solid', on); st.classList.toggle('fa-regular', !on); st.classList.toggle('on', on); } // 바뀔 때만 (긴 채팅에서 매번 건드리면 화면 다시 계산)
         }
         const hasCard = snap && set.msgCard !== 'off' && (snap.labels.length || snap.roll);
         if (hasCard && !textEl.querySelector('.ss-slot, .custom-ss-slot')) { const sl = document.createElement('div'); sl.className = 'ss-slot'; textEl.appendChild(sl); }
-        const editBtn = m && drawerOps(m) && !hasStatus(m.mes) ? `<button class="ss-mchip edit" data-ss-edit="${i}" title="이 답의 상태 변화 고치기"><i class="fa-solid fa-pen"></i></button>` : '';
+        const editBtn = m && i >= baked && drawerOps(m) && !hasStatus(m.mes) ? `<button class="ss-mchip edit" data-ss-edit="${i}" title="이 답의 상태 변화 고치기"><i class="fa-solid fa-pen"></i></button>` : '';
         textEl.querySelectorAll('.ss-slot, .custom-ss-slot').forEach((slot, k) => {
-            if (k > 0 || !snap || set.msgCard === 'off' || (!snap.labels.length && !snap.roll)) { slot.innerHTML = ''; slot.style.display = 'none'; return; }
-            slot.style.display = '';
+            if (k > 0 || !snap || set.msgCard === 'off' || (!snap.labels.length && !snap.roll)) { if (slot.dataset.ssk !== '') { slot.innerHTML = ''; slot.style.display = 'none'; slot.dataset.ssk = ''; } return; }
             const rollBtn = snap.roll && i === app.current.lastAI ? `<button class="ss-mchip roll" data-roll="${esc(snap.roll.label)}|${snap.roll.dc}"><i class="fa-solid fa-dice-d20"></i> ${esc(snap.roll.label)} 굴리기</button>` : '';
+            // 칩 내용이 그대로면 다시 그리지 않는다 (긴 채팅에서 갱신마다 모든 답의 칩을 새로 그리던 것이 렉의 큰 원인)
+            const key = `${snap.labels.join('\u0001')}|${rollBtn ? 1 : 0}|${editBtn ? 1 : 0}`;
+            if (slot.dataset.ssk === key && slot.firstChild) return;
+            slot.dataset.ssk = key;
+            slot.style.display = '';
             slot.innerHTML = `<div class="ss-msgcard ss-scope">${snap.labels.filter(l => !l.startsWith('🎲')).slice(0, 14).map(l => `<span class="ss-mchip ${/[−-]\d/.test(l) ? 'neg' : /\+\d/.test(l) ? 'pos' : ''}">${esc(l)}</span>`).join('')}${rollBtn}${editBtn}</div>`;
         });
     });
@@ -113,13 +132,34 @@ async function askBond(who) {
             await addAdjust({ ops: [['_bond', who]], label: `💍 ${who}와(과) 고백이 오가 연인이 되었다 (확정)` });
             toastr.success(`${esc(who)}와(과) 연인이 되었어요 💞`, TITLE);
         } else toastr.info('좋아요, 지금 이 설렘을 조금 더 즐겨요 🌙', TITLE);
-    } catch (e) { console.error(LOG, 'askBond', e); } finally { bondAsking = false; }
+    } catch (e) { ssErr(LOG, 'askBond', e); } finally { bondAsking = false; }
 }
 app.askBond = askBond;
 app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.0', title: '기본 틀 · 긴 채팅 가볍게 · 안정화', items: [
+        ['🐞 오류 보고문', '미트볼 도우미 창 맨 위 「오류 보고문 만들기」(또는 도우미에게 「보고문 써 줘」, /ss-report). AI 없이 만들어지고, 이름은 [유저]·[인물1]로 가려지고 채팅 내용·키·주소는 안 들어가서 공개 게시판에 그대로 올려도 돼요.'],
+        ['⚙️ 기본 설정 = 가벼운 모델 맞춤', '처음 설치하면 「기본 (추천)」 설정으로 시작해요. 「전체」 주입은 토큰이 많이 들어 비추천이에요. 업데이트한 분께는 옛 <status> 읽기 끄기 · 기본 설정으로 바꾸기를 한 번 물어봐요.'],
+        ['🐱 소리는 냥냥만', '마스코트 소리는 냥냥 하나(또는 끔)만 남겼어요. 설정 파일을 무겁게 하던 「내 소리 파일」은 지워져요.'],
+        ['🧩 만드는 방식: 기본 틀', '상태창 만들기 맨 위에서 고를 수 있어요. 「기본 틀만」은 AI 0회 · 토큰 0으로 바로 만들어지고, 「기본 틀 + AI」는 수치·주사위·달력·업적·운명 카드처럼 어디에나 맞는 칸은 검증된 모양으로 고정하고 세계관 칸만 AI가 채워요 (호출 7번 → 5번). 장르를 고르면 화폐·게이지·장소 이름이 장르에 맞춰져요.'],
+        ['🏎️ 렉 줄이기', '한 턴에 3~4번씩 하던 같은 계산을 한 번으로 줄이고, 바뀐 게 없으면 상태창을 다시 그리지 않아요. 가장 자주 불리던 설정 읽기와 실리 정보 읽기도 가볍게 바꿨어요.'],
+        ['⚡ 긴 채팅이 가벼워졌어요', '굳히지 않은 메시지가 400개를 넘으면 오래된 쪽을 자동으로 굳혀서, 매 턴 처음부터 다시 계산하지 않아요. 최근 120개 메시지의 스와이프·편집은 예전처럼 바로 반영돼요. 확장 설정에서 끌 수 있어요.'],
+        ['💡 이것도 아세요? · ⚠️ 알아 두세요', '칸에서 뭔가 하면 그 칸의 팁을 가끔 하나씩, 토큰이 많이 드는 설정을 켜면 그 자리에서 주의를 한 번 알려 줘요. 「알아요」를 누르면 그 문구는 다시 안 나와요.'],
+        ['🛡️ 숫자가 날아가지 않게', 'AI가 부호를 빼먹고 「cash: 120」처럼 쓰면 예전엔 돈이 120으로 바뀌었어요. 이제 지금 값과 가까우면 새 합계로, 아니면 빼먹은 +로 읽어요. 「days: 2」도 이틀 지남으로 읽고, 이어 쓰기에서 같은 변화를 다시 적어도 두 번 세지 않아요.'],
+        ['✨ 처음부터 쉽게', '새 채팅은 꼭 필요한 6개(프로필·수치·재산·관계·지도·달력)만 켜진 채로 시작해요. 만들기 방식 기본값은 「기본 틀 + AI」, 기능 고르기에 「추천만」 버튼이 생겼어요.'],
+        ['💡 기능 추천', '이야기에 문자·가게·의뢰 같은 말이 나오면 「이런 기능도 있어요 — 연락」처럼 한 번씩 알려 줘요. 「써 볼래요」를 누르면 그 채팅에서 켜지고 기본 틀로 바로 채워져요 (AI 0회). 기능마다 한 번만, 몇 턴에 한 번만 뜨고, 확장 설정에서 끌 수 있어요.'],
+        ['🔍 기능 전체 점검', '「AK-47」처럼 이름 끝 숫자를 수량으로 읽던 것 · 이름에 쉼표·빗금이 있는 소지품을 쓰거나 팔면 둘로 나뉘던 것 · AI가 이름 자리에 「+3」 같은 걸 써서 유령 인물이 생기던 것 · 같은 퀘스트 진행이 매 턴 쌓이던 것 · 처음부터 있던 저주의 기간이 안 흐르던 것 · 주사위 기록 저장이 실패하면 화면이 멈추던 것 · 남의 백업 파일이 깨져 있으면 계산이 멈추던 것을 고쳤어요.'],
+        ['🎭 사칭(impersonate)에 태그가 붙던 문제', '내 메시지를 AI가 대신 쓸 때 <meatball> 출력 규칙을 빼고 보내요.'],
+        ['🔀 별도 분석 중 스와이프', '분석하는 동안 스와이프·편집하면 다른 답에 변화가 붙던 것을 막았어요.'],
+        ['📚 로어북 켜기 선택', '상태 주입문 속 장소·인물 이름으로 로어북이 켜질지 고를 수 있어요 (끄면 장면 밖 항목이 덜 켜져 토큰 절약).'],
+        ['🗨️ OOC 답은 계산 안 함', '(( )) 같은 OOC로 물어본 답은 별도 분석을 하지 않아요. 그 답을 이어쓰기해도 마찬가지예요. OOC 답 속 숫자 때문에 돈·호감이 바뀌던 것을 막았어요.'],
+        ['📜 메시지가 많아도 가볍게', '변동 칩을 갱신마다 모든 답에 다시 그리던 것, 내용이 같은데 HUD·사이드 미니를 다시 그리던 것, 접혀 있어 안 보이는 사이드 패널까지 그리던 것을 고쳤어요. 폰에서 600개 메시지 채팅도 한 턴 처리가 약 0.03초예요.'],
+        ['📱 폰 화면 다듬기', '좁은 화면에서 상태창 제목이 한 글자로 잘리던 것 · 어두운 테마에서 작은 글씨가 안 보이던 것 · 화면 밖 패널 때문에 페이지가 옆으로 밀리던 것 · 사이드 미니의 흐림 효과 때문에 글이 올라올 때 버벅이던 것을 고쳤어요.'],
+        ['🔧 자잘한 것', '기본 틀 지도의 장소가 가장자리에 붙어 이름이 잘리던 것 · 주사위가 굴러가는 중 탭을 바꾸면 오류가 나던 것 · 기본 틀 프로필에 내 이름이 두 번 들어가던 것을 고쳤어요.'],
+        ['🧰 가볍게 · 안전하게', '갱신마다 화면 전체 스타일을 다시 계산하던 것을 줄였어요. 새로 설치하면 옛 <status> 읽기는 꺼진 채로 시작해요 (다른 프리셋의 <status>를 건드리지 않게).'],
+    ] },
     { v: '2.6.1', title: '고친 것 모음', items: [
         ['🔧 화면만 번역: AI에게 한국어가 새던 곳 막음', '본편 AI가 쓰는 값도 영어로 받고(출력 규칙), 날짜·계절·기념일·UI 기록도 영어로 보내요. 새로 생긴 영어 글은 화면에서 자동 번역돼요.'],
         ['🔔 한국어로 저장된 칸 알림', '「화면만 번역」인데 한국어로 저장된 칸이 남아 있으면 채팅을 열 때 알려 줘요. 알림을 누르거나 「상태창 전체 번역」을 누르면 바로 영어 저장으로 바뀌어요.'],
@@ -154,7 +194,7 @@ async function showWhatsNew(all = false, latestOnly = false) {
     if (!list.length) { if (all) toastr.info('기록된 업데이트 내역이 없어요.', TITLE); return; }
     const el = document.createElement('div');
     el.className = 'ss-root ss-scope ss-whatsnew';
-    el.innerHTML = `<div class="ss-wz-head">${mascot('happy', 'md')}<div><b>🍝 미트볼 상태창이 업데이트됐어요</b><small>v${esc(VERSION)}</small></div></div>
+    el.innerHTML = `<div class="ss-wz-head">${mascot('happy', 'md')}<div><b>😼 미트볼 상태창이 업데이트됐어요</b><small>v${esc(VERSION)}</small></div></div>
         ${list.map(c => `<h4>v${esc(c.v)} — ${esc(c.title)}</h4><ul class="ss-newlist">${c.items.map(([h, d]) => `<li><b>${esc(h)}</b><br><small>${esc(d)}</small></li>`).join('')}</ul>`).join('')}
         <p class="ss-hint">새 기능은 모두 선택 사항이라, 켜지 않으면 예전과 똑같이 동작해요. 다시 보려면 확장 설정 › 데이터 · 화면 › 「업데이트 내역」.</p>`;
     await popup(el, { okButton: '확인' });
@@ -176,11 +216,40 @@ function whatsNewOnLoad(fresh) {
             if (settings().toastMode === 'popup') notify({ kind: 'update', icon: '📣', title: `미트볼 상태창 v${VERSION} 업데이트`, text: `${heads} — 눌러서 자세히` }, { save: false });
             else toastr.info(`📣 v${esc(VERSION)} 업데이트: ${esc(heads)}<br><small>눌러서 자세히</small>`, TITLE, { timeOut: 12000, escapeHtml: false, onclick: () => showWhatsNew(false, sameVer) });
             done();
-        } catch (e) { console.error(LOG, 'whatsnew', e); }
+        } catch (e) { ssErr(LOG, 'whatsnew', e); }
     }, 2000);
 }
 app.notifyLatest = notifyLatest;
 app.decorate = decorateAll;
+
+// ───── v2.7 한 번만 묻기: 옛 <status> 읽기 끄기 · 기본(가벼운 모델) 설정으로 ─────
+async function askV27() {
+    const s = settings();
+    if (s.v27asked) return;
+    const legacy = s.legacyStatus !== false;
+    const heavy = s.injectMode === 'full';
+    if (!legacy && !heavy) { s.v27asked = true; saveSettings(); return; }
+    const el = document.createElement('div');
+    el.className = 'ss-root ss-scope ss-v27';
+    el.innerHTML = `<div class="ss-wz-head">${mascot('think', 'md')}<div><b>v2.7 — 두 가지만 골라 주세요</b><small>한 번만 물어봐요 · 나중에 확장 설정에서 언제든 바꿀 수 있어요</small></div></div>
+        ${legacy ? `<label class="ss-tog"><input type="checkbox" class="ss-switch" data-v27="legacy" checked><span><b>옛 &lt;status&gt; 태그 읽기 끄기 (추천)</b><br><small>지금은 미트볼이 모든 채팅에서 &lt;status&gt; 태그를 숨기고 프롬프트에서 지워요. 다른 봇·프리셋이 &lt;status&gt;를 쓰면 그것까지 사라져요. 끄면 미트볼은 &lt;meatball&gt;만 건드려요. 지금 열린 채팅에 남은 옛 태그는 끄기 전에 자동으로 보관해 둬요.</small></span></label>` : ''}
+        ${heavy ? `<label class="ss-tog"><input type="checkbox" class="ss-switch" data-v27="light" checked><span><b>「기본 (추천)」 설정으로 바꾸기</b><br><small>지금은 「전체」 주입이라 매 턴 토큰이 많이 들어요(비추천). 플래시·아르곤 같은 가벼운 모델에 맞춘 간결 주입 · 4턴마다 전체 · 태그 빠지면 따로 분석으로 바꿔요.</small></span></label>` : ''}`;
+    const ok = await confirmPopup(el, '적용', '그대로 둘래요');
+    const pick = (k) => !!el.querySelector(`[data-v27="${k}"]`)?.checked;
+    s.v27asked = true;
+    if (ok) {
+        if (legacy && pick('legacy')) {
+            if (isActive() && ready()) { let n = 0; for (const m of ctx().chat ?? []) n += stashAllSwipes(m); if (n) await ctx().saveChat?.(); } // 옛 태그를 먼저 보관 (끄면 더는 못 읽음)
+            s.legacyStatus = false;
+            installRegex(); // 정규식도 <meatball>만 (채팅 다시 그림)
+        }
+        if (heavy && pick('light')) Object.assign(s, structuredClone(PRESETS.light.set));
+        toastr.success('적용했어요.', TITLE);
+    }
+    saveSettings();
+    document.getElementById('ss-settings')?.remove(); renderSettings(); // 설정 화면도 새 값으로
+    refreshNow();
+}
 
 // ───── 정규식 ─────
 function regexScripts() {
@@ -216,22 +285,32 @@ function removeRegex() {
 
 // ───── 갱신 ─────
 let refreshTimer = null;
-function refresh() { clearTimeout(refreshTimer); refreshTimer = setTimeout(refreshNow, 60); }
-function refreshNow() {
-    clearTimeout(refreshTimer);
-    try {
-        if (!isActive() || !ready()) { app.current = null; setInjection(null); }
-        else {
-            app.current = compute();
-            try { setInjection(getMeta()?.paused ? null : buildInjection(app.current)); } catch (e) { console.error(LOG, 'inject', e); }
-            try { decorateAll(); } catch (e) { console.error(LOG, 'decorate', e); }
-            try { scheduleFill(); checkKorean(); } catch (e) { console.warn(LOG, 'viewtr', e); }
-        }
-    } catch (e) { console.error(LOG, e); }
-    // 계산이 어디서 실패해도 상태창 화면은 그린다 (안 그리면 '창이 안 떠요'가 됨)
-    try { ensureUI(); rerenderPanels(); } catch (e) { console.error(LOG, 'ui', e); }
+// soft = 이벤트로 온 갱신: 채팅·기록·설정이 그대로면 다시 계산하지 않고 화면도 다시 그리지 않는다 (한 턴에 3~4번 오던 중복 계산 줄이기)
+let refreshForce = false, lastFp = '';
+function refresh(force = false) { refreshForce ||= force; if (force) app.redecorate(); clearTimeout(refreshTimer); refreshTimer = setTimeout(() => { const f = refreshForce; refreshForce = false; refreshNow({ soft: !f }); }, 60); }
+function fingerprint() {
+    const c = ctx(), chat = c.chat ?? [], last = chat.at(-1), meta = getMeta();
+    return [c.getCurrentChatId?.(), chat.length, last?.swipe_id, last?.mes?.length, drawerOps(last ?? {})?.length, meta?.adjust?.length, meta?.adjust?.at(-1)?.t, meta?.startAt, rev.n].join('|');
 }
-app.refreshNow = refreshNow;
+function refreshNow({ soft = false } = {}) {
+    clearTimeout(refreshTimer);
+    let same = false;
+    try {
+        if (!isActive() || !ready()) { app.current = null; setInjection(null); lastFp = ''; }
+        else {
+            const fp = fingerprint();
+            same = soft && fp === lastFp && !!app.current;
+            if (!same) app.current = compute();
+            lastFp = fp;
+            try { setInjection(getMeta()?.paused ? null : buildInjection(app.current)); } catch (e) { ssErr(LOG, 'inject', e); }
+            try { decorateAll(); } catch (e) { ssErr(LOG, 'decorate', e); }
+            try { scheduleFill(); checkKorean(); } catch (e) { ssWarn(LOG, 'viewtr', e); }
+        }
+    } catch (e) { ssErr(LOG, e); }
+    // 계산이 어디서 실패해도 상태창 화면은 그린다 (안 그리면 '창이 안 떠요'가 됨)
+    try { ensureUI(); if (!same) rerenderPanels(); } catch (e) { ssErr(LOG, 'ui', e); }
+}
+app.refreshNow = () => refreshNow();
 
 // ───── 확장 설정 서랍 ─────
 function profileOptions(sel) {
@@ -248,7 +327,7 @@ function renderSettings() {
     el.id = 'ss-settings';
     el.className = 'ss-settings';
     el.innerHTML = `<div class="inline-drawer">
-        <div class="inline-drawer-toggle inline-drawer-header"><b>🍝 미트볼 상태창 <small>v${VERSION}</small></b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>
+        <div class="inline-drawer-toggle inline-drawer-header"><b>😼 미트볼 상태창 <small>v${VERSION}</small></b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>
         <div class="inline-drawer-content">
             <label class="checkbox_label"><input type="checkbox" data-s="enabled" ${s.enabled ? 'checked' : ''}> 사용</label>
             <div class="ss-set-btns">
@@ -265,7 +344,7 @@ function renderSettings() {
                 ${o('sync', 'tagPlus', 'A+B. 태그 + 빠졌을 때만 별도 분석')}
                 ${o('sync', 'analyze', 'B. 별도 분석 — 매 응답 뒤 AI 1회 더 (정확 · 비용↑)')}
                 ${o('sync', 'off', 'C. 끔 — 직접 편집·추가 지시로만')}</select></label>
-            <label>규칙 주입<select class="text_pole" data-s="injectMode">${o('injectMode', 'full', '전체 (세계 요약·예시 포함)')}${o('injectMode', 'lite', '간결 (토큰 절약)')}${o('injectMode', 'ultra', '초압축 (기호·키워드 · 토큰 최소)')}</select>
+            <label>규칙 주입<select class="text_pole" data-s="injectMode">${o('injectMode', 'lite', '간결 — 기본 · 추천')}${o('injectMode', 'ultra', '초압축 — 기호·키워드 · 토큰 최소')}${o('injectMode', 'full', '전체 — 비추천 · 토큰 많음 (매 턴 약 1천 토큰 이상)')}</select>
                 <small>초압축은 가벼운 모델이 &lt;meatball&gt;을 빼먹을 수 있어서, 자동 반영을 A+B로 두는 걸 추천해요.</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="sceneFilter" ${s.sceneFilter ? 'checked' : ''}> 장면 필터 — 최근 대화에 나온 인물만 자세히, 나머지는 이름·수치만</label>
             <label>장면 판단에 볼 최근 메시지 수<input type="number" min="1" max="40" class="text_pole" data-s="sceneTurns" value="${s.sceneTurns}"></label>
@@ -279,9 +358,9 @@ function renderSettings() {
             <label>번역 담당<select class="text_pole" data-s="trEngine">${o('trEngine', 'llm', '번역 모델 (LLM) — 말투·지침을 이해함 · 토큰 듦')}${o('trEngine', 'st', '실리 기본 번역 — Google·DeepL 등 · 무료 · 빠름')}</select>
                 <small>실리 기본 번역은 확장 메뉴 › <b>Chat Translation</b>에서 고른 번역기를 써요.</small></label>
             <label>실리 기본 번역 언어 코드<input class="text_pole" data-s="trCode" value="${esc(s.trCode)}" placeholder="ko"></label>
-            <label>번역 지침<textarea class="text_pole" rows="4" data-s="trRules" placeholder="Leon Hart = 레온 하트&#10;Kingdom of Ardel = 아르델 왕국&#10;편지는 반말로 옮길 것">${esc(s.trRules ?? '')}</textarea>
-                <label>화면만 번역: 본편 AI가 새로 쓴 영어 글 자동 번역<select class="text_pole" data-s="trAuto">${o('trAuto', 'st', '실리 기본 번역일 때만 (무료 · 추천)')}${o('trAuto', 'always', '항상 — 번역 모델이면 새 글이 생길 때 AI 1회씩')}${o('trAuto', 'off', '끔 — 「상태창 전체 번역」을 누를 때만')}</select></label>
-            <small><b>번역 모델</b>: 적은 글이 그대로 지침으로 가요. <b>실리 기본 번역</b>: 지침을 읽지 못해서 <code>원문 = 번역</code> 모양의 줄만 써요 (이름·용어 고정). 다른 줄은 무시돼요.</small></label>
+            <label>번역 지침<textarea class="text_pole" rows="4" data-s="trRules" placeholder="Leon Hart = 레온 하트&#10;Kingdom of Ardel = 아르델 왕국&#10;편지는 반말로 옮길 것">${esc(s.trRules ?? '')}</textarea></label>
+            <label>화면만 번역: 본편 AI가 새로 쓴 영어 글 자동 번역<select class="text_pole" data-s="trAuto">${o('trAuto', 'st', '실리 기본 번역일 때만 (무료 · 추천)')}${o('trAuto', 'always', '항상 — 번역 모델이면 새 글이 생길 때 AI 1회씩')}${o('trAuto', 'off', '끔 — 「상태창 전체 번역」을 누를 때만')}</select></label>
+            <small><b>번역 모델</b>: 적은 글이 그대로 지침으로 가요. <b>실리 기본 번역</b>: 지침을 읽지 못해서 <code>원문 = 번역</code> 모양의 줄만 써요 (이름·용어 고정). 다른 줄은 무시돼요.</small>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="trsheet"><i class="fa-solid fa-language"></i> 상태창 전체 번역</button><button class="menu_button" data-s-act="toenglish" title="예전에 한국어로 저장된 칸을 영어 저장으로 바꿔요. 지금 보이는 한국어는 화면 번역으로 남아요."><i class="fa-solid fa-right-left"></i> 한국어로 저장된 칸을 영어 저장으로 바꾸기</button></div>
             <small>「화면만 번역」으로 바꿔도 <b>이미 한국어로 저장된 칸</b>은 그대로 한국어로 AI에게 가요. 위 오른쪽 버튼을 한 번 누르면 이 채팅의 칸들이 영어 저장으로 바뀌고, 지금 보이는 한국어는 화면 번역으로 그대로 남아요. (채팅마다 한 번)</small>
             <b class="ss-set-h">일시정지 · OOC</b>
@@ -312,9 +391,11 @@ function renderSettings() {
             <label>생성 때 읽을 최근 채팅 수<input type="number" min="0" max="100" class="text_pole" data-s="recentForGen" value="${s.recentForGen}"></label>
             <label>생성 때 읽을 로어북 최대 글자 수<input type="number" min="0" max="100000" step="1000" class="text_pole" data-s="loreChars" value="${s.loreChars}"></label>
             <label>상태 주입 깊이 (0 = 맨 끝)<input type="number" min="0" max="20" class="text_pole" data-s="injectDepth" value="${s.injectDepth}"></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="injScan" ${s.injScan !== false ? 'checked' : ''}> 상태 주입문으로 로어북(월드인포) 켜기 <small>(끄면 근처 장소·의뢰인 이름 때문에 장면 밖 로어북이 켜지지 않아 토큰 절약 · 장소 로어북을 키워드로 켜고 있었다면 그대로 두세요)</small></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="autoBake" ${s.autoBake !== false ? 'checked' : ''}> 긴 채팅 자동 정리 — 오래된 기록을 굳혀서 가볍게 <small>(최근 120개 메시지는 그대로 · 그보다 오래된 답의 스와이프·편집은 상태에 다시 반영되지 않아요)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="autoRegex" ${s.autoRegex ? 'checked' : ''}> &lt;meatball&gt; 숨김 정규식 자동 설치</label>
             <b class="ss-set-h">모델 맞춤 · 토큰 절약</b>
-            <small>버튼 하나로 아래 설정들을 한 번에 맞춰요. 대부분 플래시·아르곤이면 첫 번째를 추천해요.</small>
+            <small>버튼 하나로 아래 설정들을 한 번에 맞춰요. 처음 설치하면 「기본」이 켜져 있어요.</small>
             <div class="ss-set-btns">${Object.entries(PRESETS).map(([k, p]) => `<button class="menu_button" data-s-preset="${k}" title="${esc(p.desc)}"><i class="fa-solid ${p.icon}"></i> ${esc(p.name)}</button>`).join('')}</div>
             <label class="checkbox_label"><input type="checkbox" data-s="deltaMode" ${s.deltaMode ? 'checked' : ''}> 변화 위주로 보내기 — 몇 턴마다 전체, 그 사이엔 핵심 + 바뀐 것만</label>
             <label>전체를 보내는 간격 (턴)<input type="number" min="2" max="20" class="text_pole" data-s="deltaEvery" value="${s.deltaEvery}"></label>
@@ -328,6 +409,8 @@ function renderSettings() {
             <label>팝업 위치<select class="text_pole" data-s="toastPos">${o('toastPos', 'top', '위')}${o('toastPos', 'bottom', '아래')}</select></label>
             <label>팝업이 보이는 시간 (초)<input type="number" min="2" max="20" class="text_pole" data-s="toastSec" value="${s.toastSec}"></label>
             <label class="checkbox_label"><input type="checkbox" data-s="daySummary" ${s.daySummary ? 'checked' : ''}> 하루가 지나면 「하루 정리」 카드</label>
+            <label class="checkbox_label"><input type="checkbox" data-s="featureTips" ${s.featureTips !== false ? 'checked' : ''}> 💡 팁 · 주의 알림 — 안 쓰는 기능 추천 · 「이것도 아세요?」 · 설정 주의를 가끔 한 번씩 <small>(「알아요」 누르면 다시 안 나옴 · AI 0회)</small></label>
+            <div class="ss-set-btns"><button class="menu_button" data-s-act="tipreset"><i class="fa-solid fa-rotate-left"></i> 넘긴 추천 · 팁 다시 보기</button></div>
             <b class="ss-set-h">추천 음악</b>
             <label>좋아하는 음악 (모든 채팅 기본)<input class="text_pole" data-s="musicTaste" value="${esc(s.musicTaste)}" placeholder="예: K-pop 발라드, 영화 OST, 로파이"></label>
             <label>▶ 누르면 열 곳<select class="text_pole" data-s="musicApp">${o('musicApp', 'youtube', '유튜브')}${o('musicApp', 'ytmusic', '유튜브 뮤직')}${o('musicApp', 'spotify', '스포티파이')}${o('musicApp', 'melon', '멜론')}</select></label>
@@ -363,11 +446,9 @@ function renderSettings() {
             <label class="checkbox_label"><input type="checkbox" data-s="showMascot" ${s.showMascot !== false ? 'checked' : ''}> 🐱 마스코트 고양이 보이기 (빈 화면 · 만들기 · 알림 · 일시정지)</label>
             <label class="checkbox_label"><input type="checkbox" data-s="mascotBuddy" ${s.mascotBuddy !== false ? 'checked' : ''}> 상태창 제목 옆에 마스코트 항상 두기 <small>(누르면 뾱! · 여러 번 빠르게 누르면 신나요)</small></label>
             <label>마스코트 누르면 나는 소리<select class="text_pole" data-s="mascotSound">${MASCOT_SOUNDS.map(([v, t]) => o('mascotSound', v, t)).join('')}</select></label>
-            <div class="ss-set-file"><small>🐱 내 소리 파일: <b class="ss-mfile">${s.mascotSoundFile ? esc(s.mascotSoundName || '넣어 둔 파일') : '없음'}</b> — mp3 · ogg · wav, 500KB까지 (1초 안팎 짧은 소리 추천)</small>
-                <div class="ss-set-btns"><label class="menu_button"><i class="fa-solid fa-folder-open"></i> 파일 고르기<input type="file" accept="audio/*" data-s-file="1" hidden></label><button class="menu_button" data-s-act="mascotfileclear"><i class="fa-solid fa-trash-can"></i> 지우기</button></div></div>
             <label>효과음 크기 <small class="ss-mvol">${s.mascotVolume}</small><input type="range" min="0" max="100" step="5" data-s="mascotVolume" value="${s.mascotVolume}"></label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="mascotsound"><i class="fa-solid fa-volume-high"></i> 소리 미리 듣기</button></div>
-            <div class="ss-set-btns"><button class="menu_button" data-s-act="diag"><i class="fa-solid fa-stethoscope"></i> 자가 진단 · 고치기</button><button class="menu_button" data-s-act="backup"><i class="fa-solid fa-box-archive"></i> 이 채팅 전체 백업</button></div>
+            <div class="ss-set-btns"><button class="menu_button" data-s-act="diag"><i class="fa-solid fa-stethoscope"></i> 자가 진단 · 고치기</button><button class="menu_button" data-s-act="report"><i class="fa-solid fa-bug"></i> 오류 보고문</button><button class="menu_button" data-s-act="backup"><i class="fa-solid fa-box-archive"></i> 이 채팅 전체 백업</button></div>
             <b class="ss-set-h">다른 확장과 같이 쓰기</b>
             <label class="checkbox_label"><input type="checkbox" data-s="stashTags" ${s.stashTags ? 'checked' : ''}> &lt;meatball&gt;을 읽은 뒤 본문에서 떼어 보관 <small>(추천 · 요약·번역·로그 복사 확장에 변화량 줄이 안 보여요. 고칠 땐 변동 칩의 ✏️)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="legacyStatus" ${s.legacyStatus !== false ? 'checked' : ''}> 옛 &lt;status&gt; 태그도 미트볼 것으로 읽고 숨기기 <small>(v2.5 이전 채팅용 · <b>다른 프리셋이 &lt;status&gt;를 쓰면 끄세요</b> — 끄면 &lt;meatball&gt;만 건드려요)</small></label>
@@ -380,30 +461,16 @@ function renderSettings() {
         </div></div>`;
     el.addEventListener('input', (e) => { if (e.target.dataset.s === 'mascotVolume') { const lb = el.querySelector('.ss-mvol'); if (lb) lb.textContent = e.target.value; } });
     el.addEventListener('change', (e) => {
-        if (e.target.dataset.sFile) {
-            const f = e.target.files?.[0]; e.target.value = '';
-            if (!f) return;
-            if (f.size > 500 * 1024) { toastr.warning('500KB보다 작은 파일로 골라 주세요. (1초 안팎의 짧은 소리면 충분해요)', TITLE); return; }
-            const rd = new FileReader();
-            rd.onload = () => {
-                const set = settings(); set.mascotSoundFile = String(rd.result); set.mascotSoundName = f.name; set.mascotSound = 'custom';
-                saveSettings(); clearSoundCache();
-                el.querySelector('.ss-mfile').textContent = f.name; el.querySelector('[data-s="mascotSound"]').value = 'custom';
-                playMascotSound('custom'); toastr.success('미트볼 소리로 넣었어요.', TITLE);
-            };
-            rd.readAsDataURL(f);
-            return;
-        }
         const ev = e.target.dataset.sEvery;
         if (ev) { const set = settings(); set.injEvery = { ...(set.injEvery ?? {}), [ev]: e.target.value }; if (e.target.value === 'always') delete set.injEvery[ev]; saveSettings(); refreshNow(); return; }
         const k = e.target.dataset.s;
         if (!k) return;
         settings()[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.type === 'number' || e.target.type === 'range' ? Number(e.target.value) : e.target.value;
         saveSettings();
+        hintSetting(k, settings()[k]); // 방금 바꾼 설정에 주의할 게 있으면 한 번
         if (k === 'autoRegex' && e.target.checked) installRegex();
         if (k === 'legacyStatus') installRegex(); // 정규식도 같이 바꾼다
         if (k === 'ssGenLang' && e.target.value === 'enview') toastr.info('이제부터 만드는 상태창은 영어로 저장되고 화면에만 번역돼요. 이미 한국어로 저장된 칸은 그대로예요.', TITLE);
-        if (k === 'mascotSound' && e.target.value === 'custom' && !settings().mascotSoundFile) toastr.info('아래 「파일 고르기」로 소리 파일을 넣어 주세요. 넣기 전엔 냥냥으로 나요.', TITLE);
         if (k === 'mascotSound' || k === 'mascotVolume') playMascotSound(); // 고르면 바로 들려주기
         refreshNow();
     });
@@ -419,6 +486,8 @@ function renderSettings() {
         const a = e.target.closest('[data-s-act]')?.dataset.sAct;
         if (!a) return;
         if (a === 'diag') return diagnose();
+        if (a === 'report') return openReport();
+        if (a === 'tipreset') { settings().tipNever = {}; settings().hintSeen = {}; saveSettings(); toastr.info('다시 추천해 드릴게요.', TITLE); return; }
         if (a === 'whatsnew') return showWhatsNew(true);
         if (a === 'help') return openHelp();
         if (a === 'toenglish') return convertToEnglish(e.target.closest('button'));
@@ -433,7 +502,6 @@ function renderSettings() {
             return;
         }
         if (a === 'mascotsound') { playMascotSound(); return; }
-        if (a === 'mascotfileclear') { const set = settings(); delete set.mascotSoundFile; delete set.mascotSoundName; if (set.mascotSound === 'custom') set.mascotSound = 'meow'; saveSettings(); clearSoundCache(); el.querySelector('.ss-mfile').textContent = '없음'; el.querySelector('[data-s="mascotSound"]').value = set.mascotSound; return; }
         if (a === 'backup') return fullBackup();
         if (a === 'open') openSheet();
         if (a === 'wizard') openWizard();
@@ -541,6 +609,7 @@ function registerCommands() {
         unnamedArgumentList: [SlashCommandArgument.fromProps({ description: '물어볼 것 (비우면 창만 열어요)', typeList: ARGUMENT_TYPE.STRING, isRequired: false })],
         helpString: '미트볼 도우미에게 기능을 물어본다. 예: /ss-help 연인 확정은 어디서 해요?',
     });
+    add({ name: 'ss-report', callback: () => { openReport(); return ''; }, helpString: '🐞 오류 보고문을 만든다 (AI 0회 · 이름은 가리고 채팅 내용은 넣지 않음 · 공개 게시판에 올려도 되는 수준).' });
     add({ name: 'ss-diag', callback: async () => { await diagnose(); return ''; }, helpString: '자가 진단 — 망가진 기록을 찾아 고친다.' });
 }
 
@@ -551,23 +620,29 @@ function lastUserText() {
     return '';
 }
 async function onBeforeGenerate(type, _opts, dryRun) {
+    ctxReset();
     if (dryRun || !isActive() || !ready()) return;
     const set = settings(), meta = getMeta();
     let skip = !!meta.paused;
     if (!skip && set.skipQuiet && type === 'quiet') skip = true;
     // 조용한 생성(다른 확장의 요약 등)은 '다음 1번 건너뛰기'를 쓰지 않는다
     if (!skip && meta.skipOnce && type !== 'quiet') { skip = true; meta.skipOnce = false; saveMeta(); renderHud(); }
+    // 건너뛴 답(OOC 등)을 이어쓰기하면 그 이어쓰기도 건너뛴다 (OOC 답이 이어쓰기로 분석되던 것)
+    if (!skip && type === 'continue' && app.lastGenSkipped) skip = true;
     if (!skip && set.oocDetect && type !== 'quiet' && type !== 'continue') {
         try { if (new RegExp(set.oocPattern, 'i').test(lastUserText())) skip = true; } catch { /* bad pattern */ }
     }
+    // 이번 생성은 상태창 없이 (OOC · 일시정지 · 건너뛰기) → 그 답은 따로 분석하지도 않는다 (OOC 답에서 숫자가 바뀌지 않게)
+    if (type !== 'quiet') app.lastGenSkipped = skip;
     if (skip) { setInjection(null); return; }
     const chat = ctx().chat ?? [];
     let limit = chat.length;
     const last = chat[chat.length - 1];
     if ((type === 'swipe' || type === 'regenerate') && last && !last.is_user) limit = chat.length - 1;
-    try { setInjection(buildInjection(compute(limit))); } catch (e) { console.error(LOG, e); }
+    // 사칭(impersonate)은 유저 글이라 <meatball> 출력 규칙을 빼고 보낸다 (안 빼면 내 메시지에 태그가 붙어 나옴)
+    try { setInjection(buildInjection(compute(limit), { noOutput: type === 'impersonate' })); } catch (e) { ssErr(LOG, e); }
 }
-function onGenEnded() { refresh(); }
+function onGenEnded() { refresh(); } // 바로 앞 렌더에서 이미 계산했으면 건너뜀
 // 서랍: AI 답이 끝나면 <meatball>을 본문에서 떼어 보관
 let stashSave = null;
 function stashAt(id, { replace = false, rerender = true, save = false } = {}) {
@@ -576,19 +651,19 @@ function stashAt(id, { replace = false, rerender = true, save = false } = {}) {
     const i = Number(id ?? chat.length - 1);
     const m = chat[i];
     if (!stashStatus(m, { replace })) return;
-    if (rerender) { try { ctx().updateMessageBlock?.(i, m); } catch (e) { console.warn(LOG, 'rerender', e); } }
+    if (rerender) { try { ctx().updateMessageBlock?.(i, m); } catch (e) { ssWarn(LOG, 'rerender', e); } }
     if (save) { clearTimeout(stashSave); stashSave = setTimeout(() => ctx().saveChat?.(), 400); }
 }
 function onReceived(id, type) {
     if (type === 'impersonate') return;
     stashAt(id, { replace: type !== 'continue' });
 }
-function onSwiped(id) { stashAt(id, { replace: true, save: true }); refresh(); }
-function onEdited(id) { stashAt(id, { replace: true, rerender: false, save: true }); refresh(); }
+function onSwiped(id) { stashAt(id, { replace: true, save: true }); refresh(true); }
+function onEdited(id) { stashAt(id, { replace: true, rerender: false, save: true }); refresh(true); }
 const analyzed = new Set();
 let pingCounter = 0;
 function onCharRendered(id, type) {
-    refreshNow();
+    refreshNow({ soft: true });
     notifyLatest();
     if (!isActive() || !ready() || type === 'quiet' || getMeta()?.paused) return;
     const chat = ctx().chat ?? [];
@@ -596,16 +671,22 @@ function onCharRendered(id, type) {
     const m = chat[i];
     if (!m || m.is_user || i !== chat.length - 1) return;
     const set = settings();
+    // 긴 채팅: 오래된 기록을 굳혀 매 턴 계산을 가볍게 (최근 120개는 그대로)
+    try { const meta = getMeta(); if (autoBake(meta)) { saveMeta(); refreshNow(); } } catch (e) { ssWarn(LOG, 'bake', e); }
+    // 💡 이야기에 맞는 순간 안 쓰는 기능 한 번 추천
+    maybeTip();
+    maybeLaterWarn(); // 오래 쓰다 생기는 문제는 나중에 한 번
     // 자동 선톡
     if (set.autoPing && modOn('contact') && app.current?.state.data.contact?.contacts.length) {
         pingCounter++;
         if (pingCounter >= Math.max(2, set.autoPingEvery) && rand(100) <= 50) {
             pingCounter = 0;
             const cs = app.current.state.data.contact.contacts.filter(c => !c.blocked);
-            if (cs.length) receivePing(cs[rand(cs.length) - 1].name, true).catch(e => console.warn(LOG, 'autoping', e));
+            if (cs.length) receivePing(cs[rand(cs.length) - 1].name, true).catch(e => ssWarn(LOG, 'autoping', e));
         }
     }
     if (set.sync !== 'analyze' && set.sync !== 'tagPlus') return;
+    if (app.lastGenSkipped) return; // OOC·건너뛴 턴의 답은 분석하지 않음
     if (set.sync === 'tagPlus' && hasStatus(m.mes)) return;
     if (m.extra?.[MODULE]?.bySwipe?.[m.swipe_id ?? 0]) return;
     const key = `${ctx().getCurrentChatId?.()}:${i}:${m.swipe_id ?? 0}:${m.mes.length}`;
@@ -614,13 +695,14 @@ function onCharRendered(id, type) {
     analyzeMessage(i);
 }
 async function onChatChanged() {
+    ctxReset(); lastFp = ''; app.lastGenSkipped = false;
     notified = new Set();
     pingCounter = 0;
     for (const el of panels) if (el._ss) { el._ss.mode = 'view'; el._ss.ui = {}; el._ss.tab = 'home'; el._ss.group = null; }
-    try { await followBranch(); } catch (e) { console.warn(LOG, 'branch', e); }
+    try { await followBranch(); } catch (e) { ssWarn(LOG, 'branch', e); }
     refreshNow();
     // 카드에 상태창이 들어 있으면 (이 채팅에 아직 없을 때) 한 번 물어본다
-    setTimeout(() => { offerCard(setBase).catch(e => console.warn(LOG, 'card', e)); }, 400);
+    setTimeout(() => { offerCard(setBase).catch(e => ssWarn(LOG, 'card', e)); }, 400);
 }
 
 // 마지막 편집 되돌리기 (관리 탭 버튼 · /ss-undo)
@@ -648,22 +730,24 @@ function registerMacros() {
             });
             return;
         }
-    } catch (e) { console.warn(LOG, 'macro', e); }
+    } catch (e) { ssWarn(LOG, 'macro', e); }
     // 옛 실리: 인자 없는 매크로로 자주 쓰는 것만
-    try { for (const k of ['cash', 'loc', 'date', 'time', 'weather', 'curse']) c.registerMacro?.(`ss_${k}`, () => get(k)); } catch (e) { console.warn(LOG, 'macro', e); }
+    try { for (const k of ['cash', 'loc', 'date', 'time', 'weather', 'curse']) c.registerMacro?.(`ss_${k}`, () => get(k)); } catch (e) { ssWarn(LOG, 'macro', e); }
 }
 
 function init() {
     const { eventSource, event_types: E } = ctx();
     const fresh = !ctx().extensionSettings?.[MODULE]; // 처음 설치한 사람에겐 「바뀐 점」을 안 띄운다
     settings();
+    // v2.7: 처음 설치하면 「기본 (추천)」 = 가벼운 모델 맞춤으로 시작
+    if (fresh) { Object.assign(settings(), structuredClone(PRESETS.light.set)); settings().v27asked = true; saveSettings(); }
     applyTheme();
     initMascot();
     renderSettings();
     registerCommands();
     registerMacros();
     if (settings().autoRegex) installRegex(false);
-    try { startViewTr(); } catch (e) { console.warn(LOG, 'viewtr', e); }
+    try { startViewTr(); } catch (e) { ssWarn(LOG, 'viewtr', e); }
     const on = (name, fn) => { if (E[name]) eventSource.on(E[name], fn); };
     on('CHAT_CHANGED', onChatChanged);
     on('GENERATION_AFTER_COMMANDS', onBeforeGenerate);
@@ -671,13 +755,15 @@ function init() {
     on('CHARACTER_MESSAGE_RENDERED', onCharRendered);
     on('MESSAGE_SWIPED', onSwiped);
     on('MESSAGE_EDITED', onEdited);
-    for (const ev of ['USER_MESSAGE_RENDERED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'MORE_MESSAGES_LOADED', 'GENERATION_STOPPED']) on(ev, refresh);
+    for (const ev of ['USER_MESSAGE_RENDERED', 'MORE_MESSAGES_LOADED', 'GENERATION_STOPPED']) on(ev, () => refresh());
+    for (const ev of ['MESSAGE_UPDATED', 'MESSAGE_DELETED']) on(ev, () => refresh(true)); // 옛 메시지가 바뀌면 다시 계산
     on('GENERATION_STARTED', (type, opts, dry) => { if (!dry) app.generatingAt = Date.now(); });
     on('GENERATION_ENDED', () => { app.generatingAt = 0; });
     on('GENERATION_STOPPED', () => { app.generatingAt = 0; });
     on('GENERATION_ENDED', onGenEnded);
     refreshNow();
-    try { whatsNewOnLoad(fresh); } catch (e) { console.warn(LOG, 'whatsnew', e); }
+    try { whatsNewOnLoad(fresh); } catch (e) { ssWarn(LOG, 'whatsnew', e); }
+    setTimeout(() => { askV27().catch(e => ssWarn(LOG, 'v27', e)); }, 3500);
     console.log(LOG, 'loaded', VERSION);
 }
 

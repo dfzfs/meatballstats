@@ -1,5 +1,5 @@
 // 🛟 데이터 지키기: 전체 백업 · 세이브 슬롯 · 카드에 상태창 붙이기 · 자가 진단 · 분기 따라가기 · 2회차
-import { app, ctx, settings, saveSettings, getMeta, saveMeta, MODULE, DATA_V, VERSION, MOD_IDS, MOD, NORM, normalize, clone, esc, short, fmtNum, uid, TITLE, LOG, stamp, findBy, norm, arr, DIFFS } from './core.js';
+import { app, ctx, settings, saveSettings, getMeta, saveMeta, MODULE, DATA_V, VERSION, MOD_IDS, MOD, NORM, normalize, clone, esc, short, fmtNum, uid, TITLE, LOG, stamp, findBy, norm, arr, DIFFS, ssWarn } from './core.js';
 import { compute, chatCharacters } from './engine.js';
 import { askConfirm, askInput, mascot } from './kit.js';
 
@@ -31,6 +31,9 @@ export function restoreFile(setBase) {
             if (obj.kind === 'full' && obj.meta?.base) {
                 if (!(await askConfirm(`백업 파일로 이 채팅의 상태창을 통째로 바꿀까요?<br><small>${esc(obj.meta.base.core?.title ?? '')} · ${new Date(obj.t).toLocaleString('ko-KR')}</small>`))) return;
                 const m = clone(obj.meta);
+                // 남이 준 파일일 수도 있으니 칸 모양을 지금 규칙대로 다듬어 넣는다 (깨진 값 때문에 계산이 멈추지 않게)
+                m.base = { ...m.base, core: NORM.core(m.base.core ?? {}), data: Object.fromEntries(MOD_IDS.map(id => [id, m.base.data?.[id] ? normalize(id, m.base.data[id]) : null])) };
+                m.adjust = arr(m.adjust).filter(a => a && typeof a === 'object').map(a => (a.set?.data && (a.set.mod === 'core' || NORM[a.set.mod]) ? { ...a, set: { ...a.set, data: a.set.mod === 'core' ? NORM.core(a.set.data) : normalize(a.set.mod, a.set.data) } } : a));
                 if ((m.startAt ?? 0) > chatLen()) { m.startAt = chatLen(); m.startKey = lastKey(); } // 다른 채팅에 넣을 때: 지금부터 이어서
                 m.adjust = arr(m.adjust).filter(a => (a.at ?? 0) <= chatLen());
                 m.chatId = ctx().getCurrentChatId?.() ?? null;
@@ -212,7 +215,7 @@ export async function diagnose() {
         let ok = false, dropped = 0;
         for (let k = 0; k < 30 && !ok; k++) {
             try { compute(); ok = true; } catch (e) {
-                console.warn(LOG, 'diagnose compute', e);
+                ssWarn(LOG, 'diagnose compute', e);
                 if (!meta.adjust.length) break;
                 meta.adjust.pop(); dropped++;
             }

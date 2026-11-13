@@ -1,8 +1,7 @@
 // 틀: 상태창 패널 · HUD · 사이드(미니) · 떠 있는 버튼 · 만들기 · 프롬프트/토큰 창 · 꾸미기 창
 import {
     DATA_V, app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, isActive, ready, MODS, MOD, MOD_IDS, EMPTY, NORM, normalize, DIFFS, diffOf, GENRES, CONTACT_MODES,
-    esc, short, clone, clamp, fmtNum, h, dateShort, userName, TITLE, LOG, VERSION, MODULE, sub, PLAY_MODES, normPlay, playOf, mascotUrl, relFromProfiles,
-} from './core.js';
+    esc, short, clone, clamp, fmtNum, h, dateShort, userName, TITLE, LOG, VERSION, MODULE, sub, PLAY_MODES, normPlay, playOf, mascotUrl, relFromProfiles, ssErr, ssWarn} from './core.js';
 import { compute, buildInjection, setInjection, commit, addAdjust, gatherSources, loreNames, chatCharacters, unreadCount, dueLetters, inTransit } from './engine.js';
 import { genModule, instructModule, genGroup, GEN_GROUPS } from './ai.js';
 import { PROMPT_DEFS, P, setPrompt, countTokens, estTokens, FEATURE_NAMES } from './prompts.js';
@@ -18,6 +17,9 @@ import { MONEY_ACTIONS } from './money.js';
 import { FATE_ACTIONS } from './fate.js';
 import { EDIT } from './core.js';
 import { translateSheet } from './translate.js';
+import { GEN_MODES, HYBRID_TPL, skeleton, skeletonCore, skeletonHint } from './skeleton.js';
+import { REC_MODS, defaultModOn } from './core.js';
+import { hintAfterAction } from './tips.js';
 
 export const panels = new Set();
 app.popup = popup;
@@ -67,7 +69,7 @@ export function renderPanel(el) {
             ${mascot('idle', 'lg', 'bob') || '<i class="fa-solid fa-wand-magic-sparkles"></i>'}<b>아직 이 채팅의 상태창이 없어요</b>
             ${pack ? `<button class="ss-btn pri big" data-act="cardload"><i class="fa-solid fa-id-card-clip"></i> 카드에 든 상태창 불러오기</button><small class="ss-hint">${esc(pack.title || '상태창')} · AI 호출 없이 바로 시작</small>` : ''}
             ${cr ? `<button class="ss-btn pri big" data-act="carrystart"><i class="fa-solid fa-clapperboard"></i> ${cr.round}회차로 시작</button><small class="ss-hint">${esc(cr.title || '')} — 지난 회차에서 이어받기</small>` : ''}
-            <p>AI가 캐릭터 카드·페르소나·로어북·채팅을 읽고 (없으면 새 세계관을 만들어) 모든 칸을 채워요. 어떤 카드든, 카드가 없어도 됩니다. 현대·판타지·마법·동양·중세·근대·SF·2차 창작 무엇이든.</p>
+            <p>장르만 고르면 돼요. 수치·달력 같은 기본 칸은 바로 채우고, 인물·지도 같은 세계관 칸은 AI가 카드·로어북을 읽고 채워요. AI 없이 「기본 틀만」으로 바로 시작할 수도 있어요. 어떤 카드든, 카드가 없어도 돼요.</p>
             <button class="ss-btn ${pack || cr ? '' : 'pri big'}" data-act="wizard"><i class="fa-solid fa-wand-magic-sparkles"></i> 상태창 만들기</button>
             <button class="ss-btn ghost" data-act="blank"><i class="fa-regular fa-file"></i> 빈 상태창으로 시작</button>
             <button class="ss-btn ghost" data-act="filerestore"><i class="fa-solid fa-box-open"></i> 백업 · 파일에서 불러오기</button>
@@ -187,7 +189,7 @@ async function onPanelAction(el, act, arg, btn) {
                 if (mod === 'rel' && s.data.profile) relFromProfiles(data, s.data.profile); // 다시 생성해도 프로필의 사람은 빠지지 않게
                 await commit(mod, data, `🔄 ${mname} 생성`);
                 toastr.success('채웠어요.', TITLE);
-            } catch (e) { console.error(LOG, e); toastr.error(`생성 실패: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
+            } catch (e) { ssErr(LOG, e); toastr.error(`생성 실패: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
             return;
         }
         case 'instruct': {
@@ -200,7 +202,7 @@ async function onPanelAction(el, act, arg, btn) {
                 busyBtn(btn, false);
                 const box = h(`<div class="ss-root ss-scope ss-preview"><h3>바뀌는 내용 — ${esc(mname)}</h3><p class="ss-hint">지시: ${esc(text)}</p>${diffHTML(before, after)}</div>`);
                 if (await confirmPopup(box)) { st.ui.instructText = ''; st.ui.instructOpen = false; await commit(mod, after, `💬 ${mname} 수정: ${short(text, 40)}`); toastr.success('적용했어요.', TITLE); }
-            } catch (e) { console.error(LOG, e); toastr.error(`수정 실패: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
+            } catch (e) { ssErr(LOG, e); toastr.error(`수정 실패: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
             return;
         }
         case 'pause': return togglePause();
@@ -232,7 +234,8 @@ function bindPanel(el) {
         if (b.tagName === 'SELECT' || (b.tagName === 'INPUT' && b.type !== 'button')) return;
         if (b.closest('.ss-ct-row') && e.target.closest('[data-act="cmenu"]') && b.dataset.act !== 'cmenu') return;
         e.preventDefault(); e.stopPropagation();
-        onPanelAction(el, b.dataset.act, b.dataset.arg, b).catch(err => { console.error(LOG, err); toastr.error(esc(err.message), TITLE); });
+        const act = b.dataset.act;
+        onPanelAction(el, act, b.dataset.arg, b).then(() => { if (!['tab', 'group', 'cancel', 'help', 'inbox', 'search', 'fullscreen', 'sidemini'].includes(act)) hintAfterAction(el._ss?.tab); }).catch(err => { ssErr(LOG, err); toastr.error(esc(err.message), TITLE); });
     });
     el.addEventListener('change', (e) => { const t = e.target; if (t.dataset.chg) CHANGES[t.dataset.chg]?.(el, t, app.current?.state); });
     el.addEventListener('keydown', (e) => {
@@ -242,6 +245,8 @@ function bindPanel(el) {
 export function rerenderPanels(force = false) {
     for (const el of [...panels]) {
         if (!el.isConnected) { panels.delete(el); continue; }
+        // 접혀 있는 사이드 펼침 패널은 안 보이니 그리지 않고, 펼칠 때 그린다 (갱신마다 숨은 화면을 그리던 것)
+        if (el.classList.contains('ss-panel-side') && settings().sideState !== 'full') { el._ssStale = true; continue; }
         if (force && el._ss?.mode === 'view') { renderPanel(el); continue; }
         if (el._ss?.hold) continue;
         if (el._ss?.mode && el._ss.mode !== 'view') continue;
@@ -364,8 +369,10 @@ export function renderHud() {
     if (hud.nextElementSibling !== anchor) anchor.parentElement.insertBefore(hud, anchor);
     hud.classList.toggle('paused', !!getMeta()?.paused);
     hud.classList.toggle('bottom', set.hudPos === 'bottom');
-    hud.innerHTML = hudHTML();
+    setHTML(hud, hudHTML());
 }
+// 같은 내용이면 다시 그리지 않기 (갱신마다 HUD·사이드를 새로 그리면 그 아래 채팅까지 다시 배치됨)
+function setHTML(el, html) { if (!el || el._ssHtml === html) return; el.innerHTML = html; el._ssHtml = html; }
 
 // ───── 사이드 패널 (닫힘 · 미니 · 펼침) ─────
 function sideMiniHTML() {
@@ -425,15 +432,17 @@ export function ensureUI() {
         panels.add(pnl);
     }
     if (!showSide && side) { panels.delete(side.querySelector('.ss-panel')); side.remove(); side = null; }
-    document.body.classList.remove('ss-body-full', 'ss-body-mini');
+    // body 클래스는 바뀔 때만 건드린다 (지웠다 다시 붙이면 매 갱신마다 페이지 전체 스타일을 다시 계산 → 긴 채팅 렉의 주범)
+    const want = side && set.sideState !== 'closed' ? `ss-body-${set.sideState}` : '';
+    for (const c of ['ss-body-full', 'ss-body-mini']) document.body.classList.toggle(c, c === want);
     if (side) {
-        side.dataset.state = set.sideState;
-        side.style.setProperty('--ss-side-w', `${clamp(Number(set.sideWidth) || 400, 300, 640)}px`);
-        if (set.sideState !== 'closed') document.body.classList.add(`ss-body-${set.sideState}`);
-        side.querySelector('.ss-mini-body').innerHTML = sideMiniHTML();
+        if (side.dataset.state !== set.sideState) side.dataset.state = set.sideState;
+        const w = `${clamp(Number(set.sideWidth) || 400, 300, 640)}px`;
+        if (side.style.getPropertyValue('--ss-side-w') !== w) side.style.setProperty('--ss-side-w', w);
+        setHTML(side.querySelector('.ss-mini-body'), sideMiniHTML());
         const n = app.current ? unreadCount(app.current.state) : 0;
         const b = side.querySelector('.ss-side-handle .ss-badge'); b.textContent = n || ''; b.classList.toggle('ss-hide', !n);
-        if (set.sideState === 'full') { const pnl = side.querySelector('.ss-panel'); if (!pnl.innerHTML || !pnl._ssShown) { pnl._ssShown = true; renderPanel(pnl); } }
+        if (set.sideState === 'full') { const pnl = side.querySelector('.ss-panel'); if (!pnl.innerHTML || !pnl._ssShown || pnl._ssStale) { pnl._ssShown = true; pnl._ssStale = false; renderPanel(pnl); } }
     }
 }
 app.ensureUI = ensureUI;
@@ -505,8 +514,8 @@ export async function openWizard() {
     const chatN = (c.chat ?? []).filter(m => !m.is_system).length;
     const hasSrc = chars.some(ch => (ch.description || '').trim().length > 30) || lore.length > 0;
     const meta = getMeta();
-    const curMods = meta?.mods ?? Object.fromEntries(MOD_IDS.map(id => [id, settings().defaultMods ? settings().defaultMods[id] !== false : true]));
-    const W = { base: hasSrc ? 'auto' : 'new', pmode: hasSrc ? 'minimal' : 'detailed', diff: meta?.difficulty ?? settings().difficulty, genre: '', cmode: 'auto', play: meta?.play ? playOf(meta).mode : 'auto' };
+    const curMods = meta?.mods ?? Object.fromEntries(MOD_IDS.map(id => [id, defaultModOn(id)]));
+    const W = { base: hasSrc ? 'auto' : 'new', pmode: hasSrc ? 'minimal' : 'detailed', diff: meta?.difficulty ?? settings().difficulty, genre: '', cmode: 'auto', play: meta?.play ? playOf(meta).mode : 'auto', gm: GEN_MODES[settings().genMode] ? settings().genMode : 'hybrid' };
     const el = h(`<div class="ss-root ss-scope ss-wizard">
         <div class="ss-wz-head"><i class="fa-solid fa-wand-magic-sparkles"></i><div><b>상태창 만들기</b><small>어떤 카드든, 카드가 없어도 돼요. AI가 관련 칸끼리 묶어서 채워요.</small></div></div>
         <div class="ss-card ss-found">
@@ -515,6 +524,10 @@ export async function openWizard() {
             <div><span>로어북</span><b>${lore.length ? lore.map(esc).join(', ') : '없음'}</b></div>
             <div><span>채팅</span><b>${chatN}개</b></div>
         </div>
+        <section class="ss-sec"><div class="ss-sec-h"><h4>만드는 방식</h4></div>
+            <div class="ss-seg wrap stack" data-w="gm">${Object.entries(GEN_MODES).map(([k, v]) => `<button data-v="${k}" class="${W.gm === k ? 'on' : ''}"><i class="fa-solid ${v.icon}"></i> ${v.name}<small>${v.desc}</small></button>`).join('')}</div>
+            <p class="ss-hint ss-gmhint ${W.gm === 'ai' ? 'ss-hide' : ''}">기본 틀은 아래 「장르」에 맞춰져요 (안 고르면 현대). 수치 · 주사위 · 달력 · 업적 · 운명 카드처럼 어떤 세계관에도 맞는 칸은 검증된 모양으로 고정되고, 나머지는 「기본 틀만」이면 빈 뼈대로 · 「기본 틀 + AI」면 AI가 세계관에 맞게 채워요.</p>
+        </section>
         <section class="ss-sec"><div class="ss-sec-h"><h4>세계관</h4></div>
             <div class="ss-seg wrap stack" data-w="base"><button data-v="auto" class="${W.base === 'auto' ? 'on' : ''}">기존 설정 그대로<small>카드·로어북·채팅을 읽어요</small></button><button data-v="new" class="${W.base === 'new' ? 'on' : ''}">새 세계관 만들기<small>아래 지시대로 새로</small></button></div>
             <div class="ss-f wide"><span>장르 (고르면 지시에 들어가요 · 선택)</span><div class="ss-pills" data-w="genre">${GENRES.map(g => `<button class="ss-pill" data-v="${g.id}">${g.name}</button>`).join('')}</div></div>
@@ -535,7 +548,7 @@ export async function openWizard() {
             <p class="ss-hint ss-diffdesc">${esc(DIFFS[W.diff].desc)}</p></section>
         <section class="ss-sec"><div class="ss-sec-h"><h4>프로필</h4></div>
             <div class="ss-seg wrap stack" data-w="pmode"><button data-v="minimal" class="${W.pmode === 'minimal' ? 'on' : ''}">최소<small>카드·로어북 그대로, 요약만 (토큰 절약)</small></button><button data-v="detailed" class="${W.pmode === 'detailed' ? 'on' : ''}">상세<small>이 시트만으로 (외모·말투·배경까지)</small></button></div></section>
-        <section class="ss-sec"><div class="ss-sec-h"><h4>쓸 기능</h4><div class="ss-sec-r"><button class="ss-btn sm ghost" data-all="1">전부</button><button class="ss-btn sm ghost" data-all="0">전부 끄기</button></div></div>
+        <section class="ss-sec"><div class="ss-sec-h"><h4>쓸 기능</h4><div class="ss-sec-r"><button class="ss-btn sm ghost" data-all="rec">추천만</button><button class="ss-btn sm ghost" data-all="1">전부</button><button class="ss-btn sm ghost" data-all="0">전부 끄기</button></div></div>
             ${GROUPS.filter(g => !['home', 'manage'].includes(g.id)).map(g => `<div class="ss-modgrp"><small>${g.name}</small><div class="ss-mods">${g.tabs.map(t => MOD[TAB_MOD(t)]).map(m => `<label class="ss-mod ${curMods[m.id] === false ? '' : 'on'}"><input type="checkbox" class="ss-switch" data-mod="${m.id}" ${curMods[m.id] === false ? '' : 'checked'}><i class="fa-solid ${m.icon}"></i><span><b>${m.name}</b><small>${m.desc}</small></span></label>`).join('')}</div></div>`).join('')}
             <div class="ss-f wide ss-cmode"><span>연락 방식</span><div class="ss-seg wrap" data-w="cmode">${Object.entries(CONTACT_MODES).map(([k, v]) => `<button data-v="${k}" class="${W.cmode === k ? 'on' : ''}"><i class="fa-solid ${v.icon}"></i> ${v.name}</button>`).join('')}</div><small class="ss-hint">휴대폰이 없는 세계관은 「편지」 — 배달부·갈매기·올빼미·강아지·마법 등으로 며칠 걸려 도착하고, 돈을 내면 급행(퀵)으로 바로 와요.</small></div>
         </section>
@@ -545,14 +558,17 @@ export async function openWizard() {
         <div class="ss-w-prog"></div>
     </div>`);
     const cost = () => {
-        const on = [...el.querySelectorAll('[data-mod]:checked')].map(i => i.dataset.mod).filter(id => id !== 'music'), n = on.length;
+        const on0 = [...el.querySelectorAll('[data-mod]:checked')].map(i => i.dataset.mod).filter(id => id !== 'music');
+        el.querySelector('.ss-gmhint')?.classList.toggle('ss-hide', W.gm === 'ai');
+        if (W.gm === 'tpl') { el.querySelector('.ss-w-cost').textContent = `AI 0회 · 토큰 0 · 기능 ${on0.length}개를 기본 틀로 바로 만들어요`; el.querySelector('.ss-cmode').classList.toggle('ss-hide', !el.querySelector('[data-mod="contact"]').checked); return; }
+        const on = W.gm === 'hybrid' ? on0.filter(id => !HYBRID_TPL.includes(id)) : on0, n = on.length;
         const g = settings().genBatch ? GEN_GROUPS.filter(gr => gr.some(id => on.includes(id))).length : n;
         el.querySelector('.ss-w-cost').textContent = settings().genBatch ? `AI ${g + 1}회 (세계 핵심 1 + 묶음 ${g} · 기능 ${n}개) · 보통 1~2분` : `AI ${n + 1}회 (세계 핵심 1 + 기능 ${n}) · 보통 1~3분`; el.querySelector('.ss-cmode').classList.toggle('ss-hide', !el.querySelector('[data-mod="contact"]').checked); };
     cost();
     el.addEventListener('change', (e) => { const l = e.target.closest('.ss-mod'); if (l) l.classList.toggle('on', e.target.checked); cost(); });
     el.addEventListener('click', (e) => {
         const all = e.target.closest('[data-all]');
-        if (all) { el.querySelectorAll('[data-mod]').forEach(i => { i.checked = all.dataset.all === '1'; i.closest('.ss-mod').classList.toggle('on', i.checked); }); cost(); return; }
+        if (all) { el.querySelectorAll('[data-mod]').forEach(i => { i.checked = all.dataset.all === 'rec' ? REC_MODS.includes(i.dataset.mod) : all.dataset.all === '1'; i.closest('.ss-mod').classList.toggle('on', i.checked); }); cost(); return; }
         const b = e.target.closest('[data-w] > button'); if (!b) return;
         const k = b.parentElement.dataset.w;
         if (k === 'genre') {
@@ -568,6 +584,7 @@ export async function openWizard() {
         W[k] = b.dataset.v;
         if (k === 'play') { el.querySelector('.ss-hero').classList.toggle('ss-hide', W.play !== 'director'); el.querySelector('.ss-cardworld').classList.toggle('ss-hide', W.play === 'auto'); }
         if (k === 'diff') el.querySelector('.ss-diffdesc').textContent = DIFFS[W.diff].desc;
+        if (k === 'gm') { settings().genMode = W.gm; saveSettings(); cost(); }
     });
     const results = { core: null, data: {} };
     let mods = {};
@@ -591,14 +608,14 @@ export async function openWizard() {
             else results.data[id] = data;
             setRow(id, name, 'ok', id === 'core' ? `${esc(data.title)} · ${PLAY_MODES[opts.play.mode].name}${opts.play.mode === 'director' && opts.play.hero ? ` (주인공 ${esc(opts.play.hero)})` : ''}${opts.play.cardIsWorld ? ' · 카드=세계관' : ''}${auto ? ' — 자동' : ''}` : '');
             return true;
-        } catch (e) { console.error(LOG, id, e); setRow(id, name, 'fail', `${esc(e.message)} <button class="ss-btn sm" data-retry="${id}">다시</button>`); return false; }
+        } catch (e) { ssErr(LOG, id, e); setRow(id, name, 'fail', `${esc(e.message)} <button class="ss-btn sm" data-retry="${id}">다시</button>`); return false; }
     };
     // 묶음 하나: 한 번에 받고, 빠진 칸만 따로 다시 받는다
     const runGroup = async (grp) => {
         for (const id of grp) setRow(id, MOD[id].name, 'run', grp.length > 1 ? '묶음 생성 중' : '');
         let got = {};
         try { got = await genGroup(grp, { sources: opts.sources, core: results.core, instruction: opts.instruction, profileMode: opts.pmode, contactMode: opts.cmode, feature: 'wizard', play: opts.play }); }
-        catch (e) { console.warn(LOG, 'group', grp, e); }
+        catch (e) { ssWarn(LOG, 'group', grp, e); }
         const miss = [];
         for (const id of grp) {
             if (got[id]) { results.data[id] = got[id]; setRow(id, MOD[id].name, 'ok'); } else miss.push(id);
@@ -635,18 +652,32 @@ export async function openWizard() {
         const canon = el.querySelector('.ss-w-canon').value.trim();
         let instruction = el.querySelector('.ss-w-ins').value.trim();
         if (g) instruction = `장르: ${g.name} — ${g.hint}${W.genre === 'fan' && canon ? ` 원작: ${canon} (원작 설정·인물·지명을 그대로 따를 것)` : ''}\n${instruction}`;
-        if (W.base === 'new' && !instruction && !(await askConfirm('추가 지시가 비어 있어요. AI가 아무 세계관이나 새로 만들어도 될까요?'))) return;
+        if (W.gm !== 'tpl' && W.base === 'new' && !instruction && !(await askConfirm('추가 지시가 비어 있어요. AI가 아무 세계관이나 새로 만들어도 될까요?'))) return;
         busyBtn(btn, true, '생성 중…');
         prog.innerHTML = settings().showMascot === false ? '' : `<div class="ss-mbanner">${mascot('think', 'md')}<span>열심히 만드는 중… 보통 1~2분 걸려요</span></div>`;
         results.core = null; results.data = {};
-        const sources = W.base === 'new' ? await gatherSources({ card: false, lore: false, chat: false, persona: src.persona }) : await gatherSources(src);
+        const sources = W.gm === 'tpl' ? '' : W.base === 'new' ? await gatherSources({ card: false, lore: false, chat: false, persona: src.persona }) : await gatherSources(src);
         const cmode = W.cmode === 'auto' && g && g.contact !== 'auto' ? g.contact : W.cmode;
         opts = { sources, instruction: W.base === 'new' ? `${instruction}\n(Create a NEW world. Ignore any existing card/lorebook.)` : instruction, pmode: W.pmode, cmode, play: W.play === 'auto' ? null : normPlay({ mode: W.play, hero: el.querySelector('.ss-w-hero').value, cardIsWorld: el.querySelector('.ss-w-world').checked }) };
         results.play = opts.play;
         app.playTemp = opts.play;
         // 추천 음악은 장면이 생기면 본편 AI가 고르므로 처음엔 빈 칸으로 (AI 호출 아끼기)
         if (mods.music) results.data.music = EMPTY.music();
-        const ids = MOD_IDS.filter(id => id !== 'music' && mods[id] && (!MOD[id].needs || mods[MOD[id].needs]));
+        const ids0 = MOD_IDS.filter(id => id !== 'music' && mods[id] && (!MOD[id].needs || mods[MOD[id].needs]));
+        // 기본 틀: AI 없이 바로 채우는 칸
+        const tplIds = W.gm === 'tpl' ? ids0 : W.gm === 'hybrid' ? ids0.filter(id => HYBRID_TPL.includes(id)) : [];
+        const ids = ids0.filter(id => !tplIds.includes(id));
+        for (const id of tplIds) { try { const d = skeleton(id, W.genre, { pmode: W.pmode, cmode }); if (d) { results.data[id] = normalize(id, d); setRow(id, MOD[id].name, 'ok', '기본 틀'); } } catch (e2) { ssWarn(LOG, 'skeleton', id, e2); } }
+        if (tplIds.length && W.gm === 'hybrid') { const hint = skeletonHint(W.genre, tplIds); if (hint) opts.instruction = `${opts.instruction}\n${hint}`.trim(); }
+        if (W.gm === 'tpl') {
+            results.core = skeletonCore(W.genre, { canon, instruction: el.querySelector('.ss-w-ins').value.trim() });
+            const chars = chatCharacters();
+            results.play = opts.play ?? normPlay({ mode: chars.length > 1 ? 'multi' : 'rp' });
+            setRow('core', '세계 핵심', 'ok', `${esc(results.core.title)} · 기본 틀 (AI 0회)`);
+            busyBtn(btn, false);
+            btn.innerHTML = '<i class="fa-solid fa-rotate"></i> 다시 만들기';
+            return showApply();
+        }
         setRow('core', '세계 핵심', 'wait');
         for (const id of ids) setRow(id, MOD[id].name, 'wait');
         if (await runOne('core')) {

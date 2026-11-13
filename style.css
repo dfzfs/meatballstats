@@ -18,7 +18,8 @@
 .ss-hide { display: none !important; }
 .ss-scope :is(h3, h4, p) { margin: 0; color: inherit; font-family: inherit; text-shadow: none; }
 .ss-scope :is(b, strong) { font-weight: 650; }
-.ss-scope small { font-size: .84em; opacity: 1; }
+.ss-scope small { font-size: .84em; opacity: .8; color: inherit; } /* 실리 기본 small 색(어두운 테마의 밝은 회색)이 흰 상태창에서 안 보이던 것 */
+.ss-scope a:not(.ss-btn) { color: var(--ss-acc); }
 .ss-scope .pos { color: var(--ss-pos); } .ss-scope .neg { color: var(--ss-neg); } .ss-scope .love { color: var(--ss-love); }
 .ss-scope .ss-dim, .ss-scope .ss-hint { color: var(--ss-dim); }
 .ss-scope .ss-hint { font-size: .86em; line-height: 1.45; }
@@ -204,6 +205,8 @@ dialog.ss-dlg .popup-content > .ss-root, dialog.ss-dlg .popup-content > .ss-pane
 .ss-head-t small { color: var(--ss-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ss-head-a { display: flex; align-items: center; gap: 2px; flex: none; }
 .ss-head-a .ss-chip { margin-right: 4px; }
+/* v2.7: 좁은 화면에선 제목이 한 글자로 잘리지 않게, 버튼 줄을 제목 아래로 내린다 */
+@media (max-width: 480px) { .ss-head { flex-wrap: wrap; row-gap: 6px; } .ss-head-t { flex: 1 1 calc(100% - 60px); } .ss-head-a { flex: 1 1 100%; justify-content: flex-end; } }
 .ss-pausebar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; margin-bottom: 10px; border-radius: var(--ss-r2); font-size: .86em; font-weight: 600;
     background: repeating-linear-gradient(-45deg, var(--ss-surface) 0 8px, var(--ss-bg) 8px 16px); border: 1px solid var(--ss-line); }
 .ss-pausebar .ss-btn { margin-left: auto; }
@@ -709,8 +712,8 @@ dialog.ss-dlg .popup-content > .ss-root, dialog.ss-dlg .popup-content > .ss-pane
 .ss-side-handle .ss-badge { position: absolute; top: -6px; left: -6px; }
 .ss-side-mini {
     position: absolute; right: 10px; top: 10px; width: 218px; max-height: calc(100% - 20px); overflow-y: auto; display: none; flex-direction: column; gap: 6px;
-    padding: 10px; border-radius: calc(var(--ss-r) + 2px); background: color-mix(in srgb, var(--ss-bg) 94%, transparent); border: 1px solid var(--ss-line); box-shadow: var(--ss-shadow);
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    padding: 10px; border-radius: calc(var(--ss-r) + 2px); background: var(--ss-bg); border: 1px solid var(--ss-line); box-shadow: var(--ss-shadow);
+    /* v2.7: 흐림(backdrop-filter) 뺌 — 바탕이 94% 불투명이라 거의 안 보이는데, 폰에서 글이 올라올 때마다 뒤를 다시 흐리게 그려 렉이 됐음 */
 }
 .ss-side-mini .ss-mini-body { display: flex; flex-direction: column; gap: 6px; }
 .ss-side-mini .ss-mini-w { padding: 7px 9px; cursor: pointer; }
@@ -730,6 +733,8 @@ dialog.ss-dlg .popup-content > .ss-root, dialog.ss-dlg .popup-content > .ss-pane
 .ss-side[data-state="full"] .ss-side-full { transform: none; }
 .ss-side[data-state="full"] .ss-side-handle { right: min(var(--ss-side-w, 400px), 100vw); }
 .ss-side[data-state="closed"] .ss-side-full { visibility: hidden; }
+/* v2.7: 미니일 때도 화면 밖 펼침 패널을 숨긴다 (폰에서 화면 밖 패널 때문에 페이지가 넓어지거나 눌리는 것 방지) · 닫힐 땐 미끄러진 뒤 숨김 */
+.ss-side[data-state="mini"] .ss-side-full { visibility: hidden; transition: transform .25s ease, visibility 0s linear .25s; }
 @media (min-width: 1200px) { body.ss-body-full #sheld { margin-right: var(--ss-side-w, 400px); } }
 
 /* 떠 있는 버튼 */
@@ -1093,3 +1098,12 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-stage.love { background: color-mix(in srgb, var(--ss-love) 16%, transparent); color: var(--ss-love); border-color: color-mix(in srgb, var(--ss-love) 40%, transparent); }
 .ss-bondrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: .88em; color: var(--ss-dim); }
 .ss-bondrow .ss-btn { padding: 2px 10px; font-size: .9em; }
+
+/* v2.7: 오류 보고문 · 업데이트 질문 */
+.ss-report .ss-rp-text { width: 100%; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.45; white-space: pre; overflow: auto; }
+.ss-report .ss-callout, .ss-report .ss-f, .ss-report .ss-tog { margin: 8px 0; }
+.ss-v27 .ss-tog { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; text-align: left; }
+.ss-v27 .ss-tog small { opacity: .8; line-height: 1.45; }
+.ss-help .ss-help-tools { justify-content: flex-start; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; }
+.ss-scope .ss-t-tip { display: flex; flex-direction: column; gap: 4px; flex: none; }
+.ss-scope .ss-t-btn.ghost { background: transparent; opacity: .75; }

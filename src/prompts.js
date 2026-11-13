@@ -1,5 +1,5 @@
 // 프롬프트 템플릿 (모두 사용자가 수정 가능) · 확장 AI 호출 · 사용 기록
-import { ctx, settings, saveSettings, LOG, TITLE, esc, swapUser } from './core.js';
+import { ctx, settings, saveSettings, LOG, TITLE, esc, swapUser, ssWarn } from './core.js';
 
 // group: 어느 때 쓰이는지 / cost: 토큰 종류
 // inject = 본편(메인 AI) 요청에 매번 붙는 글 · call = 확장이 따로 AI를 부를 때 쓰는 글
@@ -167,7 +167,7 @@ async function aiGenerateOnce(feature, systemPrompt, prompt, maxTokens, opts = {
                     catch { r = await svc.sendRequest(id, `${systemPrompt}\n\n${prompt}`, max); }
                     text = typeof r === 'string' ? r : (r?.content ?? '');
                 } catch (e) {
-                    console.warn(LOG, 'profile request failed', e);
+                    ssWarn(LOG, 'profile request failed', e);
                     if (!settings().aiFallbackMain) throw new Error(`연결 프로필 「${prof.name}」 요청 실패: ${e?.message ?? e}`);
                     toastr.warning(`연결 프로필 「${esc(prof.name)}」로 보내지 못해 메인 연결을 씁니다.`, TITLE);
                 }
@@ -228,7 +228,7 @@ export async function aiJSON(feature, systemPrompt, prompt, maxTokens) {
     const text = await aiGenerate(feature, systemPrompt, prompt, maxTokens);
     try { return parseJSON(text); } catch (e) {
         if (!settings().retryJSON) throw e;
-        console.warn(LOG, 'bad JSON, retry once', e);
+        ssWarn(LOG, 'bad JSON, retry once', e);
         const again = await aiGenerate(feature, `${systemPrompt}\n\nIMPORTANT: Your previous answer was not valid JSON (or was cut off). Output ONLY one complete, valid JSON object this time — shorter is fine, but it must be complete.`, prompt, maxTokens);
         return parseJSON(again);
     }

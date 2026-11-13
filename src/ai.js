@@ -1,5 +1,5 @@
 // 확장 AI가 하는 일 (모두 토큰이 드는 호출)
-import { app, ctx, settings, getMeta, MOD, NORM, normalize, ensureLove, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay } from './core.js';
+import { app, ctx, settings, getMeta, MOD, NORM, normalize, ensureLove, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay, ssWarn } from './core.js';
 import { P, aiGenerate, parseJSON, aiJSON } from './prompts.js';
 import { SCHEMA } from './core.js';
 import { compute, buildInjection, tagKeysFor, extractOps, stripStatus, recentChat, chatCharacters } from './engine.js';
@@ -63,7 +63,7 @@ export async function genGroup(mods, { sources, core, instruction, profileMode, 
         if (!d || typeof d !== 'object' || Array.isArray(d)) continue;
         if (mod === 'profile' && profileMode) d.mode = profileMode;
         if (mod === 'contact' && contactMode && contactMode !== 'auto') d.mode = contactMode;
-        try { out[mod] = normalize(mod, d); if (mod === 'rel') ensureLove(out[mod]); } catch (e) { console.warn(LOG, 'group normalize', mod, e); }
+        try { out[mod] = normalize(mod, d); if (mod === 'rel') ensureLove(out[mod]); } catch (e) { ssWarn(LOG, 'group normalize', mod, e); }
     }
     return out;
 }
@@ -89,20 +89,24 @@ export async function analyzeMessage(idx) {
     if (!m || m.is_user) return;
     const r = compute(idx);
     if (!r) return;
+    // 분석하는 동안 스와이프·다시 생성·편집되면 엉뚱한 답에 기록이 붙지 않게 (시작할 때의 답을 기억)
+    const sid = m.swipe_id ?? 0, mes0 = m.mes;
     const prevUser = [...c.chat.slice(0, idx)].reverse().find(x => x.is_user);
     const inj = buildInjection(r, { noOutput: true, full: true });
     const prompt = `${inj.main}\n${inj.people}\n\nKeys: ${tagKeysFor(getMeta()).join(' · ')}\n\n=== {{user}} ===\n${short(prevUser?.mes ?? '', 1500)}\n\n=== REPLY ===\n${short(stripStatus(m.mes), 4000)}`;
     try {
         const out = await aiGenerate('analyze', P('ai.analyze'), prompt, 600);
-        const ops = extractOps(/<(?:meatball|status)>/i.test(out) ? out : `<meatball>\n${out}\n</meatball>`);
+        const o2 = String(out ?? '').replace(/<(\/?)status>/gi, '<$1meatball>'); // 분석 모델이 옛 <status>로 답해도 읽는다
+        const ops = extractOps(/<meatball>/i.test(o2) ? o2 : `<meatball>\n${o2}\n</meatball>`);
+        if (c.chat?.[idx] !== m || (m.swipe_id ?? 0) !== sid || m.mes !== mes0) { ssWarn(LOG, 'analyze: message changed, dropped'); return; }
         m.extra ??= {};
         m.extra[MODULE] ??= { bySwipe: {} };
         m.extra[MODULE].bySwipe ??= {};
-        m.extra[MODULE].bySwipe[m.swipe_id ?? 0] = ops;
+        m.extra[MODULE].bySwipe[sid] = ops;
         await (c.saveChat?.() ?? c.saveChatDebounced?.());
         app.refreshNow?.();
         app.notifyLatest?.();
-    } catch (e) { console.warn(LOG, 'analyze failed', e); }
+    } catch (e) { ssWarn(LOG, 'analyze failed', e); }
 }
 
 // 그 인물에 대해 알고 있는 것

@@ -156,9 +156,8 @@ export const DICE_ACTIONS = {
         const r = doRoll(s, D);
         await animate(el, r);
         D.last = r;
-        el._ss.hold = true; // 기록 저장 중 깜빡임 방지
-        await addAdjust({ ops: [['_roll', JSON.stringify({ res: r.res, cls: r.cls, label: r.label, detail: r.detail })]], silent: true });
-        el._ss.hold = false;
+        el._ss.hold = true; // 기록 저장 중 깜빡임 방지 (저장이 실패해도 화면이 멈추지 않게 finally)
+        try { await addAdjust({ ops: [['_roll', JSON.stringify({ res: r.res, cls: r.cls, label: r.label, detail: r.detail })]], silent: true }); } finally { el._ss.hold = false; }
         app.renderPanel(el);
     },
     quick: (el, arg, btn, s) => {
@@ -174,10 +173,9 @@ export const DICE_ACTIONS = {
         const r = freeRoll(expr);
         if (!r) { toastr.warning('형식: 2d6+1, d100 …', '미트볼 상태창'); return; }
         await animate(el, r);
-        el._ss.ui.dice.last = r;
+        (el._ss.ui.dice ??= {}).last = r; // 굴리는 동안 다른 탭으로 가도 오류 없이
         el._ss.hold = true;
-        await addAdjust({ ops: [['_roll', JSON.stringify({ res: r.res, cls: r.cls, label: r.label, detail: r.detail })]], silent: true });
-        el._ss.hold = false;
+        try { await addAdjust({ ops: [['_roll', JSON.stringify({ res: r.res, cls: r.cls, label: r.label, detail: r.detail })]], silent: true }); } finally { el._ss.hold = false; }
         app.renderPanel(el);
     },
     rollin: (el) => { const r = el._ss.ui.dice?.last; if (r) { insertInput(r.tag); closeIfPopup(el); } },
