@@ -932,6 +932,10 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-scope .ss-callout.new { background: color-mix(in srgb, var(--ss-hi) 7%, var(--ss-bg)); border-color: color-mix(in srgb, var(--ss-hi) 30%, transparent); }
 
 /* 관계 단계 · 질투 · 해금 */
+/* 🙈 가린 칸 */
+.ss-scope .ss-hidebar { display: flex; align-items: center; gap: 8px; margin: 6px 10px 0; padding: 7px 10px; border-radius: var(--ss-r); background: var(--ss-surface); color: var(--ss-dim); font-size: .86em; border: 1px dashed var(--ss-line); }
+.ss-scope .ss-hidebar span { flex: 1; min-width: 0; }
+.ss-scope .ss-tabs .ss-hid { font-size: .72em; opacity: .6; margin-left: 3px; }
 .ss-scope .ss-stage { display: inline-block; font-size: .74em; font-weight: 650; padding: 1px 8px; border-radius: 999px; background: var(--ss-surface2); color: var(--ss-dim); vertical-align: 1px; margin-left: 4px; }
 .ss-scope .ss-stage.s2 { background: color-mix(in srgb, var(--ss-trust) 14%, var(--ss-bg)); color: var(--ss-trust); }
 .ss-scope .ss-stage.s3 { background: color-mix(in srgb, var(--ss-pos) 14%, var(--ss-bg)); color: var(--ss-pos); }

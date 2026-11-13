@@ -1,7 +1,7 @@
 // 틀: 상태창 패널 · HUD · 사이드(미니) · 떠 있는 버튼 · 만들기 · 프롬프트/토큰 창 · 꾸미기 창
 import {
     DATA_V, app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, isActive, ready, MODS, MOD, MOD_IDS, EMPTY, NORM, normalize, DIFFS, diffOf, GENRES, CONTACT_MODES,
-    esc, short, clone, clamp, fmtNum, h, dateShort, userName, TITLE, LOG, VERSION, MODULE, sub, PLAY_MODES, normPlay, playOf, mascotUrl, relFromProfiles, ssErr, ssWarn} from './core.js';
+    esc, short, clone, clamp, fmtNum, h, dateShort, userName, TITLE, LOG, VERSION, MODULE, sub, PLAY_MODES, normPlay, playOf, mascotUrl, relFromProfiles, ssErr, ssWarn, isHidden } from './core.js';
 import { compute, buildInjection, setInjection, commit, addAdjust, gatherSources, loreNames, chatCharacters, unreadCount, dueLetters, inTransit } from './engine.js';
 import { genModule, instructModule, genGroup, GEN_GROUPS } from './ai.js';
 import { PROMPT_DEFS, P, setPrompt, countTokens, estTokens, FEATURE_NAMES } from './prompts.js';
@@ -103,11 +103,15 @@ export function renderPanel(el) {
     const info = TAB_INFO(tab);
     const isFav = (settings().favTabs ?? []).includes(tab);
     const favBtn = tab !== 'home' ? `<button class="ss-tool ${isFav ? 'on' : ''}" data-act="favtog" title="${isFav ? '즐겨찾기에서 빼기' : '즐겨찾기 (★ 그룹에 모아 보기)'}"><i class="fa-${isFav ? 'solid' : 'regular'} fa-star"></i></button>` : '';
-    const tools = editable && data && st.mode !== 'edit' && st.mode !== 'json' ? `<div class="ss-tools">${favBtn}
+    // 🙈 가리기: 이 칸을 AI에게 안 보냄 (이 채팅 · 직접 다시 켤 때까지)
+    const hmod = tab === 'home' ? 'core' : MOD[mod] ? mod : null;
+    const hidden = !!(hmod && isHidden(hmod, meta));
+    const hideBtn = hmod && st.mode !== 'edit' && st.mode !== 'json' ? `<button class="ss-tool ${hidden ? 'on' : ''}" data-act="hidetog" title="${hidden ? 'AI에게 다시 보내기' : '가리기 — AI에게 이 칸을 안 보내요 (다시 켤 때까지)'}"><i class="fa-solid ${hidden ? 'fa-eye-slash' : 'fa-eye'}"></i></button>` : '';
+    const tools = editable && data && st.mode !== 'edit' && st.mode !== 'json' ? `<div class="ss-tools">${favBtn}${hideBtn}
             <button class="ss-tool ${st.ui.instructOpen ? 'on' : ''}" data-act="instructtog" title="AI에게 이 칸을 고치라고 지시 (AI 1회)"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI로 수정</span></button>
             <button class="ss-tool" data-act="edit" title="직접 편집"><i class="fa-solid fa-pen"></i><span>편집</span></button>
             <button class="ss-tool" data-act="json" title="JSON 편집"><i class="fa-solid fa-code"></i></button>
-            <button class="ss-tool" data-act="regen" title="이 칸만 다시 생성 (AI 1회)"><i class="fa-solid fa-rotate"></i></button></div>` : favBtn && pseudo ? `<div class="ss-tools">${favBtn}</div>` : '';
+            <button class="ss-tool" data-act="regen" title="이 칸만 다시 생성 (AI 1회)"><i class="fa-solid fa-rotate"></i></button></div>` : (favBtn || hideBtn) && (pseudo || !data) ? `<div class="ss-tools">${favBtn}${hideBtn}</div>` : '';
     const instruct = st.ui.instructOpen && editable && data ? `<div class="ss-instruct"><textarea class="ss-in" rows="2" placeholder="${esc(INSTRUCT_HINT[mod] ?? '예: 스토리에 맞게 ○○를 추가하고 △△는 바꿔줘')}">${esc(st.ui.instructText ?? '')}</textarea>
         <div class="ss-row-btns"><button class="ss-btn pri sm" data-act="instruct">${ai1} 보내기</button><small class="ss-hint">바뀌는 내용을 먼저 보여 드려요.</small></div></div>` : '';
     const c = s.core, cal = s.data.calendar, here = s.data.map?.here;
@@ -131,7 +135,8 @@ export function renderPanel(el) {
         </header>
         ${meta.paused ? `<div class="ss-pausebar">${mascot('sleep', 'xs') || '<i class="fa-solid fa-pause"></i>'} 일시정지 중 — AI에게 상태를 보내지 않아요<button class="ss-btn sm" data-act="pause">재개</button></div>` : ''}
         <nav class="ss-groups">${gs.map(x => `<button class="${x === g ? 'on' : ''}" data-act="group" data-arg="${x.id}"><i class="fa-solid ${x.icon}"></i><span>${x.name}</span>${x === g ? '' : groupBadge(x, s, meta)}</button>`).join('')}</nav>
-        ${groupTabs(g, meta).length > 1 ? `<nav class="ss-tabs">${groupTabs(g, meta).map(t => `<button class="${t === tab ? 'on' : ''}" data-act="tab" data-arg="${t}"><i class="fa-solid ${TAB_INFO(t).icon}"></i>${esc(TAB_INFO(t).name)}${badgeFor(t, s, meta)}</button>`).join('')}</nav>` : ''}
+        ${groupTabs(g, meta).length > 1 ? `<nav class="ss-tabs">${groupTabs(g, meta).map(t => `<button class="${t === tab ? 'on' : ''}" data-act="tab" data-arg="${t}"><i class="fa-solid ${TAB_INFO(t).icon}"></i>${esc(TAB_INFO(t).name)}${isHidden(t === 'home' ? 'core' : TAB_MOD(t), meta) ? '<i class="fa-solid fa-eye-slash ss-hid" title="가림 — AI에게 안 보냄"></i>' : ''}${badgeFor(t, s, meta)}</button>`).join('')}</nav>` : ''}
+        ${hidden ? `<div class="ss-hidebar"><i class="fa-solid fa-eye-slash"></i><span>가린 칸 — AI에게 이 칸을 안 보내는 중이에요. 화면·직접 편집·변화 기록은 그대로예요.</span><button class="ss-btn sm" data-act="hidetog">다시 보내기</button></div>` : ''}
         ${tools || instruct ? `<div class="ss-toolrow"><div class="ss-toolrow-t"><i class="fa-solid ${info.icon}"></i>${esc(info.name)}</div>${tools}</div>${instruct}` : ''}
         <main class="ss-body" data-tab="${tab}">${body}</main>
     </div>`;
@@ -162,6 +167,17 @@ async function onPanelAction(el, act, arg, btn) {
         case 'blank': return startBlank();
         case 'group': { const g = allGroups().find(x => x.id === arg); if (!g) return; st.group = g.id; st.tab = groupTabs(g, getMeta())[0]; st.mode = 'view'; st.ui = {}; return rr(); }
         case 'favtog': { const set = settings(); const f = new Set(set.favTabs ?? []); if (f.has(tab)) f.delete(tab); else f.add(tab); set.favTabs = [...f]; saveSettings(); if (!f.has(tab) && st.group === 'fav') st.group = null; return rerenderPanels(true); }
+        case 'hidetog': {
+            const hm = tab === 'home' ? 'core' : TAB_MOD(tab);
+            const m = getMeta(true), h = { ...(m.hide ?? {}) };
+            const now = !h[hm];
+            if (now) h[hm] = true; else { delete h[hm]; if (s) m.fullTurn = s.turn; } // 다시 켠 턴엔 변화 위주라도 전체를 한 번
+            m.hide = h;
+            await saveMeta();
+            app.refreshNow?.();
+            toastr.info(now ? `「${mname}」을(를) 가렸어요. 다시 켤 때까지 AI에게 안 보내요 (화면·기록은 그대로).` : `「${mname}」을(를) 다시 AI에게 보내요.`, TITLE);
+            return rerenderPanels(true);
+        }
         case 'inbox': return app.openInbox?.();
         case 'search': return app.openSearch?.();
         case 'help': return app.openHelp?.();
