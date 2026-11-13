@@ -1,5 +1,5 @@
 // 확장 AI가 하는 일 (모두 토큰이 드는 호출)
-import { app, ctx, settings, getMeta, MOD, NORM, normalize, ensureLove, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay, ssWarn } from './core.js';
+import { app, ctx, settings, getMeta, MOD, NORM, normalize, ensureLove, LOVE_AXES, relAxes, fixLoveLadder, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay, ssWarn } from './core.js';
 import { P, aiGenerate, parseJSON, aiJSON } from './prompts.js';
 import { SCHEMA } from './core.js';
 import { compute, buildInjection, tagKeysFor, extractOps, stripStatus, recentChat, chatCharacters } from './engine.js';
@@ -30,6 +30,7 @@ export async function genModule(mod, { sources, core, instruction, profileMode, 
     if (mod === 'profile' && profileMode) obj.mode = profileMode;
     if (mod === 'contact' && contactMode && contactMode !== 'auto') obj.mode = contactMode;
     const out = mod === 'core' ? NORM.core(obj) : normalize(mod, obj);
+    if (mod === 'rel') { if (!out.affName) Object.assign(out, LOVE_AXES); fixLoveLadder(out); } // 새로 만드는 관계는 애정 · 우정 (v2.7)
     return mod === 'rel' ? ensureLove(out) : out; // 연인 단계는 늘 있게
 }
 
@@ -63,7 +64,7 @@ export async function genGroup(mods, { sources, core, instruction, profileMode, 
         if (!d || typeof d !== 'object' || Array.isArray(d)) continue;
         if (mod === 'profile' && profileMode) d.mode = profileMode;
         if (mod === 'contact' && contactMode && contactMode !== 'auto') d.mode = contactMode;
-        try { out[mod] = normalize(mod, d); if (mod === 'rel') ensureLove(out[mod]); } catch (e) { ssWarn(LOG, 'group normalize', mod, e); }
+        try { out[mod] = normalize(mod, d); if (mod === 'rel') { if (!out[mod].affName) Object.assign(out[mod], LOVE_AXES); fixLoveLadder(out[mod]); ensureLove(out[mod]); } } catch (e) { ssWarn(LOG, 'group normalize', mod, e); }
     }
     return out;
 }
@@ -80,7 +81,10 @@ export async function instructModule(mod, instruction, state) {
         `=== OUTPUT JSON SHAPE ===\n${SCHEMA[mod]}`,
     ];
     const obj = await finJSON((await aiJSON('instruct', P('gen.system'), L.join('\n\n'))));
-    return mod === 'core' ? NORM.core(obj) : normalize(mod, obj);
+    const out = mod === 'core' ? NORM.core(obj) : normalize(mod, obj);
+    // 관계 수치 이름은 지시에 「애정·우정·호감·신뢰」가 없으면 그대로 둔다 (옛 채팅의 호감·신뢰 뜻이 몰래 바뀌지 않게)
+    if (mod === 'rel' && curData && !/애정|우정|호감|신뢰|romance|friendship/i.test(instruction)) { out.affName = curData.affName ?? ''; out.trustName = curData.trustName ?? ''; }
+    return out;
 }
 
 export async function analyzeMessage(idx) {
@@ -119,7 +123,7 @@ function aboutPerson(who, state) {
         `World: ${state.core.title} — ${short(state.core.summary, 500)}`,
         d.calendar ? `Now: ${dateStr(d.calendar)} ${d.calendar.time}` : '',
         prof ? `About ${who}: ${prof.summary} ${prof.fields.map(f => `${f.k}: ${f.v}`).join(' / ')}` : card ? `About ${who}: ${short(card.description, 1500)}` : '',
-        rel ? `Relationship with {{user}}: ${rel.label || '-'} · 호감 ${rel.aff} · 신뢰 ${rel.trust} · ${rel.memo}` : '',
+        rel ? `Relationship with {{user}}: ${rel.label || '-'} · ${relAxes(state.data.rel).aff} ${rel.aff} · ${relAxes(state.data.rel).trust} ${rel.trust} · ${rel.memo}` : '',
         `Difficulty: ${DIFFS[diffOf()].name}`,
         `Recent story (for context):\n${recentChat(8)}`,
     ].filter(Boolean);
@@ -178,7 +182,7 @@ async function freshItems(mod, feature, state, extra = '') {
     const L = [
         `=== WORLD CORE ===\n${JSON.stringify(state.core)}`,
         state.data.calendar ? `=== NOW ===\n${dateStr(state.data.calendar)} ${state.data.calendar.time}` : '',
-        state.data.rel ? `=== RELATIONSHIPS ===\n${state.data.rel.user.map(r => `${r.name}: ${r.label} 호감${r.aff}`).join(' / ')}` : '',
+        state.data.rel ? `=== RELATIONSHIPS ===\n${state.data.rel.user.map(r => `${r.name}: ${r.label} ${relAxes(state.data.rel).aff}${r.aff}`).join(' / ')}` : '',
         `=== RECENT STORY ===\n${recentChat(Math.min(settings().recentForGen, 16)) || '(none)'}`,
         `=== PLAY STYLE ===\n${playLine()}`,
         `=== EXISTING (don't repeat) ===\n${JSON.stringify(cur ?? {}).slice(0, 3000)}`,
@@ -223,7 +227,7 @@ export async function newSns(state) {
 export async function snsReactions(state, post) {
     const L = [
         `=== WORLD CORE ===\n${JSON.stringify(state.core)}`,
-        state.data.rel ? `=== PEOPLE ===\n${state.data.rel.user.map(r => `${r.name}: ${r.label} 호감${r.aff}`).join(' / ')}` : '',
+        state.data.rel ? `=== PEOPLE ===\n${state.data.rel.user.map(r => `${r.name}: ${r.label} ${relAxes(state.data.rel).aff}${r.aff}`).join(' / ')}` : '',
         `=== RECENT STORY ===\n${recentChat(6) || '(none)'}`,
         `=== POST by ${post.mine ? '{{user}}' : post.author} on ${state.data.sns?.name || 'SNS'} ===\n${post.text}${post.pic ? `\n[사진: ${post.pic}]` : ''}${post.tags ? `\n${post.tags}` : ''}`,
     ].filter(Boolean);

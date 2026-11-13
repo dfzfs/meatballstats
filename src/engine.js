@@ -2,7 +2,7 @@
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
     signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, trBack, viewTr, weekday,
-    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser, ssWarn} from './core.js';
+    PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser, ssWarn, relAxes} from './core.js';
 import { P } from './prompts.js';
 
 export const KEYMAP = {
@@ -16,7 +16,7 @@ export const KEYMAP = {
     room: 'room', '방': 'room',
     loc: 'loc', '위치': 'loc', '장소': 'loc', location: 'loc',
     place: 'place', '발견장소': 'place', '새장소': 'place',
-    aff: 'aff', '호감': 'aff', '호감도': 'aff', trust: 'trust', '신뢰': 'trust', '신뢰도': 'trust',
+    aff: 'aff', '호감': 'aff', '호감도': 'aff', '애정': 'aff', '애정도': 'aff', trust: 'trust', '신뢰': 'trust', '신뢰도': 'trust', '우정': 'trust', '우정도': 'trust',
     rel: 'rel', '관계': 'rel', pair: 'pair', '인물관계': 'pair',
     date: 'date', '날짜': 'date', day: 'date', '일': 'date', time: 'time', '시간': 'time', '시간대': 'time',
     days: 'date', '날짜이동': 'date', period: 'time', slot: 'time',
@@ -175,7 +175,7 @@ const effSum = (s, re) => {
     return n;
 };
 export const priceMul = (s) => Math.max(0.1, 1 + effSum(s, /(?:가격|물가|prices?)\s*([+\-−]?\d+(?:\.\d+)?)\s*%/i) / 100);
-export const affMul = (s) => Math.max(0, 1 + effSum(s, /(?:호감|aff(?:ection)?)\s*(?:상승|획득|gains?)?\s*([+\-−]?\d+(?:\.\d+)?)\s*%/i) / 100);
+export const affMul = (s) => Math.max(0, 1 + effSum(s, /(?:호감|애정|aff(?:ection)?)\s*(?:상승|획득|gains?)?\s*([+\-−]?\d+(?:\.\d+)?)\s*%/i) / 100);
 export const loanBlocked = (s) => (s?.data?.fate?.curses ?? []).some(c => c.effects.some(e => /대출\s*불가|no\s+loans?/i.test(e)));
 export const LOAN_KIND = {
     bank: { name: '은행', rate: 10, days: 30, icon: 'fa-building-columns' },
@@ -276,8 +276,8 @@ function metric(s, lhs) {
     const t = lhs.trim();
     const w = s.data.wallet;
     if (w && (['돈', '소지금', 'cash', 'money'].includes(t) || norm(t) === norm(w.currency))) return w.cash;
-    const rm = t.match(/^(호감|신뢰|aff|trust)\s*[:：]\s*(.+)$/i);
-    if (rm) { const r = findBy(s.data.rel?.user ?? [], rm[2]); return r ? r[/호감|aff/i.test(rm[1]) ? 'aff' : 'trust'] : null; }
+    const rm = t.match(/^(호감|신뢰|애정|우정|aff|trust)\s*[:：]\s*(.+)$/i);
+    if (rm) { const r = findBy(s.data.rel?.user ?? [], rm[2]); return r ? r[/호감|애정|aff/i.test(rm[1]) ? 'aff' : 'trust'] : null; }
     if (t === '빚' || t === 'debt') return (w?.loans ?? []).filter(l => l.status === 'open' || l.status === 'late').reduce((a, l) => a + l.owed, 0);
     const bar = findBy(s.data.stats?.bars ?? [], t); if (bar) return bar.cur;
     const at = findBy(s.data.stats?.attrs ?? [], t); if (at) return at.val;
@@ -404,7 +404,7 @@ export function ssValue(s, key0) {
     if (['bgm', 'music', '음악', '노래'].includes(K)) return d.music?.now ? `${d.music.now.title}${d.music.now.artist ? ` - ${d.music.now.artist}` : ''}` : '';
     if ((K === 'stage' || K === '단계') && arg) { const r = findBy(d.rel?.user ?? [], arg); const st = d.rel?.stages?.length ? d.rel.stages : DEFAULT_STAGES; return r ? st[clamp(r.stage ?? 0, 0, st.length - 1)]?.name ?? '' : ''; }
     if ((K === 'jealous' || K === '질투') && arg) { const r = findBy(d.rel?.user ?? [], arg); return r ? String(r.jealous ?? 0) : ''; }
-    if ((K === 'aff' || K === '호감' || K === 'trust' || K === '신뢰') && arg) { const r = findBy(d.rel?.user ?? [], arg); return r ? String(r[/^(aff|호감)$/.test(K) ? 'aff' : 'trust']) : ''; }
+    if (['aff', '호감', '애정', 'trust', '신뢰', '우정'].includes(K) && arg) { const r = findBy(d.rel?.user ?? [], arg); return r ? String(r[/^(aff|호감|애정)$/.test(K) ? 'aff' : 'trust']) : ''; }
     if ((K === 'stat' || K === '수치') && arg) { const b = findBy(d.stats?.bars ?? [], arg); return b ? String(b.cur) : ''; }
     if ((K === 'item' || K === '아이템') && arg) { const it = findBy(d.wallet?.items ?? [], arg); return it ? String(it.qty) : '0'; }
     const v = metric(s, key);
@@ -440,7 +440,7 @@ function romGain(s, info, name, key, gain) {
     const cap = set.romCap ? Math.max(1, Math.round(num(key === 'aff' ? set.romCapAff : set.romCapTrust, 5))) : Infinity;
     g = Math.max(0, Math.min(g, cap - used));
     info.romUsed[k] = used + g;
-    if (g < gain) info.labels.push(`⚖️ ${name} ${key === 'aff' ? '호감' : '신뢰'} +${gain}→+${g}`);
+    if (g < gain) info.labels.push(`⚖️ ${name} ${relAxes(s.data.rel)[key === 'aff' ? 'aff' : 'trust']} +${gain}→+${g}`);
     return g;
 }
 // 이 채팅에서 로맨스 보정을 처음 켠 지점 기록 (그 전 메시지는 예전 규칙 그대로 → 옛 채팅 숫자가 안 바뀜)
@@ -1291,6 +1291,14 @@ export function unreadCount(s, meta = getMeta()) {
 }
 
 // ───── 프롬프트 주입 ─────
+// aff · trust 키 설명 — 애정/우정 방식이면 뜻을 분명히 (친구에게 애정을 올리지 않게)
+function relKeyHint() {
+    const rl = app.current?.state?.data?.rel, A = relAxes(rl, viewTr());
+    return A.love
+        ? `aff (이름 ±N — ${A.aff}: romantic feelings toward {{user}} ONLY; friendly moments don't raise it) · trust (이름 ±N — ${A.trust}: friendship, closeness, trust)`
+        : `aff (이름 ±N — ${A.aff}: affection) · trust (이름 ±N — ${A.trust})`;
+}
+const relKeyShort = (rl) => { const A = relAxes(rl, viewTr()); return A.love ? ` (aff = ${A.aff}: romance only · trust = ${A.trust})` : ''; };
 export function tagKeysFor(meta) {
     const K = [];
     const on = (id) => modOn(id, meta);
@@ -1299,7 +1307,7 @@ export function tagKeysFor(meta) {
     if (on('shop')) K.push('stock (상점 | 상품 | 가격 | 설명 — when the story adds goods; 상점 | -상품 removes)');
     if (on('home')) K.push('decor (+가구 | 방 — when {{user}} gets/places furniture) · room (+새 공간 | 설명)');
     if (on('map')) K.push('loc (장소 — whenever {{user}} moves) · place (이름 | 설명 | 이어진곳 — newly discovered place)');
-    if (on('rel')) K.push('aff (이름 ±N — affection) · trust (이름 ±N) · rel (이름 = 관계 이름, when it truly changes) · pair (A & B = 관계)');
+    if (on('rel')) K.push(`${relKeyHint()} · rel (이름 = 관계 이름, when it truly changes) · pair (A & B = 관계)`);
     if (on('calendar')) K.push('days (+1 when days pass / 3월 14일 to jump) · period (one of the time slots) · weather (only when the story changes it) · event (날짜 | 제목 | 설명 — a new appointment)');
     if (on('quest')) K.push('quest (제목 | 새/수락/완료/실패 | 설명 — a new request appears, {{user}} accepts, or it ends; 제목 | 진행 내용 = progress)');
     if (on('news')) K.push('news (헤드라인 | 내용 — only for big public events)');
@@ -1537,7 +1545,7 @@ function buildUltra(r, opt = {}) {
     if (on('rel')) {
         const here = [], away = [];
         for (const x of d.rel.user) (inScene(x.name) ? here : away).push(x);
-        if (here.length) L.push(`♥${here.slice(0, 10).map(x => `${x.name}${x.aff}/${x.trust}${x.label ? `[${x.label}]` : ''}<${stageOf(d.rel, x).name}>${x.jealous >= 30 ? `💢${x.jealous}` : ''}`).join(' ')}`);
+        if (here.length) L.push(`♥(${relAxes(d.rel, viewTr()).aff}/${relAxes(d.rel, viewTr()).trust}) ${here.slice(0, 10).map(x => `${x.name}${x.aff}/${x.trust}${x.label ? `[${x.label}]` : ''}<${stageOf(d.rel, x).name}>${x.jealous >= 30 ? `💢${x.jealous}` : ''}`).join(' ')}`);
         if (away.length) L.push(`(장면 밖:${away.slice(0, 12).map(x => `${x.name}${x.aff}/${x.trust}`).join(' ')})`);
     }
     if (on('profile')) {
@@ -1565,7 +1573,7 @@ function buildUltra(r, opt = {}) {
     if (on('dice')) L.push('🎲[판정·…]=시스템 결과 그대로 서술 · 위험한 행동은 roll 키로 판정 요청');
     if (s.recent.length) L.push(`${viewTr() ? 'UI:' : 'UI행동:'}${recentI(s, 5)}`);
     if (!opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus')) {
-        const keys = tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ');
+        const keys = tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ') + (on('rel') ? relKeyShort(d.rel) : '');
         L.push(outRule(P('inj.ultra.output', { keys })));
     }
     return { main: L.filter(Boolean).join('\n'), people: '' };
@@ -1586,12 +1594,12 @@ function buildDelta(r, plan, opt = {}) {
     if (on('map') && d.map.here) L.push(`@${d.map.here}`);
     if (on('stats') && d.stats.bars.length) L.push(d.stats.bars.map(b => `${b.name}${fmtNum(b.cur)}/${fmtNum(b.max)}`).join(' ') + (d.stats.conds.length ? ` ⚠${d.stats.conds.map(c => c.name).join(',')}` : ''));
     if (on('wallet')) L.push(`$${fmtNum(d.wallet.cash)}${d.wallet.currency}`);
-    if (on('rel')) { const here = d.rel.user.filter(x => inScene(x.name)); if (here.length) L.push(`♥${here.slice(0, 8).map(x => `${x.name}${x.aff}/${x.trust}<${stageOf(d.rel, x).name}>${x.jealous >= 30 ? `💢${x.jealous}` : ''}`).join(' ')}`); }
+    if (on('rel')) { const here = d.rel.user.filter(x => inScene(x.name)); if (here.length) L.push(`♥(${relAxes(d.rel, viewTr()).aff}/${relAxes(d.rel, viewTr()).trust}) ${here.slice(0, 8).map(x => `${x.name}${x.aff}/${x.trust}<${stageOf(d.rel, x).name}>${x.jealous >= 30 ? `💢${x.jealous}` : ''}`).join(' ')}`); }
     if (on('fate')) L.push(...fateText(s, true));
     if (plan.changes.length) L.push(`${viewTr() ? 'changes:' : '변화:'}${plan.changes.slice(-14).join(' / ')}`);
     if (s.recent.length) L.push(`${viewTr() ? 'UI:' : 'UI행동:'}${recentI(s, 5)}`);
     if (!opt.noOutput && (set.sync === 'tag' || set.sync === 'tagPlus')) {
-        const keys = tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ');
+        const keys = tagKeysFor(meta).map(k => k.match(/(^|· )([a-z]+) \(/g)?.map(x => x.replace(/[·( ]/g, '')).join(' ')).join(' ') + (on('rel') ? relKeyShort(d.rel) : '');
         L.push(outRule(P('inj.ultra.output', { keys })));
     }
     return { main: L.filter(Boolean).join('\n'), people: '' };
@@ -1724,7 +1732,7 @@ function buildInjection0(r, opt = {}) {
     if (on('rel')) {
         const rl = d.rel;
         const here = rl.user.filter(x => inScene(x.name)), away = rl.user.filter(x => !inScene(x.name));
-        const W = viewTr() ? { aff: 'affection', trust: 'trust', stage: 'stage', jealous: 'jealousy' } : { aff: '호감', trust: '신뢰', stage: '단계', jealous: '질투' }; // 화면만 번역: 고정 낱말도 영어로
+        const AX = relAxes(rl, viewTr()), W = viewTr() ? { aff: AX.aff, trust: AX.trust, stage: 'stage', jealous: 'jealousy' } : { aff: AX.aff, trust: AX.trust, stage: '단계', jealous: '질투' }; // 화면만 번역: 고정 낱말도 영어로
         for (const x of here.slice(0, 12)) { const g = stageOf(rl, x); PP.push(`${x.name}${x.label ? ` [${x.label}]` : ''} → {{user}}: ${W.aff} ${x.aff} · ${W.trust} ${x.trust} · ${W.stage} 「${g.name}」${set.romBond && x.bond ? ' · 💞 lovers (confirmed)' : ''}${g.unlock && !lite ? ` (unlocked: ${short(g.unlock, 60)}${set.stageLock && !set.romFacts ? " — don't act beyond this stage yet" : ''})` : set.stageLock && !set.romFacts ? ' (stay within this stage)' : ''}${x.jealous >= 30 ? ` · ${W.jealous} ${x.jealous}/100 (show it subtly when they meet)` : ''}${x.memo && !lite ? ` — ${short(x.memo, 90)}` : ''}`); }
         if (away.length) PP.push(`Not in this scene (${W.aff}/${W.trust}): ${away.slice(0, 15).map(x => `${x.name} ${x.aff}/${x.trust}`).join(', ')}`);
         const pairs = rl.pairs.filter(p => inScene(p.a) || inScene(p.b));

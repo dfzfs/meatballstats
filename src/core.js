@@ -136,7 +136,7 @@ export const MODS = [
     { id: 'wallet', name: '재산', icon: 'fa-coins', desc: '돈 · 소지품' },
     { id: 'shop', name: '상점', icon: 'fa-store', desc: '재산으로 사고팔기', needs: 'wallet' },
     { id: 'home', name: '본거지', icon: 'fa-house-chimney', desc: '방·구역 꾸미기 (가구 배치)' },
-    { id: 'rel', name: '관계', icon: 'fa-people-arrows', desc: '호감·신뢰, 인물끼리의 관계' },
+    { id: 'rel', name: '관계', icon: 'fa-people-arrows', desc: '애정·우정, 관계 단계, 인물끼리의 관계' },
     { id: 'map', name: '지도', icon: 'fa-map-location-dot', desc: '장소 · 연결 · 현재 위치' },
     { id: 'calendar', name: '달력', icon: 'fa-calendar-days', desc: '세계 안의 날짜 · 시간 · 일정' },
     { id: 'contact', name: '연락', icon: 'fa-envelope', desc: '메신저 또는 편지 (세계관에 맞게)' },
@@ -162,6 +162,34 @@ export const DEFAULT_STAGES = [
     { name: '특별한 사이', at: 65, trust: 40, unlock: '애칭 · 질투 · 스킨십 조금' },
     { name: '연인', at: 85, trust: 55, unlock: '고백 이후 · 연인다운 행동', love: true },
 ];
+// v2.7: 새 채팅의 관계 수치 = 💗 애정(연애 감정) · 🤝 우정(친함·믿음). 친구는 우정만 오르고, 연인은 애정이 있어야 해요.
+// 데이터 키는 그대로 aff · trust (옛 채팅은 이름이 비어 있어 호감 · 신뢰로 보임 — 뜻이 바뀌지 않게)
+export const LOVE_AXES = { affName: '애정', trustName: '우정' };
+export const LOVE_STAGES = [
+    { name: '낯선 사이', at: -100, trust: -100, unlock: '' },
+    { name: '아는 사이', at: -100, trust: 0, unlock: '이름 부르기' },
+    { name: '친구', at: -100, trust: 25, unlock: '말 편하게 하기 · 사적인 연락' },
+    { name: '단짝', at: -100, trust: 50, unlock: '고민 털어놓기 · 단둘이 약속 · 비밀 나누기' },
+    { name: '설렘', at: 30, trust: 25, unlock: '서로 의식하기 · 애칭 · 질투 · 스킨십 조금' },
+    { name: '연인', at: 65, trust: 35, unlock: '고백 이후 · 연인다운 행동', love: true },
+];
+const LOVE_AXIS_RE = /애정|연정|사랑|설렘|romance|romantic|love/i;
+// 이 채팅의 관계 수치 이름 { aff, trust, love } — love = 애정/우정 방식 (aff는 연애 감정만)
+export function relAxes(rel, en = false) {
+    const a = String(rel?.affName ?? '').trim(), t = String(rel?.trustName ?? '').trim();
+    const love = LOVE_AXIS_RE.test(a);
+    if (en) return { aff: love ? 'romance' : a && /^[\x00-\x7f]+$/.test(a) ? a : 'affection', trust: love ? 'friendship' : t && /^[\x00-\x7f]+$/.test(t) ? t : 'trust', love };
+    return { aff: a || '호감', trust: t || '신뢰', love };
+}
+// AI가 만든 단계표 다듬기 (애정/우정 방식): 연애 단계(설렘·썸·연인 …) 앞의 우정 단계는 애정이 필요 없게 (-100)
+// → 친구로 지내기만 해도 AI가 애정을 올려야 단계가 오르는 일이 없게
+const ROMANCE_STAGE_RE = /설렘|썸|연인|애인|커플|짝사랑|두근|연애|romance|romantic|crush|lover|couple|sweetheart|dating/i;
+export function fixLoveLadder(rel) {
+    if (!rel?.stages?.length || !relAxes(rel).love) return rel;
+    const first = rel.stages.findIndex(x => x?.love === true || ROMANCE_STAGE_RE.test(String(x?.name ?? '')));
+    rel.stages.forEach((x, i) => { if (first < 0 ? !x.love : i < first) x.at = -100; });
+    return rel;
+}
 // 💞 연인 단계: 직접 표시한 단계 → 없으면 이름으로 짐작 (연인·애인·커플·lover…) → 없으면 -1 (우정·신뢰 단계뿐인 세계관)
 const LOVE_RE = /연인|애인|커플|부부|약혼|사랑하는|lover|couple|sweetheart|romanc|spouse|married|engaged/i;
 export function loveIndex(st) {
@@ -187,7 +215,8 @@ export function ensureLove(rel) {
     const top = rel.stages[rel.stages.length - 1];
     const en = settings().ssGenLang === 'enview';
     // 맨 위 단계보다 조금 높게 (같으면 그 단계를 건너뜀)
-    rel.stages.push({ name: en ? 'Lovers' : '연인', at: Math.min(100, Math.max(85, top.at + 5)), trust: Math.min(100, Math.max(55, top.trust + 5)), unlock: en ? 'after a confession · romantic affection and touch' : '고백 이후 · 연인다운 행동', love: true });
+    const lv = relAxes(rel).love; // 애정/우정 방식이면 애정 65 · 우정 35 정도로 (우정 단계 위에 바로)
+    rel.stages.push({ name: en ? 'Lovers' : '연인', at: Math.min(100, Math.max(lv ? 65 : 85, top.at + 5)), trust: Math.min(100, Math.max(lv ? 35 : 55, lv ? 35 : top.trust + 5)), unlock: en ? 'after a confession · romantic affection and touch' : '고백 이후 · 연인다운 행동', love: true });
     return rel;
 }
 // 처음 켜져 있는 기능 (v2.7): 어떤 채팅에도 꼭 필요한 6개만 — 나머지는 이야기에 맞는 순간 💡 기능 추천 알림으로 권한다 (tips.js)
@@ -426,7 +455,7 @@ export const EMPTY = {
     wallet: () => ({ currency: '골드', cash: 0, items: [], prices: [], fx: { unit: '', rate: 0 }, loans: [], regular: [], jobs: [] }),
     shop: () => ({ shops: [] }),
     home: () => ({ name: '', desc: '', rooms: [], storage: [], trash: [] }),
-    rel: () => ({ user: [], pairs: [], stages: clone(DEFAULT_STAGES), life: [] }),
+    rel: () => ({ user: [], pairs: [], stages: clone(LOVE_STAGES), life: [], ...LOVE_AXES }),
     map: () => ({ name: '', here: '', places: [] }),
     calendar: () => ({ y: 1, m: 1, d: 1, time: '아침', era: '', months: clone(DEFAULT_MONTHS), week: [...DEFAULT_WEEK], times: [...DEFAULT_TIMES], events: [], weather: '', autoWeather: true }),
     contact: () => ({ mode: 'phone', app: '메신저', contacts: [], threads: {}, unread: {}, recent: [], couriers: clone(COURIER_PRESETS.slice(0, 1)), express: { name: '급행 (퀵)', fee: 100 } }),
@@ -513,7 +542,8 @@ export const NORM = {
         return {
             user: arr(d.user).filter(r => r?.name).map(r => ({ name: str(r.name), label: str(r.label), aff: clamp(Math.round(num(r.aff, 0)), -100, 100), trust: clamp(Math.round(num(r.trust, 0)), -100, 100), memo: str(r.memo), stage: Number.isFinite(Number(r.stage)) && r.stage !== null && r.stage !== '' ? Math.round(Number(r.stage)) : -1, jealous: clamp(Math.round(num(r.jealous, 0)), 0, 100), met: str(r.met), bond: r.bond === true || r.bond === 'true', likes: str(r.likes), dislikes: str(r.dislikes), concern: str(r.concern) })),
             pairs: arr(d.pairs).filter(p => p?.a && p?.b).map(p => ({ a: str(p.a), b: str(p.b), label: str(p.label), memo: str(p.memo) })),
-            stages: stages.length ? stages : clone(DEFAULT_STAGES),
+            stages: stages.length ? stages : clone(str(d.affName) ? LOVE_STAGES : DEFAULT_STAGES),
+            affName: short(str(d.affName), 12), trustName: short(str(d.trustName), 12),
             life: arr(d.life).filter(x => x?.text).map(x => ({ who: str(x.who), text: str(x.text), date: str(x.date) })).slice(-20),
         };
     },
@@ -646,7 +676,7 @@ export const SCHEMA = {
     wallet: `{"currency":"화폐 단위","cash":1000,"items":[{"name":"소지품","qty":1,"desc":"설명","effect":"(쓰면 바뀌는 것, 예: 체력 +20 / 없으면 빈칸)"}],"prices":[{"name":"흔한 물건·서비스 (빵 한 개, 한 끼 식사, 여관 1박, 말 한 필, 한 달 월세 등)","price":10}],"jobs":[{"name":"{{user}}가 할 수 있는 일거리","pay":50,"effect":"일하면 바뀌는 것 (예: 기력 -20)"}],"regular":[{"name":"정기 수입·지출 (월급, 월세 등)","amount":-300,"every":"day|week|month"}],"fx":{"unit":"현실 화폐 (예: 원)","rate":0}}  (fx.rate = 이 화폐 1의 현실 가치, 모르면 0)`,
     shop: `{"shops":[{"name":"상점 이름","desc":"설명","place":"있는 장소","items":[{"name":"상품","price":100,"desc":"설명","kind":"item|deco (deco = 본거지에 놓는 가구·장식)","stock":-1}]}]}`,
     home: `{"name":"본거지 이름","desc":"설명","rooms":[{"name":"방/구역","desc":"지금 모습","decor":["놓여 있는 가구·장식 이름"]}],"storage":["창고에 있는 미배치 가구"]}`,
-    rel: `{"user":[{"name":"캐릭터","label":"{{user}}와의 관계 이름","aff":0,"trust":0,"memo":"관계 메모","met":"처음 만난 날 (예: 3월 2일 · 모르면 빈칸)"}],"pairs":[{"a":"캐릭터A","b":"캐릭터B","label":"관계","memo":"메모"}],"stages":[{"name":"관계 단계 이름","at":0,"trust":-100,"unlock":"이 단계에서 새로 생기는 것 (호칭·말투·행동)","love":false}]}  (aff 호감, trust 신뢰: -100~100 · stages: 낮은 단계부터 4~7개, at = 필요한 호감, trust = 필요한 신뢰 · 연인(커플) 단계 하나는 꼭 넣고 "love": true)`,
+    rel: `{"user":[{"name":"캐릭터","label":"{{user}}와의 관계 이름","aff":0,"trust":0,"memo":"관계 메모","met":"처음 만난 날 (예: 3월 2일 · 모르면 빈칸)"}],"pairs":[{"a":"캐릭터A","b":"캐릭터B","label":"관계","memo":"메모"}],"stages":[{"name":"관계 단계 이름","at":0,"trust":-100,"unlock":"이 단계에서 새로 생기는 것 (호칭·말투·행동)","love":false}],"affName":"애정","trustName":"우정"}  (aff = 💗 애정: {{user}}에 대한 연애 감정만 — 설렘·끌림·스킨십·고백으로 오르고, 친구·가족·동료는 낮게 · trust = 🤝 우정: 친함·믿음·의지 — 함께 보낸 시간·도움·솔직함으로 오름. 둘 다 -100~100. 친한 친구 = 우정 높고 애정 낮음. stages: 낮은 단계부터 4~7개, at = 필요한 애정, trust = 필요한 우정 · 우정 단계(친구·단짝·동료·사제 …)는 at -100 (애정 필요 없음) · 연애 단계(설렘·연인)만 at에 애정을 적어요 · 연인(커플) 단계 하나는 꼭 넣고 "love": true · affName/trustName은 그대로 "애정"/"우정")`,
     map: `{"name":"지도 이름","here":"현재 위치(장소 이름)","places":[{"name":"장소","desc":"설명","kind":"마을/건물/던전/자연 등","x":50,"y":50,"links":["이어진 장소 이름"],"known":true,"area":"속한 구역 (선택)","fare":0}]}  (x,y는 0~100 좌표, 겹치지 않게 퍼뜨림 · fare = 그곳까지 가는 요금, 보통 0)`,
     calendar: `{"era":"연호/기원(선택)","y":1,"m":1,"d":1,"time":"아침","months":[{"name":"1월","days":31}],"week":["월","화","수","목","금","토","일"],"times":["새벽","아침","낮","저녁","밤","심야"],"weather":"오늘 날씨 (맑음/비/눈 등)","events":[{"y":null,"m":3,"d":14,"title":"일정/기념일/축제","desc":"설명","repeat":"yearly|once"}]}`,
     contact: `{"mode":"phone|instant|letter","app":"연락 수단 이름(스마트폰 메신저 / 마법 통신구 / 편지 등)","contacts":[{"name":"연락 가능한 인물","handle":"아이디/주소(선택)","status":"상태 메시지 또는 사는 곳","courier":"(letter일 때) 이 인물이 주로 쓰는 배달 수단 이름"}],"couriers":[{"name":"배달 수단(배달부/갈매기/올빼미/강아지/전서구/마법 등 세계관에 맞게)","icon":"이모지 1개","min":1,"max":3,"fee":0,"note":"설명"}],"express":{"name":"급행 수단 이름(퀵·특급 파발 등)","fee":100}}  (min/max = 도착까지 걸리는 날 수, fee = 화폐 단위 요금)`,
@@ -711,9 +741,10 @@ export const EDIT = {
         { k: 'trash', label: '쓰레기통', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'date', label: '버린 날', type: 'text' }] },
     ],
     rel: [
-        { k: 'user', label: '{{user}}와의 관계', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'aff', label: '호감', type: 'num' }, { k: 'trust', label: '신뢰', type: 'num' }, { k: 'jealous', label: '질투 (0~100)', type: 'num' }, { k: 'met', label: '처음 만난 날', type: 'text' }, { k: 'memo', label: '메모', type: 'area' }, { k: 'likes', label: '끌리는 것 (로맨스 보정)', type: 'text' }, { k: 'dislikes', label: '싫어하는 것 (로맨스 보정)', type: 'text' }, { k: 'concern', label: '요즘 신경 쓰는 것 (로맨스 보정)', type: 'text' }] },
+        { k: 'user', label: '{{user}}와의 관계', type: 'list', title: 'name', fields: [{ k: 'name', label: '이름', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'aff', label: '💗 애정 (aff · 옛 채팅은 호감)', type: 'num' }, { k: 'trust', label: '🤝 우정 (trust · 옛 채팅은 신뢰)', type: 'num' }, { k: 'jealous', label: '질투 (0~100)', type: 'num' }, { k: 'met', label: '처음 만난 날', type: 'text' }, { k: 'memo', label: '메모', type: 'area' }, { k: 'likes', label: '끌리는 것 (로맨스 보정)', type: 'text' }, { k: 'dislikes', label: '싫어하는 것 (로맨스 보정)', type: 'text' }, { k: 'concern', label: '요즘 신경 쓰는 것 (로맨스 보정)', type: 'text' }] },
         { k: 'pairs', label: '인물끼리의 관계', type: 'list', title: 'a', fields: [{ k: 'a', label: 'A', type: 'text' }, { k: 'b', label: 'B', type: 'text' }, { k: 'label', label: '관계', type: 'text' }, { k: 'memo', label: '메모', type: 'text' }] },
-        { k: 'stages', label: '관계 단계 (호감·신뢰가 넘으면 해금)', type: 'list', title: 'name', fields: [{ k: 'name', label: '단계 이름', type: 'text' }, { k: 'at', label: '필요한 호감', type: 'num' }, { k: 'trust', label: '필요한 신뢰', type: 'num' }, { k: 'unlock', label: '해금되는 것 (호칭·말투·행동)', type: 'text' }, { k: 'love', label: '💞 연인 단계 (로맨스 보정 ①: 고백 후 💍 확정이 있어야 올라감)', type: 'bool' }] },
+        { k: 'affName', label: '💗 aff 수치 이름 (기본 애정 = 연애 감정만 · 비우면 옛 방식 「호감」)', type: 'text' }, { k: 'trustName', label: '🤝 trust 수치 이름 (기본 우정 · 비우면 옛 방식 「신뢰」)', type: 'text' },
+        { k: 'stages', label: '관계 단계 (두 수치가 모두 넘으면 해금 · 우정 단계는 필요한 애정 -100)', type: 'list', title: 'name', fields: [{ k: 'name', label: '단계 이름', type: 'text' }, { k: 'at', label: '필요한 애정 (aff · -100 = 상관없음)', type: 'num' }, { k: 'trust', label: '필요한 우정 (trust)', type: 'num' }, { k: 'unlock', label: '해금되는 것 (호칭·말투·행동)', type: 'text' }, { k: 'love', label: '💞 연인 단계 (로맨스 보정 ①: 고백 후 💍 확정이 있어야 올라감)', type: 'bool' }] },
         { k: 'life', label: '화면 밖 소식', type: 'list', title: 'who', fields: [{ k: 'who', label: '누가', type: 'text' }, { k: 'text', label: '한 일', type: 'text' }, { k: 'date', label: '날짜', type: 'text' }] },
     ],
     map: [

@@ -2,7 +2,7 @@
 // AI 없이 바로 만드는 범용 상태창 뼈대. 장르마다 화폐·게이지·장소 이름만 살짝 다르고, 나머지는 어떤 세계관에도 맞는 공통 틀이다.
 //   tpl    = 전부 기본 틀 (AI 0회 · 토큰 0) → 나중에 칸마다 「AI로 채우기」로 살을 붙인다
 //   hybrid = 게임 규칙 칸(수치·주사위·달력·업적·운명·메모·내 탭)은 기본 틀, 세계관 칸(인물·지도·상점·소식…)만 AI
-import { ctx, short, clone, DEFAULT_STAGES, DEFAULT_MONTHS, DEFAULT_WEEK, DEFAULT_TIMES, COURIER_PRESETS, CONTACT_MODES, GENRES, dayIndex } from './core.js';
+import { ctx, short, clone, LOVE_STAGES, LOVE_AXES, DEFAULT_MONTHS, DEFAULT_WEEK, DEFAULT_TIMES, COURIER_PRESETS, CONTACT_MODES, GENRES, dayIndex } from './core.js';
 
 export const GEN_MODES = {
     ai: { name: '전부 AI', icon: 'fa-wand-magic-sparkles', desc: '세계관에 꼭 맞게 · 모든 칸을 AI가 새로' },
@@ -78,7 +78,7 @@ const RISING = /스트레스|피로|허기/; // 0에서 시작해 오르는 게�
 // 범용 업적 — 어떤 세계관에도 있는 일들
 const ACH = [
     ['첫 친구', '누군가와 「친구」 단계가 되다'],
-    ['마음을 연 사람', '누군가의 신뢰가 50을 넘다'],
+    ['마음을 연 사람', '누군가와 「단짝」이 되다 (우정 50)'],
     ['사랑의 시작', '연인이 생기다'],
     ['탐험가', '장소 10곳을 발견하다'],
     ['단골', '같은 가게를 다섯 번 이용하다'],
@@ -174,7 +174,7 @@ export function skeleton(id, genre, opt = {}) {
             mode: opt.pmode === 'detailed' ? 'detailed' : 'minimal',
             list: [{ name: c.name1 || 'User', role: 'user', summary: short(String(c.powerUserSettings?.persona_description ?? ''), 110) || '주인공', fields: [] }, ...cast.map(x => ({ name: x.name, role: 'main', summary: x.desc, fields: [] }))],
         };
-        case 'rel': return { user: cast.map(x => ({ name: x.name, label: '', aff: 0, trust: 0, memo: '' })), pairs: [], stages: clone(DEFAULT_STAGES) };
+        case 'rel': return { user: cast.map(x => ({ name: x.name, label: '', aff: 0, trust: 0, memo: '' })), pairs: [], stages: clone(LOVE_STAGES), ...LOVE_AXES };
         case 'contact': {
             const mode = ['phone', 'instant', 'letter'].includes(opt.cmode) ? opt.cmode : (GENRES.find(x => x.id === genre)?.contact ?? 'phone');
             const md = ['phone', 'instant', 'letter'].includes(mode) ? mode : 'phone';

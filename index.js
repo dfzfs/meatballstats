@@ -149,6 +149,7 @@ const CHANGELOG = [
         ['💡 이것도 아세요? · ⚠️ 알아 두세요', '칸에서 뭔가 하면 그 칸의 팁을 가끔 하나씩, 토큰이 많이 드는 설정을 켜면 그 자리에서 주의를 한 번 알려 줘요. 「알아요」를 누르면 그 문구는 다시 안 나와요.'],
         ['🛡️ 숫자가 날아가지 않게', 'AI가 부호를 빼먹고 「cash: 120」처럼 쓰면 예전엔 돈이 120으로 바뀌었어요. 이제 지금 값과 가까우면 새 합계로, 아니면 빼먹은 +로 읽어요. 「days: 2」도 이틀 지남으로 읽고, 이어 쓰기에서 같은 변화를 다시 적어도 두 번 세지 않아요.'],
         ['✨ 처음부터 쉽게', '새 채팅은 꼭 필요한 6개(프로필·수치·재산·관계·지도·달력)만 켜진 채로 시작해요. 만들기 방식 기본값은 「기본 틀 + AI」, 기능 고르기에 「추천만」 버튼이 생겼어요.'],
+        ['💗 관계 수치 = 애정 · 우정', '새 채팅의 관계는 호감·신뢰 대신 💗 애정(연애 감정만)과 🤝 우정(친함·믿음)으로 세요. 친구·단짝 단계는 우정만 있으면 오르고, 설렘·연인 단계만 애정이 필요해서 친한 친구가 숫자 때문에 연인 쪽으로 가지 않아요. 기본 단계: 낯선 사이 → 아는 사이 → 친구 → 단짝 → 설렘 → 연인. 쓰던 채팅은 호감·신뢰 그대로예요 (관계 탭 ✏️ 편집에서 수치 이름을 바꾸거나, 관계 칸 🔄 다시 생성하면 새 방식).'],
         ['💡 기능 추천', '이야기에 문자·가게·의뢰 같은 말이 나오면 「이런 기능도 있어요 — 연락」처럼 한 번씩 알려 줘요. 「써 볼래요」를 누르면 그 채팅에서 켜지고 기본 틀로 바로 채워져요 (AI 0회). 기능마다 한 번만, 몇 턴에 한 번만 뜨고, 확장 설정에서 끌 수 있어요.'],
         ['🔍 기능 전체 점검', '「AK-47」처럼 이름 끝 숫자를 수량으로 읽던 것 · 이름에 쉼표·빗금이 있는 소지품을 쓰거나 팔면 둘로 나뉘던 것 · AI가 이름 자리에 「+3」 같은 걸 써서 유령 인물이 생기던 것 · 같은 퀘스트 진행이 매 턴 쌓이던 것 · 처음부터 있던 저주의 기간이 안 흐르던 것 · 주사위 기록 저장이 실패하면 화면이 멈추던 것 · 남의 백업 파일이 깨져 있으면 계산이 멈추던 것을 고쳤어요.'],
         ['🎭 사칭(impersonate)에 태그가 붙던 문제', '내 메시지를 AI가 대신 쓸 때 <meatball> 출력 규칙을 빼고 보내요.'],
@@ -417,15 +418,15 @@ function renderSettings() {
             <label class="checkbox_label"><input type="checkbox" data-s="musicToast" ${s.musicToast ? 'checked' : ''}> 곡이 바뀌면 팝업</label>
             <b class="ss-set-h">관계</b>
             <label class="checkbox_label"><input type="checkbox" data-s="stageLock" ${s.stageLock ? 'checked' : ''}> 관계 단계를 넘는 행동 막기 — 「아직 이 단계 이상은 하지 마」라고 본편 AI에게 알려 줘요 (천천히 가까워지는 연애용 · 끄면 단계만 알려 줌)</label>
-            <label class="checkbox_label"><input type="checkbox" data-s="jealousy" ${s.jealousy ? 'checked' : ''}> 질투 — 다른 사람과 가까워지면 호감 높은 사람의 질투가 올라요 (날이 지나면 식음)</label>
+            <label class="checkbox_label"><input type="checkbox" data-s="jealousy" ${s.jealousy ? 'checked' : ''}> 질투 — 다른 사람과 가까워지면 애정이 높은 사람의 질투가 올라요 (날이 지나면 식음)</label>
             <label class="checkbox_label"><input type="checkbox" data-s="offscreen" ${s.offscreen ? 'checked' : ''}> 화면 밖 생활 — 날이 지나면 본편 AI가 가끔 다른 사람 근황을 적어요</label>
             <label>속마음 엿보기 하루 횟수 (0 = 무제한)<input type="number" min="0" max="20" class="text_pole" data-s="peekPerDay" value="${s.peekPerDay}"></label>
             <b class="ss-set-h">💗 로맨스 보정 <small>(전부 선택 · 기본 꺼짐)</small></b>
             <small>AI가 유저 말에 다 맞춰 주거나, 친구인데 연인처럼 굴거나, 많이 놀았다고 연인 취급하는 걸 줄여요. 숫자를 바꾸는 기능(①②③)은 <b>켠 뒤에 오는 답부터</b> 적용돼서 옛 채팅의 숫자는 그대로예요.</small>
             <label class="checkbox_label"><input type="checkbox" data-s="romBond" ${s.romBond ? 'checked' : ''}> ① 연인은 고백으로만 — 맨 위 단계는 숫자만 차선 안 올라가요. 고백이 오가면 관계 탭에서 「💍 연인 확정」 <small>(토큰 거의 0)</small></label>
-            <label class="checkbox_label"><input type="checkbox" data-s="romCap" ${s.romCap ? 'checked' : ''}> ② 한 번에 확 못 오르게 — AI 답 1번에 한 사람의 호감·신뢰가 오를 수 있는 최대치 <small>(토큰 0)</small></label>
-            <div class="ss-set-inline"><label>호감 최대 +<input type="number" min="1" max="50" class="text_pole" data-s="romCapAff" value="${s.romCapAff}"></label><label>신뢰 최대 +<input type="number" min="1" max="50" class="text_pole" data-s="romCapTrust" value="${s.romCapTrust}"></label></div>
-            <label class="checkbox_label"><input type="checkbox" data-s="romFatigue" ${s.romFatigue ? 'checked' : ''}> ③ 연달아 꼬시면 덜 오르게 — 같은 사람 호감이 3턴 연속 오르면 60%, 4턴부터 34%만 <small>(토큰 0)</small></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="romCap" ${s.romCap ? 'checked' : ''}> ② 한 번에 확 못 오르게 — AI 답 1번에 한 사람의 애정·우정이 오를 수 있는 최대치 <small>(토큰 0)</small></label>
+            <div class="ss-set-inline"><label>애정(호감) 최대 +<input type="number" min="1" max="50" class="text_pole" data-s="romCapAff" value="${s.romCapAff}"></label><label>우정(신뢰) 최대 +<input type="number" min="1" max="50" class="text_pole" data-s="romCapTrust" value="${s.romCapTrust}"></label></div>
+            <label class="checkbox_label"><input type="checkbox" data-s="romFatigue" ${s.romFatigue ? 'checked' : ''}> ③ 연달아 꼬시면 덜 오르게 — 같은 사람 애정(호감)이 3턴 연속 오르면 60%, 4턴부터 34%만 <small>(토큰 0)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="romFacts" ${s.romFacts ? 'checked' : ''}> ④ 관계를 사실로 알려 주기 — 「하지 마」 대신 「지금은 친구고, 이 단계에선 이렇게 군다 · 선을 넘으려 하면 차가워지지 말고 자기 식으로 피한다」 <small>(장면 인물마다 주입 조금 · 켜면 위 「단계 넘는 행동 막기」 문구는 대신 빠져요)</small></label>
             <details class="ss-set-more"><summary>더 보기 — ⑤ 인물의 욕구 · ⑥ 의도 먼저 · ⑦ 내 주입문 · ⑧ 먼저 움직이기 · 주입 깊이</summary>
             <label class="checkbox_label"><input type="checkbox" data-s="romDrive" ${s.romDrive ? 'checked' : ''}> ⑤ 인물의 욕구 — 끌리는 것 · 싫어하는 것 · 요즘 신경 쓰는 것을 알려 주고, AI가 바뀌면 고쳐 적어요 <small>(관계 편집에서 직접 적을 수도 · 주입 조금)</small></label>

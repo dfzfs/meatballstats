@@ -31,7 +31,7 @@ DICE (주사위)
 - The user rolls from the sheet or /ss-roll; the result is put into the user's message as [판정 · …] BEFORE generation, and the AI must narrate exactly that outcome. The AI can ask for a roll with the "roll" key. Difficulty shifts the target (이지 −2, 하드 +2).
 
 RELATIONSHIPS (관계)
-- Each person has 호감(aff) and 신뢰(trust) from −100 to 100, and a stage (단계). Default stages: 낯선 사이 → 아는 사이 → 친구 → 가까운 사이 → 특별한 사이 → 연인. Both numbers must pass a stage's thresholds. Each stage unlocks behaviours. Stages are editable per world.
+- Each person has two numbers from −100 to 100 and a stage (단계). New chats (v2.7+): 💗 애정 (aff = romantic feelings only) and 🤝 우정 (trust = friendship · closeness). A best friend has high 우정 and low 애정, so friendship alone never becomes romance. Default stages: 낯선 사이 → 아는 사이 → 친구 → 단짝 (우정만 필요) → 설렘 → 연인 (애정 필요). Older chats keep 호감/신뢰 (same keys, old meaning); the names can be changed in 관계 탭 › ✏️ 편집 (aff/trust 수치 이름) or by 🔄 regenerating the 관계 panel. Both numbers must pass a stage's thresholds (-100 = not needed). Each stage unlocks behaviours. Stages are editable per world.
 - 질투 (jealousy gauge), 화면 밖 생활 (off-screen life after days pass), 속마음 엿보기 (💗? button, one AI call, daily limit), automatic anniversaries.
 - 「관계 단계를 넘는 행동 막기」: tells the AI not to act beyond the stage (a prohibition; can make characters cold).
 
