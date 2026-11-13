@@ -862,6 +862,20 @@ export function applyOp(s, rawKey, rawVal, info) {
             } else { hm.storage.push(nm); L(`🏠 창고 +${nm}`); }
             return;
         }
+        case '_tostore': { // 🎒 소지품 → 📦 창고 (1개)
+            if (!s.data.wallet || !s.data.home) return;
+            const it = s.data.wallet.items.find(x => norm(x.name) === norm(val)); if (!it) return;
+            applyOp(s, 'item', `-${it.name} 1|`, info);
+            s.data.home.storage.push(it.name);
+            return;
+        }
+        case '_tobag': { // 📦 창고 → 🎒 소지품 (1개)
+            if (!s.data.wallet || !s.data.home) return;
+            const hm = s.data.home, k = hm.storage.findIndex(x => norm(x) === norm(val)); if (k < 0) return;
+            const nm = hm.storage.splice(k, 1)[0];
+            applyOp(s, 'item', `+${nm} 1|`, info);
+            return;
+        }
         case '_unplace': {
             const hm = ensure(s, 'home');
             for (const r of hm.rooms) { const k = r.decor.findIndex(x => norm(x) === norm(val)); if (k >= 0) { r.decor.splice(k, 1); hm.storage.push(val); return; } }
