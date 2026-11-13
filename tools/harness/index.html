@@ -8,6 +8,7 @@
 <script src="/harness/st-stub.js"></script>
 <script type="module">
 globalThis.__SS_TEST__ = {};
+if (new URLSearchParams(location.search).get('ext2')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = '/ext2/src/ext-status.css'; document.head.appendChild(l); document.body.classList.add('salty'); }
 await import('/ext/index.js');
 await SillyTavern.getContext().eventSource.emit('app_ready');
 window.__ready = true;

@@ -2,7 +2,7 @@
 import { chromium } from '/opt/npm-tools/node_modules/playwright/index.mjs';
 import { serve } from './server.mjs';
 
-export async function open({ width = 1300, height = 900 } = {}) {
+export async function open({ ext2 = false, width = 1300, height = 900 } = {}) {
     const srv = await serve(0);
     const port = srv.address().port;
     const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || undefined });
@@ -10,7 +10,7 @@ export async function open({ width = 1300, height = 900 } = {}) {
     const logs = [];
     page.on('console', m => { if (['error', 'warning'].includes(m.type())) logs.push(`${m.type()}: ${m.text()}`); });
     page.on('pageerror', e => logs.push(`pageerror: ${e.stack || e}`));
-    await page.goto(`http://127.0.0.1:${port}/`);
+    await page.goto(`http://127.0.0.1:${port}/${ext2 ? '?ext2=1' : ''}`);
     await page.waitForFunction(() => window.__ready === true, null, { timeout: 15000 });
     const close = async () => { await browser.close(); srv.close(); };
     return { page, logs, close, port };
