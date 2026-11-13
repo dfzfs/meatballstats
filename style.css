@@ -1161,3 +1161,15 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-scope .ss-hk-rel > small { color: var(--ss-dim); width: 100%; }
 .ss-scope .ss-hk-ai { margin-top: 6px; }
 .ss-scope .ss-hk-ai small { opacity: .7; }
+
+/* ───── 💱 화폐 · 환율 창 (v2.7.1: 「1 Berry = ○ 원」 문장처럼) ───── */
+.ss-fxw .ss-fx-step { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-top: 1px solid var(--ss-line); }
+.ss-fxw .ss-fx-step:first-of-type { border-top: 0; padding-top: 4px; }
+.ss-fxw .ss-fx-step > small, .ss-fxw .ss-fx-step small { color: var(--ss-dim); }
+.ss-fxw .ss-fx-body.off { opacity: .4; pointer-events: none; }
+.ss-fxw .ss-fx-eq { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 1.05em; }
+.ss-fxw .ss-fx-one { white-space: nowrap; }
+.ss-fxw .ss-fx-eq .ss-rate { flex: 1 1 6em; min-width: 5em; max-width: 10em; }
+.ss-fxw .ss-fx-eq .ss-unit { flex: 0 1 5em; min-width: 3.5em; }
+.ss-fxw .ss-fx-ex { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: var(--ss-r); background: var(--ss-surface); font-variant-numeric: tabular-nums; }
+.ss-fxw .ss-fx-ex span { color: var(--ss-dim); margin: 0 4px; }

@@ -129,6 +129,9 @@ const SET_HINTS = {
     genParallel: (v) => (Number(v) > 4 ? H('w.par', '동시에 많이 보내면 API가 「요청이 너무 많다(429)」로 거절할 수 있어요.', 'warn') : null),
 };
 const session = { n: 0, at: 0 }; // 이번 접속에서 보여 준 수 · 마지막 시각 (너무 자주 안 뜨게)
+// v2.7.1: 너무 자주 뜬다는 의견 → 접속당 2번 · 마지막 팁에서 30분 (새로고침해도 이어짐 · settings.hintAt) · 하루 4번 · 25% 확률
+const HINT_GAP = 30 * 60 * 1000, HINT_PER_SESSION = 2, HINT_PER_DAY = 4, HINT_CHANCE = 0.25;
+const today = () => new Date().toDateString();
 // 팁은 그냥 닫으면 한 번 더 (최대 2번) · 주의는 한 번이면 끝 (「추후 한 번」)
 function seen(id, kind = 'tip') { const v = settings().hintSeen?.[id]; return v === true || v >= (kind === 'warn' ? 1 : 2); }
 function bump(id) { const s = settings(); s.hintSeen = { ...(s.hintSeen ?? {}) }; if (s.hintSeen[id] !== true) s.hintSeen[id] = (s.hintSeen[id] ?? 0) + 1; saveSettings(); }
@@ -136,17 +139,22 @@ export function knowHint(id) { const s = settings(); s.hintSeen = { ...(s.hintSe
 // 팁도 알림함에 남긴다 — 팝업을 놓쳐도 🔔 알림함에서 다시 읽을 수 있게
 function show(h, { save = true } = {}) {
     bump(h.id);
-    if (h.kind !== 'warn') { session.n++; session.at = Date.now(); } // 주의는 팁 횟수 제한과 따로
+    if (h.kind !== 'warn') { // 주의는 팁 횟수 제한과 따로
+        session.n++; session.at = Date.now();
+        const s = settings(); s.hintAt = session.at; s.hintDay = s.hintDay?.d === today() ? { d: s.hintDay.d, n: s.hintDay.n + 1 } : { d: today(), n: 1 }; saveSettings();
+    }
     app.notify?.({ kind: 'hint', icon: h.kind === 'warn' ? '⚠️' : '💡', title: h.kind === 'warn' ? '알아 두세요' : '이것도 아세요?', text: h.text, hint: h.id }, { save });
 }
 // 상태창에서 뭔가 했을 때 (shell.js) — 그 칸의 안 본 팁 중 하나를, 가끔만
 export function hintAfterAction(tab) {
     try {
         if (settings().featureTips === false || !getMeta()?.base) return;
-        if (session.n >= 4 || Date.now() - session.at < 180000) return; // 접속당 4번 · 3분에 한 번까지
+        const set = settings(), last = Math.max(session.at, Number(set.hintAt) || 0);
+        if (session.n >= HINT_PER_SESSION || Date.now() - last < HINT_GAP) return;
+        if (set.hintDay?.d === today() && set.hintDay.n >= HINT_PER_DAY) return;
         let list = (TAB_HINTS[tab] ?? []).filter(h => !seen(h.id, h.kind));
         if (!list.length) list = GENERAL.filter(h => !seen(h.id, h.kind)); // 그 칸 팁을 다 봤으면 공통 팁
-        if (!list.length || Math.random() > 0.5) return; // 매번 말고 가끔
+        if (!list.length || Math.random() > HINT_CHANCE) return; // 매번 말고 가끔
         const h = list[Math.floor(Math.random() * list.length)];
         setTimeout(() => show(h), 1500); // 방금 한 일의 알림이 먼저 보이게
     } catch (e) { ssWarn(LOG, 'hint', e); }
