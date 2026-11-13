@@ -246,7 +246,7 @@
 | 언제 | 무엇 | 횟수 |
 |---|---|---|
 | **본편 생성마다** (본 답·다시 생성·스와이프·이어 쓰기) | 상태 주입문(입력)과 AI가 끝에 쓰는 `<meatball>`(출력, 20~80토큰) | 매 턴 |
-| 상태창 만들기 | 세계 핵심 1번 + 묶음마다 1번 (묶음 생성 끄면 기능마다 1번) | 최대 6 |
+| 상태창 만들기 | 기본 틀만 0 · 기본 틀 + AI 4~5 (기본 6칸이면 4) · 전부 AI 5~7 · 카드에서 불러오기 0 (세계 핵심 1번 + 묶음마다 1번) | 0~7 |
 | 칸 AI로 채우기 · 다시 생성 · AI로 수정 | 그 칸 하나 | 1 |
 | 메신저 보내기 (답장 받기 켬) · 다시 받기 | 답장 | 1 |
 | 「이거 얼마?」 · 연락 요약 (요약 모드에서 대화가 쌓일 때) | | 각 1 |
@@ -287,7 +287,7 @@ days: +1
 
 ## 슬래시 커맨드
 
-`/ss [탭]` · `/ss-make` · `/ss-prompts` · `/ss-roll [판정]` · `/ss-set key=… 값` · `/ss-instruct tab=… 지시` · `/ss-get [key=…]` · `/ss-undo` · `/ss-save` · `/ss-backup` · `/ss-inbox` · `/ss-search` · `/ss-diag`
+`/ss [탭]` · `/ss-make` · `/ss-prompts` · `/ss-roll [판정]` · `/ss-set key=… 값` · `/ss-instruct tab=… 지시` · `/ss-get [key=…]` · `/ss-undo` · `/ss-save` · `/ss-backup` · `/ss-inbox` · `/ss-search` · `/ss-diag` · `/ss-help 질문` · `/ss-report` (오류 보고문)
 퀵리플라이용: **`/ss-pause`** · **`/ss-resume`** · **`/ss-skip`** (다음 1번만 건너뛰기)
 
 ## 저장
