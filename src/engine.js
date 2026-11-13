@@ -1551,9 +1551,13 @@ function recentI(s, n) {
     return out.slice(-n).join(' / ');
 }
 // 출력 규칙: 화면만 번역이면 「값은 영어로」 (예전 문구 「Values in Korean」을 바꾸거나 덧붙임)
+// v2.7.1: 한국어 상태창인데 롤플이 영어면 AI가 「place: Old Lighthouse」처럼 영어로 적어 지도·소지품 이름이 영어가 되던 것 →
+// 이야기가 다른 언어여도 값은 상태창 언어로, 이미 있는 이름은 위에 적힌 그대로 (초압축·변화 위주 규칙엔 언어 줄이 아예 없었음)
+const LANG_RULE = (lang) => `Values in ${lang} even if the story itself is written in another language: new place, item, person and quest names in ${lang}; existing names exactly as written above.`;
 function outRule(text) {
-    if (!viewTr()) return text;
-    return /Values in Korean/i.test(text) ? text.replace(/Values in Korean/i, 'Values in English') : `${text} Values in English.`;
+    const lang = viewTr() ? 'English' : 'Korean';
+    if (/Values in (Korean|English)\.?/i.test(text)) return text.replace(/Values in (Korean|English)\.?/i, LANG_RULE(lang));
+    return `${text} ${LANG_RULE(lang)}`;
 }
 // 키 설명의 한국어 자리표시를 영어로 (화면만 번역일 때만 · 키 이름과 문법은 그대로)
 const KEY_WORDS = [['진행 내용', 'progress'], ['게이지이름', 'gauge'], ['관계 이름', 'relation name'], ['새 공간', 'new space'], ['이어진곳', 'linked places'], ['업적 이름', 'achievement'], ['판정 이름', 'check'], ['풀리는 조건', 'cure'], ['요즘 신경 쓰는 것', 'current concern'], ['끌리는 것', 'likes'], ['싫어하는 것', 'dislikes'], ['화면 밖에서 한 일', 'what they did off-screen'], ['사진 묘사', 'photo description'], ['곡 제목', 'song title'], ['한 줄 소개', 'one-line intro'], ['새/수락/완료/실패', 'new/active/done/failed'], ['관련 인물', 'people involved'], ['헤드라인', 'headline'], ['#태그', '#tags'], ['3월 14일', '3/14'], ['관계', 'relation'], ['효과1', 'effect1'], ['효과2', 'effect2'], ['체력', 'HP'], ['능력치', 'attribute'], ['이름', 'name'], ['효과', 'effect'], ['설명', 'description'], ['상점', 'shop'], ['상품', 'goods'], ['가격', 'price'], ['가구', 'furniture'], ['방', 'room'], ['장소', 'place'], ['날짜', 'date'], ['제목', 'title'], ['내용', 'text'], ['난이도', 'DC'], ['일수', 'days'], ['작성자', 'author'], ['가수', 'artist'], ['분위기', 'mood'], ['탭', 'tab'], ['항목', 'field'], ['글', 'text'], ['없음', 'none']];

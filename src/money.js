@@ -57,18 +57,43 @@ export const MONEY_ACTIONS = {
     mcur: async (el, arg, btn, s) => {
         const w = s.data.wallet;
         const box = document.createElement('div');
-        box.className = 'ss-root ss-scope ss-menu';
+        box.className = 'ss-root ss-scope ss-menu ss-fxw';
+        const REAL = ['원', '달러', '엔', '유로', '위안'];
         box.innerHTML = `<h3><i class="fa-solid fa-money-bill-transfer"></i> 화폐 · 환율</h3>
-            <p class="ss-hint">화폐 이름만 바뀌고 금액은 그대로예요.</p>
-            <div class="ss-chips">${CURRENCIES.map(c => `<button class="ss-chip btn ${c === w.currency ? 'hi' : ''}" data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>
-            <label class="ss-f"><span>직접 입력</span><input class="ss-in ss-cur" value="${esc(w.currency)}"></label>
-            <label class="ss-f"><span>환율 — 이 화폐 1이 현실에서 얼마? (0이면 표시 안 함)</span><div class="ss-inline"><input class="ss-in ss-rate" type="number" min="0" step="any" value="${w.fx.rate || ''}" placeholder="예: 1000"><input class="ss-in ss-unit" value="${esc(w.fx.unit || '원')}" placeholder="원"></div></label>`;
-        box.addEventListener('click', (e) => { const b = e.target.closest('[data-c]'); if (b) { box.querySelector('.ss-cur').value = b.dataset.c; box.querySelectorAll('[data-c]').forEach(x => x.classList.toggle('hi', x === b)); } });
+            <div class="ss-fx-step"><b>① 이 세계의 돈 이름</b><small>이름만 바뀌어요. 가진 돈 숫자는 그대로예요.</small>
+                <div class="ss-chips">${CURRENCIES.map(c => `<button class="ss-chip btn ${c === w.currency ? 'hi' : ''}" data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+                <input class="ss-in ss-cur" value="${esc(w.currency)}" placeholder="직접 적기 (예: Berry, 마석)"></div>
+            <div class="ss-fx-step"><label class="ss-tog"><input type="checkbox" class="ss-switch ss-fx-on" ${w.fx.rate > 0 ? 'checked' : ''}><span><b>② 현실 돈으로 얼마인지 같이 보기</b> <small>(선택)</small></span></label>
+                <small>켜면 소지금 · 물가 옆에 「≈ 12만 원」처럼 같이 보여 줘요. 계산 · AI에는 영향 없어요.</small>
+                <div class="ss-fx-body">
+                    <div class="ss-fx-eq"><span class="ss-fx-one">1 <b class="ss-fx-cur"></b></span><span>=</span><input class="ss-in ss-rate" type="number" min="0" step="any" inputmode="decimal" value="${w.fx.rate || ''}" placeholder="얼마?"><input class="ss-in ss-unit" value="${esc(w.fx.unit || '원')}" placeholder="원"></div>
+                    <div class="ss-chips ss-fx-units">${REAL.map(u => `<button class="ss-chip btn" data-u="${esc(u)}">${esc(u)}</button>`).join('')}</div>
+                    <div class="ss-fx-ex"></div>
+                </div></div>`;
+        const $ = (q) => box.querySelector(q);
+        const upd = () => {
+            const cur = $('.ss-cur').value.trim() || w.currency, on = $('.ss-fx-on').checked;
+            const rate = Math.max(0, num($('.ss-rate').value, 0)), unit = $('.ss-unit').value.trim() || '원';
+            $('.ss-fx-cur').textContent = cur;
+            $('.ss-fx-body').classList.toggle('off', !on);
+            box.querySelectorAll('[data-c]').forEach(x => x.classList.toggle('hi', x.dataset.c === cur));
+            box.querySelectorAll('[data-u]').forEach(x => x.classList.toggle('hi', x.dataset.u === unit));
+            const ex = rate > 0 ? [w.cash > 0 ? w.cash : 1000, 100].map(n => `<div>${fmtNum(n)} ${esc(cur)} <span>→</span> <b>≈ ${esc(bigNum(n * rate))} ${esc(unit)}</b></div>`).join('') : '';
+            $('.ss-fx-ex').innerHTML = rate > 0 ? `<small>이렇게 보여요</small>${ex}` : `<small>예: 1 ${esc(cur)}이 현실 돈 100${esc(unit)}쯤이면 「100」을 적어요.</small>`;
+        };
+        box.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-c]'); if (b) { $('.ss-cur').value = b.dataset.c; upd(); }
+            const u = e.target.closest('[data-u]'); if (u) { $('.ss-unit').value = u.dataset.u; $('.ss-fx-on').checked = true; upd(); }
+        });
+        box.addEventListener('input', (e) => { if (e.target.matches('.ss-rate') && num(e.target.value, 0) > 0) $('.ss-fx-on').checked = true; upd(); });
+        box.addEventListener('change', upd);
+        upd();
         const ok = await app.popup(box, { okButton: '저장', cancelButton: '취소' });
         if (!ok) return;
         const nd = clone(curState().data.wallet);
-        nd.currency = box.querySelector('.ss-cur').value.trim() || nd.currency;
-        nd.fx = { unit: box.querySelector('.ss-unit').value.trim(), rate: Math.max(0, num(box.querySelector('.ss-rate').value, 0)) };
+        nd.currency = $('.ss-cur').value.trim() || nd.currency;
+        const on = $('.ss-fx-on').checked;
+        nd.fx = { unit: $('.ss-unit').value.trim() || '원', rate: on ? Math.max(0, num($('.ss-rate').value, 0)) : 0 };
         await commit('wallet', nd, nd.currency !== w.currency ? `화폐 → ${nd.currency}` : '');
     },
     mprice: async (el, arg, btn, s) => {

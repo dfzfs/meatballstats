@@ -1,9 +1,10 @@
 // 칸별 화면 · 대시보드 · 관리 · 미니 위젯
 import {
     app, ctx, settings, getMeta, saveMeta, modOn, MODS, MOD, MOD_IDS, DIFFS, diffOf, esc, short, clamp, norm, findBy, fmtNum, clone, splitBar, parseNum,
-    dateStr, dateShort, dayIndex, eventsOn, nextTime, upcoming, userName, TITLE, VERSION, EMPTY, CONTACT_MODES, stamp, relAxes, DEFAULT_STAGES,
+    dateStr, dateShort, dayIndex, eventsOn, nextTime, upcoming, userName, TITLE, VERSION, EMPTY, CONTACT_MODES, stamp, relAxes, DEFAULT_STAGES, viewTr,
 } from './core.js';
 import { addAdjust, commit, unreadCount, dueLetters, inTransit, priceMul, peopleAt, hopsBetween, whereNow, seasonOf, SEASON_NAME, stageIndex, purgeTrash } from './engine.js';
+import { trString } from './translate.js';
 import { walletView } from './money.js';
 import { fateView } from './fate.js';
 import { gauge, meter, sec, emptyBox, chip, avatar, ai1, seg, insertInput, closeIfPopup, askInput, askConfirm } from './kit.js';
@@ -168,7 +169,7 @@ export const VIEW = {
             const n = people ? peopleAt(s, p.name).now.length : 0;
             return `<g class="node ${here ? 'here' : ''} ${isSel ? 'sel' : ''} ${p.known ? '' : 'unk'}" data-act="selplace" data-arg="${esc(p.name)}">
                 ${here ? `<circle cx="${o.x}" cy="${o.y}" r="4.6" class="ring"/>` : ''}<circle cx="${o.x}" cy="${o.y}" r="${here ? 2.4 : 1.8}" class="dot"/>
-                <text x="${o.x}" y="${o.y - 3.8}">${esc(p.known ? short(p.name, 9) : '???')}</text>${n ? `<text class="ppl" x="${o.x + 2.6}" y="${o.y + 1.2}">👥${n}</text>` : ''}</g>`;
+                <text x="${o.x}" y="${o.y - 3.8}">${esc(p.known ? short(viewTr() ? trString(p.name) : p.name, 9) : '???')}</text>${n ? `<text class="ppl" x="${o.x + 2.6}" y="${o.y + 1.2}">👥${n}</text>` : ''}</g>`;
         }).join('');
         const vb = ui.mapVB ?? fitBox(shown.map(p => pos.get(p.name)));
         let card = '';
