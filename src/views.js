@@ -5,7 +5,7 @@ import {
 } from './core.js';
 import { addAdjust, commit, unreadCount, dueLetters, inTransit, priceMul, peopleAt, hopsBetween, whereNow, seasonOf, SEASON_NAME, stageIndex, purgeTrash } from './engine.js';
 import { trString } from './translate.js';
-import { walletView } from './money.js';
+import { walletView, fxText } from './money.js';
 import { fateView } from './fate.js';
 import { gauge, meter, sec, emptyBox, chip, avatar, ai1, seg, insertInput, closeIfPopup, askInput, askConfirm } from './kit.js';
 import { diceView } from './dice.js';
@@ -92,6 +92,23 @@ function usedPrice(s, name) {
     const day = 0.75 + Math.random() * 0.5; // 그날 시세
     return { base, price: Math.max(1, Math.round(base * rate * worn * day)), how: worn < 1 ? `${how} · 상태가 안 좋아 반값` : how };
 }
+// 🗺 장소 이모지 (v2.7.2): AI가 준 icon → 없으면 이름·종류로 짐작 (토큰 0 · 옛 지도에도) — 이름이 잘려도 무슨 곳인지 보이게
+const PLACE_ICONS = [
+    [/집|home|house|자택|숙소|기숙사|dorm|하숙|오두막|cottage|cabin/i, '🏠'], [/방|침실|bedroom|room/i, '🛏️'], [/베란다|발코니|veranda|balcony|테라스|terrace/i, '🪴'],
+    [/시장|market|bazaar|장터|저잣거리/i, '🏪'], [/상점|가게|shop|store|잡화|편의점|매점/i, '🛒'], [/항구|선착장|부두|port|harbor|harbour|dock|pier/i, '⚓'], [/배|선박|ship|boat/i, '⛵'],
+    [/바다|해변|해안|beach|sea|ocean|coast|섬|island/i, '🏖️'], [/병원|의원|진료|clinic|hospital|infirmary/i, '🏥'], [/학교|학원|아카데미|강의|school|academy|class/i, '🏫'], [/도서관|서고|library/i, '📚'],
+    [/성|궁|왕궁|castle|palace|fort/i, '🏰'], [/교회|성당|신전|사원|절|church|temple|shrine|cathedral/i, '⛪'], [/숲|forest|woods|정글|jungle/i, '🌲'], [/산|mountain|봉우리|peak|절벽|cliff/i, '⛰️'],
+    [/강|호수|river|lake|폭포|waterfall/i, '🌊'], [/동굴|던전|cave|dungeon|지하|ruin|폐허/i, '🕳️'], [/술집|선술집|주점|여관|객잔|tavern|inn|bar|pub/i, '🍺'], [/카페|찻집|cafe|café|coffee|tea/i, '☕'],
+    [/식당|레스토랑|부엌|주방|restaurant|kitchen|diner/i, '🍽️'], [/광장|square|plaza/i, '⛲'], [/길드|guild/i, '⚔️'], [/마을|village|town|어귀/i, '🏘️'], [/도시|city|번화가|downtown/i, '🏙️'],
+    [/역|정거장|station|터미널|terminal/i, '🚉'], [/공원|정원|garden|park/i, '🌳'], [/농장|밭|farm|ranch/i, '🌾'], [/감옥|prison|jail/i, '⛓️'], [/대장간|smithy|forge|공방|workshop/i, '⚒️'],
+    [/등대|lighthouse/i, '🗼'], [/다리|bridge/i, '🌉'], [/탑|tower/i, '🗼'], [/연구소|실험실|lab/i, '🔬'], [/경찰|police|위병|guard/i, '🚓'], [/회사|사무실|office|본부|headquarters|hq/i, '🏢'],
+    [/격납고|hangar|우주|space|기지|base/i, '🛰️'], [/거리|길|street|road|골목|alley/i, '🛣️'],
+];
+export function placeIcon(p) {
+    if (p?.icon) return p.icon;
+    const t = `${p?.name ?? ''} ${p?.kind ?? ''}`;
+    return PLACE_ICONS.find(([re]) => re.test(t))?.[1] ?? '📍';
+}
 export function miniWidgets(s, keys, clickable = true) {
     const meta = getMeta();
     const d = s.data;
@@ -146,9 +163,9 @@ export const VIEW = {
         const i0 = clamp(ui.shop ?? 0, 0, Math.max(0, d.shops.length - 1));
         const sh = d.shops[i0];
         return `${d.shops.length > 1 ? seg(d.shops.map((x, i) => [i, esc(x.name)]), i0, 'shoptab', 'class="ss-seg wrap"') : ''}
-        ${sh ? `<div class="ss-shop-h"><div><b>${esc(sh.name)}</b><small>${esc(sh.desc)}${sh.place ? ` · 📍 ${esc(sh.place)}` : ''}</small></div>${w ? `<span class="ss-chip"><i class="fa-solid fa-coins"></i> ${fmtNum(w.cash)} ${esc(w.currency)}</span>` : ''}</div>
+        ${sh ? `<div class="ss-shop-h"><div><b>${esc(sh.name)}</b><small>${esc(sh.desc)}${sh.place ? ` · 📍 ${esc(sh.place)}` : ''}</small></div>${w ? `<span class="ss-chip"><i class="fa-solid fa-coins"></i> ${fmtNum(w.cash)} ${esc(w.currency)}${fxText(w, w.cash) ? ` <small class="ss-dim">${esc(fxText(w, w.cash))}</small>` : ''}</span>` : ''}</div>
         <div class="ss-goods">${sh.items.map((it, j) => `<div class="ss-good ${it.stock === 0 ? 'out' : ''}"><div class="ss-good-b"><b>${esc(it.name)}</b>${it.kind === 'deco' ? chip('가구') : ''}${it.stock === 0 ? chip('품절', 'neg') : it.stock > 0 ? `<small>재고 ${it.stock}</small>` : ''}<small>${esc(it.desc)}</small></div>
-            <div class="ss-good-a"><b class="ss-price ${mul > 1 ? 'up' : mul < 1 ? 'down' : ''}">${fmtNum(pr(it))}</b><button class="ss-btn sm pri" data-act="buy" data-arg="${i0}|${j}" ${it.stock === 0 || (w && w.cash < pr(it)) ? 'disabled' : ''}>구매</button></div></div>`).join('') || emptyBox('상품이 없어요')}</div>` : emptyBox('상점이 없어요. ✨ AI로 수정에서 "○○ 상점 추가"라고 해 보세요.', 'fa-store')}`;
+            <div class="ss-good-a"><b class="ss-price ${mul > 1 ? 'up' : mul < 1 ? 'down' : ''}">${fmtNum(pr(it))}${fxText(w, pr(it)) ? `<small class="ss-fx">${esc(fxText(w, pr(it)))}</small>` : ''}</b><button class="ss-btn sm pri" data-act="buy" data-arg="${i0}|${j}" ${it.stock === 0 || (w && w.cash < pr(it)) ? 'disabled' : ''}>구매</button></div></div>`).join('') || emptyBox('상품이 없어요')}</div>` : emptyBox('상점이 없어요. ✨ AI로 수정에서 "○○ 상점 추가"라고 해 보세요.', 'fa-store')}`;
     },
     rel: relView,
     map: (s, d, ui) => {
@@ -166,11 +183,12 @@ export const VIEW = {
         }
         const people = modOn('profile') && s.data.profile;
         const nodes = shown.map(p => {
+            const ic = p.known ? placeIcon(p) : '❔';
             const o = pos.get(p.name); const here = norm(p.name) === norm(d.here); const isSel = sel && sel.name === p.name;
             const n = people ? peopleAt(s, p.name).now.length : 0;
             return `<g class="node ${here ? 'here' : ''} ${isSel ? 'sel' : ''} ${p.known ? '' : 'unk'}" data-act="selplace" data-arg="${esc(p.name)}">
-                ${here ? `<circle cx="${o.x}" cy="${o.y}" r="4.6" class="ring"/>` : ''}<circle cx="${o.x}" cy="${o.y}" r="${here ? 2.4 : 1.8}" class="dot"/>
-                <text x="${o.x}" y="${o.y - 3.8}">${esc(p.known ? short(viewTr() ? trString(p.name) : p.name, 9) : '???')}</text>${n ? `<text class="ppl" x="${o.x + 2.6}" y="${o.y + 1.2}">👥${n}</text>` : ''}</g>`;
+                ${here ? `<circle cx="${o.x}" cy="${o.y}" r="4.6" class="ring"/>` : ''}<circle cx="${o.x}" cy="${o.y}" r="${here ? 3.2 : 2.8}" class="dot"/><text class="ico" x="${o.x}" y="${o.y + 1.15}">${ic}</text>
+                <text x="${o.x}" y="${o.y - 4.4}">${esc(p.known ? short(viewTr() ? trString(p.name) : p.name, 8) : '???')}</text>${n ? `<text class="ppl" x="${o.x + 2.6}" y="${o.y + 1.2}">👥${n}</text>` : ''}</g>`;
         }).join('');
         const vb = ui.mapVB ?? fitBox(shown.map(p => pos.get(p.name)));
         let card = '';
