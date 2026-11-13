@@ -568,7 +568,7 @@ export const NORM = {
     },
     map: (d) => ({
         name: str(d.name), here: str(d.here),
-        places: arr(d.places).filter(p => p?.name).map(p => ({ name: str(p.name), desc: str(p.desc), kind: str(p.kind), x: clamp(num(p.x, NaN), 0, 100), y: clamp(num(p.y, NaN), 0, 100), links: arr(p.links).map(String).filter(Boolean), known: p.known !== false, area: str(p.area), fare: Math.max(0, num(p.fare, 0)) })),
+        places: arr(d.places).filter(p => p?.name).map(p => ({ name: str(p.name), desc: str(p.desc), kind: str(p.kind), x: clamp(num(p.x, NaN), 0, 100), y: clamp(num(p.y, NaN), 0, 100), links: arr(p.links).map(String).filter(Boolean), known: p.known !== false, area: str(p.area), fare: Math.max(0, num(p.fare, 0)), icon: [...str(p.icon).trim()].slice(0, 2).join('') })),
     }),
     calendar: (d) => {
         const months = arr(d.months).filter(m => m?.name).map(m => ({ name: str(m.name), days: clamp(Math.round(num(m.days, 30)), 1, 99) }));
@@ -696,7 +696,7 @@ export const SCHEMA = {
     shop: `{"shops":[{"name":"상점 이름","desc":"설명","place":"있는 장소","items":[{"name":"상품","price":100,"desc":"설명","kind":"item|deco (deco = 본거지에 놓는 가구·장식)","stock":-1}]}]}`,
     home: `{"name":"본거지 이름","desc":"설명","rooms":[{"name":"방/구역","desc":"지금 모습","decor":["놓여 있는 가구·장식 이름"]}],"storage":["창고에 있는 미배치 가구"]}`,
     rel: `{"user":[{"name":"캐릭터","label":"{{user}}와의 관계 이름","aff":0,"trust":0,"memo":"관계 메모","met":"처음 만난 날 (예: 3월 2일 · 모르면 빈칸)"}],"pairs":[{"a":"캐릭터A","b":"캐릭터B","label":"관계","memo":"메모"}],"stages":[{"name":"관계 단계 이름","at":0,"trust":-100,"unlock":"이 단계에서 새로 생기는 것 (호칭·말투·행동)","love":false}],"affName":"애정","trustName":"우정"}  (aff = 💗 애정: {{user}}에 대한 연애 감정만 — 설렘·끌림·스킨십·고백으로 오르고, 친구·가족·동료는 낮게 · trust = 🤝 우정: 친함·믿음·의지 — 함께 보낸 시간·도움·솔직함으로 오름. 둘 다 -100~100. 친한 친구 = 우정 높고 애정 낮음. stages: 낮은 단계부터 4~7개, at = 필요한 애정, trust = 필요한 우정 · 우정 단계(친구·단짝·동료·사제 …)는 at -100 (애정 필요 없음) · 연애 단계(설렘·연인)만 at에 애정을 적어요 · 연인(커플) 단계 하나는 꼭 넣고 "love": true · affName/trustName은 그대로 "애정"/"우정")`,
-    map: `{"name":"지도 이름","here":"현재 위치(장소 이름)","places":[{"name":"장소","desc":"설명","kind":"마을/건물/던전/자연 등","x":50,"y":50,"links":["이어진 장소 이름"],"known":true,"area":"속한 구역 (선택)","fare":0}]}  (x,y는 0~100 좌표, 겹치지 않게 퍼뜨림 · fare = 그곳까지 가는 요금, 보통 0)`,
+    map: `{"name":"지도 이름","here":"현재 위치(장소 이름)","places":[{"name":"장소","desc":"설명","kind":"마을/건물/던전/자연 등","x":50,"y":50,"links":["이어진 장소 이름"],"known":true,"area":"속한 구역 (선택)","fare":0,"icon":"🏠"}]}  (x,y는 0~100 좌표, 겹치지 않게 퍼뜨림 · fare = 그곳까지 가는 요금, 보통 0 · icon = 그 장소를 나타내는 이모지 하나)`,
     calendar: `{"era":"연호/기원(선택)","y":1,"m":1,"d":1,"time":"아침","months":[{"name":"1월","days":31}],"week":["월","화","수","목","금","토","일"],"times":["새벽","아침","낮","저녁","밤","심야"],"weather":"오늘 날씨 (맑음/비/눈 등)","events":[{"y":null,"m":3,"d":14,"title":"일정/기념일/축제","desc":"설명","repeat":"yearly|once"}]}`,
     contact: `{"mode":"phone|instant|letter","app":"연락 수단 이름(스마트폰 메신저 / 마법 통신구 / 편지 등)","contacts":[{"name":"연락 가능한 인물","handle":"아이디/주소(선택)","status":"상태 메시지 또는 사는 곳","courier":"(letter일 때) 이 인물이 주로 쓰는 배달 수단 이름"}],"couriers":[{"name":"배달 수단(배달부/갈매기/올빼미/강아지/전서구/마법 등 세계관에 맞게)","icon":"이모지 1개","min":1,"max":3,"fee":0,"note":"설명"}],"express":{"name":"급행 수단 이름(퀵·특급 파발 등)","fee":100}}  (min/max = 도착까지 걸리는 날 수, fee = 화폐 단위 요금)`,
     quest: `{"list":[{"title":"의뢰/목표 이름","giver":"의뢰인","desc":"내용","place":"장소","deadline":"기한(선택)","reward":"보상 설명","cash":0,"items":["보상 아이템"],"status":"open|active","steps":[{"text":"단계","done":false}]}]}`,
