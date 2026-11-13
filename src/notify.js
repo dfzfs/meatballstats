@@ -59,7 +59,7 @@ export function toNote(a) {
 function remember(n) {
     const meta = getMeta();
     if (!meta) return;
-    meta.notes = [...(meta.notes ?? []), { id: n.id, t: n.t, kind: n.kind, icon: n.icon, title: n.title, text: n.text, tab: n.tab, song: n.song, ending: n.ending, when: n.when, read: false }].slice(-60);
+    meta.notes = [...(meta.notes ?? []), { id: n.id, t: n.t, kind: n.kind, icon: n.icon, title: n.title, text: n.text, tab: n.tab, song: n.song, ending: n.ending, hint: n.hint, when: n.when, read: false }].slice(-60);
     saveMeta();
 }
 export const unreadNotes = (meta = getMeta()) => (meta?.notes ?? []).filter(n => !n.read).length;
@@ -127,22 +127,35 @@ export function showToast(n) {
         el.classList.remove('in'); el.classList.add('out');
         setTimeout(() => { el.remove(); const nx = queue.shift(); if (nx) showToast(nx); }, 260);
     };
+    // 고정(펼침) 중엔 저절로 안 닫힘 — ×·버튼·밀기로만 닫힘
+    const resume = (ms) => { clearTimeout(timer); if (!el._pinned && !el._closing) timer = setTimeout(close, ms); };
+    // 글이 잘려 있으면 본문을 눌렀을 때 먼저 펼쳐서 다 보여 준다 (바로 닫히거나 다른 탭으로 넘어가지 않게)
+    const clipped = () => { const s = el.querySelector('.ss-t-b small'), b = el.querySelector('.ss-t-b b'); return !!((s && s.scrollHeight > s.clientHeight + 1) || (b && b.scrollWidth > b.clientWidth + 1)); };
+    const pin = () => { el._pinned = true; clearTimeout(timer); el.classList.add('open'); };
     el.addEventListener('mouseenter', () => clearTimeout(timer));
-    el.addEventListener('mouseleave', () => { timer = setTimeout(close, 1500); });
-    // 위로 밀면 닫힘 (폰)
+    el.addEventListener('mouseleave', () => resume(2500));
+    // 폰: 손가락이 닿아 있는 동안은 멈춤 · 위로 밀면 닫힘
     let sy = null;
-    el.addEventListener('pointerdown', (e) => { sy = e.clientY; });
-    el.addEventListener('pointerup', (e) => { if (sy !== null && Math.abs(e.clientY - sy) > 30) { close(); e.preventDefault(); } sy = null; });
+    el.addEventListener('pointerdown', (e) => { sy = e.clientY; clearTimeout(timer); });
+    el.addEventListener('pointerup', (e) => {
+        if (sy !== null && Math.abs(e.clientY - sy) > 30) { el._swiped = true; close(); e.preventDefault(); }
+        else if (e.pointerType !== 'mouse') resume(3000);
+        sy = null;
+    });
+    el.addEventListener('pointercancel', () => { sy = null; resume(3000); });
     el.addEventListener('click', (e) => {
+        if (el._swiped || el._closing) return; // 밀어서 닫은 직후의 click은 무시 (탭이 열리지 않게)
         if (e.target.closest('[data-stop]')) { setTimeout(close, 300); return; }
         e.preventDefault();
         if (e.target.closest('[data-x]')) return close();
+        const onBtn = e.target.closest('button, a');
+        if (!onBtn && !el._pinned && (n.kind === 'hint' || n.kind === 'tip' || clipped())) { pin(); return; } // 본문 첫 탭 = 펼치기
+        if (!onBtn && n.kind === 'hint') return; // 펼친 팁 본문을 또 눌러도 닫지 않음 — 「알아요」나 ×로
         if (n.kind === 'update') { close(); app.showWhatsNew?.(); return; } // 업데이트 알림: 누르면 바뀐 점 자세히
         const on = e.target.closest('[data-tipon]')?.dataset.tipon, no = e.target.closest('[data-tipno]')?.dataset.tipno;
         if (on) { close(); app.enableTip?.(on); return; }
         const ok = e.target.closest('[data-hintok]')?.dataset.hintok;
         if (ok) { close(); app.knowHint?.(ok); return; }
-        if (n.kind === 'hint') return close();
         if (no) { close(); app.neverTip?.(no); return; }
         const en = e.target.closest('[data-ending]');
         if (en) { app.writeEnding?.(en.dataset.ending); return close(); }
@@ -163,11 +176,13 @@ export async function openInbox() {
         const list = [...(meta.notes ?? [])].reverse();
         el.innerHTML = `<div class="ss-wz-head"><i class="fa-solid fa-bell"></i><div><b>알림함</b><small>이 채팅에서 온 알림 (최근 60개)</small></div></div>
             <div class="ss-row-btns">${list.length ? '<button class="ss-btn sm ghost" data-clear="1"><i class="fa-solid fa-broom"></i> 모두 지우기</button>' : ''}</div>
-            <div class="ss-notes">${list.map(n => `<div class="ss-note ${n.read ? '' : 'new'}" data-tab="${esc(n.tab ?? '')}"><span class="ss-t-ico">${esc(n.icon)}</span><div class="ss-t-b"><b>${esc(n.title)}</b>${n.text ? `<small>${esc(n.text)}</small>` : ''}<em>${esc(n.when || '')}${n.when ? ' · ' : ''}${new Date(n.t).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</em></div>${n.song ? `<a class="ss-t-play" href="${esc(songLink(n.song))}" target="_blank" rel="noopener" title="검색해서 듣기"><i class="fa-solid fa-play"></i></a>` : ''}</div>`).join('') || '<div class="ss-empty-s"><i class="fa-regular fa-bell"></i><span>아직 알림이 없어요</span></div>'}</div>`;
+            <div class="ss-notes">${list.map(n => `<div class="ss-note ${n.read ? '' : 'new'}" data-tab="${esc(n.tab ?? '')}"><span class="ss-t-ico">${esc(n.icon)}</span><div class="ss-t-b"><b>${esc(n.title)}</b>${n.text ? `<small>${esc(n.text)}</small>` : ''}<em>${esc(n.when || '')}${n.when ? ' · ' : ''}${new Date(n.t).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</em></div>${n.song ? `<a class="ss-t-play" href="${esc(songLink(n.song))}" target="_blank" rel="noopener" title="검색해서 듣기"><i class="fa-solid fa-play"></i></a>` : ''}${n.kind === 'hint' && n.hint && settings().hintSeen?.[n.hint] !== true ? `<button class="ss-t-btn" data-hintok="${esc(n.hint)}" title="이 문구는 다시 안 보여요">알아요</button>` : ''}</div>`).join('') || '<div class="ss-empty-s"><i class="fa-regular fa-bell"></i><span>아직 알림이 없어요</span></div>'}</div>`;
     };
     render();
     el.addEventListener('click', async (e) => {
         if (e.target.closest('a')) return;
+        const ok = e.target.closest('[data-hintok]')?.dataset.hintok;
+        if (ok) { app.knowHint?.(ok); render(); return; }
         if (e.target.closest('[data-clear]')) { meta.notes = []; await saveMeta(); render(); app.renderHud?.(); app.rerenderPanels?.(); return; }
         const n = e.target.closest('.ss-note');
         if (n?.dataset.tab) { el.closest('dialog')?.querySelector('.popup-button-ok')?.click(); setTimeout(() => app.openSheet?.(n.dataset.tab), 200); }
