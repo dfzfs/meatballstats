@@ -3,6 +3,8 @@ import { app, ctx, settings, getMeta, modOn, esc, short, clone, findBy, norm, cl
 import { addAdjust, commit, priceMul, loanBlocked, LOAN_KIND } from './engine.js';
 import { askPrice } from './ai.js';
 import { sec, emptyBox, chip, ai1, seg, askInput, askConfirm, busyBtn, insertInput, closeIfPopup } from './kit.js';
+import { isFresh } from './engine.js';
+const freshDot = (mod, k, name) => (isFresh(app.current?.fresh, mod, k, name) ? '<i class="ss-fresh" title="방금 AI 답에서 바뀌었어요"></i>' : '');
 
 export const CURRENCIES = ['원', '달러', '엔', '위안', '유로', '골드', '은화', '동전', '베리', '냥', '전', '크레딧', '젬', '루비'];
 const EVERY = { day: '매일', week: '매주', month: '매달' };
@@ -29,10 +31,10 @@ export function walletView(s, d, ui) {
     const open = d.loans.filter(l => l.status === 'open' || l.status === 'late');
     const done = d.loans.filter(l => l.status === 'paid' || l.status === 'lost').slice(-5);
     const cal = s.data.calendar;
-    return `<div class="ss-cashbox"><i class="fa-solid fa-coins"></i><div><small>소지금</small><b>${fmtNum(d.cash)} <span>${esc(d.currency)}</span></b>${fx ? `<small class="ss-dim">${esc(fx)}</small>` : ''}</div>
+    return `<div class="ss-cashbox"><i class="fa-solid fa-coins"></i><div><small>소지금${freshDot('wallet', 'cash')}</small><b>${fmtNum(d.cash)} <span>${esc(d.currency)}</span></b>${fx ? `<small class="ss-dim">${esc(fx)}</small>` : ''}</div>
             <div class="ss-row-btns"><button class="ss-btn sm" data-act="cashedit"><i class="fa-solid fa-pen"></i> 수정</button><button class="ss-btn sm ghost" data-act="mcur" title="화폐 · 환율"><i class="fa-solid fa-money-bill-transfer"></i></button></div></div>
         ${mul !== 1 ? `<div class="ss-callout warn"><i class="fa-solid fa-hat-wizard"></i><div><b>물가 ${mul > 1 ? '+' : ''}${Math.round((mul - 1) * 100)}%</b><span>저주·축복 때문에 상점 가격이 달라요</span></div></div>` : ''}
-        ${sec(`소지품 <small>${d.items.length}</small>`, `<div class="ss-stack">${d.items.map(i => `<div class="ss-item"><div class="ss-item-b"><b>${esc(i.name)}${i.qty > 1 ? ` <em>×${i.qty}</em>` : ''}</b>${i.desc ? `<small>${esc(i.desc)}</small>` : ''}${i.effect ? `<small class="ss-eff"><i class="fa-solid fa-wand-sparkles"></i> ${esc(i.effect)}</small>` : ''}</div>
+        ${sec(`소지품 <small>${d.items.length}</small>`, `<div class="ss-stack">${d.items.map(i => `<div class="ss-item"><div class="ss-item-b"><b>${freshDot('wallet', 'items', i.name)}${esc(i.name)}${i.qty > 1 ? ` <em>×${i.qty}</em>` : ''}</b>${i.desc ? `<small>${esc(i.desc)}</small>` : ''}${i.effect ? `<small class="ss-eff"><i class="fa-solid fa-wand-sparkles"></i> ${esc(i.effect)}</small>` : ''}</div>
             <div class="ss-item-a"><button class="ss-btn sm" data-act="${i.effect ? 'useitem' : 'use'}" data-arg="${esc(i.name)}">사용</button>${modOn('home') && s.data.home ? `<button class="ss-ib" data-act="tostore" data-arg="${esc(i.name)}" title="창고로 옮기기 (1개)">📦</button>` : ''}${app.sellPrice?.(s, i.name) ? `<button class="ss-btn sm ghost" data-act="sell" data-arg="${esc(i.name)}">판매 ${fmtNum(app.sellPrice(s, i.name))}</button>` : ''}<button class="ss-ib" data-act="dec" data-arg="${esc(i.name)}" title="하나 버리기"><i class="fa-solid fa-minus"></i></button></div></div>`).join('') || emptyBox('소지품이 없어요', 'fa-box-open')}</div>`)}
         ${sec('물가', `<div class="ss-ask"><input class="ss-in ss-price-q" placeholder="이 세계에서 ○○ 사려면 얼마?" value="${esc(ui.priceQ ?? '')}"><button class="ss-btn" data-act="mprice">${ai1} 묻기</button></div>
             ${ui.priceA ? `<div class="ss-card ss-answer"><p class="ss-pre">${esc(ui.priceA.text)}</p>${ui.priceA.item && ui.priceA.price ? `<button class="ss-btn sm ghost" data-act="mpriceadd"><i class="fa-solid fa-plus"></i> 물가표에 「${esc(ui.priceA.item)} ${fmtNum(ui.priceA.price)}」 추가</button>` : ''}</div>` : ''}

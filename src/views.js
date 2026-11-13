@@ -1,9 +1,12 @@
 // 칸별 화면 · 대시보드 · 관리 · 미니 위젯
 import {
     app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, MODS, MOD, MOD_IDS, DIFFS, diffOf, esc, short, clamp, norm, findBy, fmtNum, clone, splitBar, parseNum,
-    dateStr, dateShort, dayIndex, eventsOn, nextTime, upcoming, userName, TITLE, VERSION, EMPTY, CONTACT_MODES, stamp, relAxes, DEFAULT_STAGES, viewTr,
+    dateStr, dateShort, dayIndex, eventsOn, nextTime, upcoming, userName, TITLE, VERSION, EMPTY, CONTACT_MODES, stamp, relAxes, DEFAULT_STAGES, viewTr, GLOBAL_OFF,
 } from './core.js';
-import { addAdjust, commit, unreadCount, dueLetters, inTransit, priceMul, peopleAt, hopsBetween, whereNow, seasonOf, SEASON_NAME, stageIndex, purgeTrash } from './engine.js';
+import { addAdjust, commit, unreadCount, dueLetters, inTransit, priceMul, peopleAt, hopsBetween, whereNow, seasonOf, SEASON_NAME, stageIndex, purgeTrash, isFresh } from './engine.js';
+// 🔴 방금 AI 답에서 바뀐 곳 (v2.7.3) — 작은 빨간 점 하나
+export const FRESH_DOT = '<i class="ss-fresh" title="방금 AI 답에서 바뀌었어요"></i>';
+export const freshDot = (mod, k, name) => (isFresh(app.current?.fresh, mod, k, name) ? FRESH_DOT : '');
 import { trString } from './translate.js';
 import { walletView, fxText } from './money.js';
 import { fateView } from './fate.js';
@@ -23,7 +26,7 @@ const roleName = { user: '유저', main: '주요', npc: 'NPC' };
 
 // ───── 미니 위젯 (대시보드 · 사이드 미니 · HUD 공용) ─────
 export const MINI = {
-    bars: { name: '게이지', on: (d) => d.stats?.bars.length, html: (s) => `<div class="ss-mini-bars">${s.data.stats.bars.slice(0, 4).map(b => gauge(b, true)).join('')}</div>`, tab: 'stats' },
+    bars: { name: '게이지', on: (d) => d.stats?.bars.length, html: (s) => `<div class="ss-mini-bars">${s.data.stats.bars.slice(0, 4).map(b => gauge(b, true, freshDot('stats', 'bars', b.name))).join('')}</div>`, tab: 'stats' },
     date: { name: '날짜 · 시간', on: (d) => d.calendar, html: (s) => { const c = s.data.calendar; const ev = eventsOn(c, c.y, c.m, c.d); return `<div class="ss-mini-line"><i class="fa-solid fa-calendar-day"></i><span>${esc(dateShort(c))} · <b>${esc(c.time)}</b>${c.weather ? ` · ${esc(c.weather)}` : ''}${ev.length ? ` · <em>${esc(ev[0].title)}</em>` : ''}</span></div>`; }, tab: 'calendar' },
     loc: { name: '위치', on: (d) => d.map?.here, html: (s) => `<div class="ss-mini-line"><i class="fa-solid fa-location-dot"></i><span>${esc(s.data.map.here)}</span></div>`, tab: 'map' },
     cash: { name: '돈', on: (d) => d.wallet, html: (s) => `<div class="ss-mini-line"><i class="fa-solid fa-coins"></i><span><b>${fmtNum(s.data.wallet.cash)}</b> ${esc(s.data.wallet.currency)}</span></div>`, tab: 'wallet' },
@@ -113,7 +116,10 @@ export function miniWidgets(s, keys, clickable = true) {
     const meta = getMeta();
     const d = s.data;
     const modFor = { bars: 'stats', date: 'calendar', loc: 'map', cash: 'wallet', contact: 'contact', quest: 'quest', rel: 'rel', cond: 'stats', news: 'news', fate: 'fate', music: 'music', custom: 'custom' };
-    return keys.filter(k => MINI[k] && (!modFor[k] || modOn(modFor[k], meta)) && MINI[k].on(d)).map(k => `<div class="ss-mini-w" ${clickable ? `data-act="tab" data-arg="${MINI[k].tab}"` : ''}>${MINI[k].html(s)}</div>`).join('');
+    const fr = app.current?.fresh;
+    const freshMini = { cond: ['stats', 'conds'], date: ['calendar'], loc: ['map', 'here'], cash: ['wallet', 'cash'], quest: ['quest'], rel: ['rel', 'user'], news: ['news'], fate: ['fate'], music: ['music'], custom: ['custom'], contact: ['contact'] };
+    const dot = (k) => (freshMini[k] && isFresh(fr, ...freshMini[k]) ? FRESH_DOT : '');
+    return keys.filter(k => MINI[k] && (!modFor[k] || modOn(modFor[k], meta)) && MINI[k].on(d)).map(k => `<div class="ss-mini-w${dot(k) ? ' fresh' : ''}" ${clickable ? `data-act="tab" data-arg="${MINI[k].tab}"` : ''}>${dot(k)}${MINI[k].html(s)}</div>`).join('');
 }
 
 // ───── 홈(대시보드) ─────
@@ -144,16 +150,16 @@ export const VIEW = {
     home: (s, d, ui) => homeView(s, ui),
     profile: (s, d, ui) => `<div class="ss-hint">프로필 모드: <b>${d.mode === 'detailed' ? '상세' : '최소'}</b> — ${d.mode === 'detailed' ? '이 시트가 AI에게 전달돼요' : '카드·로어북을 쓰고, 새 NPC만 전달돼요'}</div>
         <div class="ss-stack">${d.list.map((p, i) => `<details class="ss-prof" ${ui.open === i || d.list.length === 1 ? 'open' : ''}>
-            <summary>${avatar(p.name)}<div class="ss-ct-b"><b>${esc(p.name)} <span class="ss-role ${p.role}">${roleName[p.role]}</span></b><small>${esc(short(p.summary, 60))}</small></div><i class="fa-solid fa-chevron-down ss-chev"></i></summary>
+            <summary>${avatar(p.name)}<div class="ss-ct-b"><b>${freshDot('profile', 'list', p.name)}${esc(p.name)} <span class="ss-role ${p.role}">${roleName[p.role]}</span></b><small>${esc(short(p.summary, 60))}</small></div><i class="fa-solid fa-chevron-down ss-chev"></i></summary>
             <div class="ss-prof-b"><p class="ss-pre">${esc(p.summary)}</p>
             ${p.home || p.sched ? `<p class="ss-dim ss-where">${p.home ? `🏠 ${esc(p.home)}` : ''}${p.sched ? ` · 🕐 ${esc(p.sched)}` : ''}${s.data.calendar && whereNow(p, s.data.calendar) ? ` · <b>지금: ${esc(whereNow(p, s.data.calendar))}</b>` : ''}</p>` : ''}
             ${p.fields.length ? `<dl class="ss-dl">${p.fields.map(f => `<dt>${esc(f.k)}</dt><dd class="ss-pre">${esc(f.v)}</dd>`).join('')}</dl>` : ''}
             ${modOn('contact') && p.role !== 'user' ? `<button class="ss-btn sm ghost" data-act="talk" data-arg="${esc(p.name)}"><i class="fa-solid fa-envelope"></i> 연락하기</button>` : ''}</div>
         </details>`).join('') || emptyBox('인물이 없어요', 'fa-id-card')}</div>`,
-    stats: (s, d) => `${sec('게이지', `<div class="ss-stack">${d.bars.map(b => `<div class="ss-card ss-gcard">${gauge(b)}
+    stats: (s, d) => `${sec('게이지', `<div class="ss-stack">${d.bars.map(b => `<div class="ss-card ss-gcard">${gauge(b, false, freshDot('stats', 'bars', b.name))}
             <div class="ss-gbtns"><button class="ss-ib t" data-act="bar" data-arg="${esc(b.name)}|-10">−10</button><button class="ss-ib t" data-act="bar" data-arg="${esc(b.name)}|-1">−1</button><button class="ss-ib t" data-act="bar" data-arg="${esc(b.name)}|+1">+1</button><button class="ss-ib t" data-act="bar" data-arg="${esc(b.name)}|+10">+10</button>${b.desc ? `<small class="ss-dim">${esc(b.desc)}</small>` : ''}</div></div>`).join('') || emptyBox('게이지가 없어요')}</div>`)}
-        ${sec('능력치', `<div class="ss-attrs">${d.attrs.map(a => `<div class="ss-attr" title="${esc(a.desc)}"><span>${esc(a.name)}</span><b>${a.val >= 0 ? '+' : ''}${a.val}</b></div>`).join('') || emptyBox('능력치가 없어요')}</div>`)}
-        ${sec('상태 이상 · 버프', `<div class="ss-chips">${d.conds.map(c => `<span class="ss-chip warn" title="${esc(c.desc)}">${esc(c.name)}<button class="ss-x" data-act="uncond" data-arg="${esc(c.name)}">×</button></span>`).join('') || '<span class="ss-hint">없음</span>'}</div>`)}`,
+        ${sec('능력치', `<div class="ss-attrs">${d.attrs.map(a => `<div class="ss-attr" title="${esc(a.desc)}"><span>${esc(a.name)}${freshDot('stats', 'attrs', a.name)}</span><b>${a.val >= 0 ? '+' : ''}${a.val}</b></div>`).join('') || emptyBox('능력치가 없어요')}</div>`)}
+        ${sec('상태 이상 · 버프', `<div class="ss-chips">${d.conds.map(c => `<span class="ss-chip warn" title="${esc(c.desc)}">${freshDot('stats', 'conds', c.name)}${esc(c.name)}<button class="ss-x" data-act="uncond" data-arg="${esc(c.name)}">×</button></span>`).join('') || '<span class="ss-hint">없음</span>'}</div>`)}`,
     dice: diceView,
     wallet: walletView,
     fate: fateView,
@@ -205,7 +211,7 @@ export const VIEW = {
                 ${!here ? `<p class="ss-hint">${hops}칸 거리${cal && hops ? ` · 시간대 ${hops}개가 흘러요` : ''}${sel.fare ? ` · 요금 ${fmtNum(sel.fare)} ${esc(cur)}` : ''}</p>
                 <div class="ss-row-btns"><button class="ss-btn pri sm" data-act="travel" data-arg="${esc(sel.name)}"><i class="fa-solid fa-person-walking"></i> 이동</button><button class="ss-btn sm ghost" data-act="goto" data-arg="${esc(sel.name)}">입력창에 쓰기</button><button class="ss-btn sm ghost" data-act="setloc" data-arg="${esc(sel.name)}">위치만 바꾸기</button></div>` : ''}</div>`;
         }
-        return `<div class="ss-hint"><b>${esc(d.name || '지도')}</b> · 지금 <b>${esc(d.here || '-')}</b></div>
+        return `<div class="ss-hint"><b>${esc(d.name || '지도')}</b> · 지금 <b>${esc(d.here || '-')}</b>${freshDot('map', 'here')}</div>
             ${areas.length ? `<div class="ss-seg wrap ss-areas">${[['', '전체'], ...areas.map(a => [a, a])].map(([v, t]) => `<button class="${(ui.mapArea ?? '') === v ? 'on' : ''}" data-act="maparea" data-arg="${esc(v)}">${esc(t)}</button>`).join('')}</div>` : ''}
             <div class="ss-mapwrap"><svg class="ss-map" viewBox="${vb.join(' ')}" preserveAspectRatio="xMidYMid meet"><g class="edges">${edges.join('')}</g>${nodes}</svg>
                 <div class="ss-mapctl"><button class="ss-ib" data-act="mapzoom" data-arg="in" title="확대">＋</button><button class="ss-ib" data-act="mapzoom" data-arg="out" title="축소">－</button><button class="ss-ib" data-act="mapzoom" data-arg="here" title="현재 위치로"><i class="fa-solid fa-location-crosshairs"></i></button><button class="ss-ib" data-act="mapzoom" data-arg="fit" title="전체 보기"><i class="fa-solid fa-expand"></i></button></div></div>
@@ -227,7 +233,7 @@ export const VIEW = {
         }
         const selDay = ui.day ?? null;
         const evs = selDay ? eventsOn(d, y, m, selDay) : [];
-        return `<div class="ss-today"><div><small>오늘 · ${SEASON_NAME[seasonOf(d)]}</small><b>${esc(dateStr(d))}</b><span>${esc(d.time)}${d.weather ? ` · ${esc(d.weather)}` : ''} <button class="ss-ib sm" data-act="setweather" title="날씨 바꾸기"><i class="fa-solid fa-cloud-sun"></i></button></span></div>
+        return `<div class="ss-today"><div><small>오늘 · ${SEASON_NAME[seasonOf(d)]}</small><b>${esc(dateStr(d))}${freshDot('calendar')}</b><span>${esc(d.time)}${d.weather ? ` · ${esc(d.weather)}` : ''} <button class="ss-ib sm" data-act="setweather" title="날씨 바꾸기"><i class="fa-solid fa-cloud-sun"></i></button></span></div>
             <div class="ss-row-btns"><button class="ss-btn sm" data-act="timenext">${esc(nextTime(d))} <i class="fa-solid fa-forward-step"></i></button><button class="ss-btn sm" data-act="dayplus">+1일</button></div></div>
             <div class="ss-cal-head"><button class="ss-ib" data-act="calnav" data-arg="-1"><i class="fa-solid fa-chevron-left"></i></button><b>${y}년 ${esc(month.name)}</b><button class="ss-ib" data-act="calnav" data-arg="1"><i class="fa-solid fa-chevron-right"></i></button></div>
             <div class="ss-cal" style="grid-template-columns:repeat(${w},minmax(0,1fr))">${d.week.map(x => `<div class="ss-cal-w">${esc(x)}</div>`).join('')}${cells.join('')}</div>
@@ -381,8 +387,8 @@ export function manageHTML(s) {
     return `${sec('난이도', `${seg(Object.entries(DIFFS).map(([k, v]) => [k, `<i class="fa-solid ${v.icon}"></i> ${v.name}`]), diffOf(), 'diff')}<p class="ss-hint">${esc(DIFFS[diffOf()].desc)}</p>`)}
         ${sec('일시정지', `<div class="ss-row-btns"><button class="ss-btn ${meta.paused ? 'pri' : ''}" data-act="pause"><i class="fa-solid ${meta.paused ? 'fa-play' : 'fa-pause'}"></i> ${meta.paused ? '재개하기' : '일시정지'}</button><button class="ss-btn ghost" data-act="skiponce" ${meta.skipOnce ? 'disabled' : ''}><i class="fa-solid fa-forward"></i> ${meta.skipOnce ? '다음 1번 건너뜀 예약됨' : '다음 1번만 건너뛰기'}</button></div>
             <p class="ss-hint">퀵리플라이·OOC·잡담할 때 눌러 두면 AI에게 상태창을 보내지 않고 &lt;meatball&gt;도 요구하지 않아요. ${st.oocDetect ? 'OOC 자동 감지 켜짐 · ' : ''}${st.skipQuiet ? '조용한 생성(/gen 등) 자동 제외 켜짐' : ''}</p>`)}
-        ${sec('쓸 기능 <small>끈 기능은 데이터는 남고 AI에게만 안 보내요</small>', GROUPS.filter(g => g.id !== 'manage').map(g => ({ ...g, tabs: g.tabs.filter(t => !PSEUDO.has(t) && MOD[TAB_MOD(t)]) })).filter(g => g.tabs.length).map(g => `<div class="ss-modgrp"><small>${g.name}</small><div class="ss-mods">${g.tabs.map(t => MOD[TAB_MOD(t)]).map(m => `<label class="ss-mod ${meta.mods?.[m.id] === false ? '' : 'on'}"><input type="checkbox" class="ss-switch" data-chg="mod" data-arg="${m.id}" ${meta.mods?.[m.id] === false ? '' : 'checked'}>
-            <i class="fa-solid ${m.icon}"></i><span><b>${m.name}</b><small>${m.desc}</small></span>${s.data[m.id] ? '' : '<em>비어 있음</em>'}</label>`).join('')}</div></div>`).join(''))}
+        ${sec('쓸 기능 <small>끈 기능은 데이터는 남고 AI에게만 안 보내요</small>', GROUPS.filter(g => g.id !== 'manage').map(g => ({ ...g, tabs: g.tabs.filter(t => !PSEUDO.has(t) && MOD[TAB_MOD(t)]) })).filter(g => g.tabs.length).map(g => `<div class="ss-modgrp"><small>${g.name}</small><div class="ss-mods">${g.tabs.map(t => MOD[TAB_MOD(t)]).map(m => { const gOff = GLOBAL_OFF[m.id] && st[GLOBAL_OFF[m.id]] === false; return `<label class="ss-mod ${meta.mods?.[m.id] === false || gOff ? '' : 'on'}" ${gOff ? 'title="확장 설정 › 기능 켜고 끄기에서 모든 채팅에 꺼 둔 칸이에요"' : ''}><input type="checkbox" class="ss-switch" data-chg="mod" data-arg="${m.id}" ${meta.mods?.[m.id] === false || gOff ? '' : 'checked'} ${gOff ? 'disabled' : ''}>
+            <i class="fa-solid ${m.icon}"></i><span><b>${m.name}</b><small>${gOff ? '모든 채팅에서 꺼 둠 — 확장 설정 › 기능 켜고 끄기' : m.desc}</small></span>${gOff ? '' : s.data[m.id] ? '' : '<em>비어 있음</em>'}</label>`; }).join('')}</div></div>`).join(''))}
         ${(() => { const p = playOf(meta); return sec('<i class="fa-solid fa-masks-theater"></i> 플레이 방식', `${seg(Object.entries(PLAY_MODES).map(([k, v]) => [k, `<i class="fa-solid ${v.icon}"></i> ${v.name}`]), p.mode, 'playmode', 'class="ss-seg wrap"')}
             <p class="ss-hint">${esc(PLAY_MODES[p.mode].desc)}</p>
             ${p.mode === 'director' ? `<label class="ss-f wide"><span>주인공 (상태창의 「나」 — 돈·수치·관계를 이 사람 기준으로)</span><input class="ss-in" data-chg="playhero" value="${esc(p.hero)}" placeholder="예: 서이현"></label>` : ''}
@@ -401,7 +407,7 @@ export function manageHTML(s) {
         </div><p class="ss-hint">전체 백업 = 기록·세이브·앨범까지 이 채팅의 상태창 전부${meta.lastBackup ? ` (마지막 백업 ${new Date(meta.lastBackup).toLocaleDateString('ko-KR')})` : ''} · 템플릿 = 지금 상태만 (다른 채팅·다른 사람용) · 카드에 붙이면 그 카드로 새 채팅을 열 때 바로 불러올 수 있어요${cardPack() ? ' — <b>지금 이 카드에 붙어 있어요 ✔</b>' : ''}.</p>`)}
         ${sec('<i class="fa-solid fa-clapperboard"></i> 2회차', `<div class="ss-row-btns"><button class="ss-btn" data-act="carryprep"><i class="fa-solid fa-forward"></i> 2회차 준비</button>${carryFor() ? '<span class="ss-chip hi">준비됨 — 새 채팅에서 시작</span>' : ''}</div><p class="ss-hint">업적·엔딩·소지품 일부를 이어받아 같은 캐릭터 새 채팅에서 다시 시작해요.${meta.round > 1 ? ` 지금 ${meta.round}회차.` : ''}</p>`)}
         ${sec('<i class="fa-solid fa-robot"></i> 모델 맞춤 설정 <small>한 번에 바꾸기</small>', `${presetHTML()}<p class="ss-hint">세부 설정은 확장 설정 서랍에서 바꿀 수 있어요.</p>`)}
-        ${sec('<i class="fa-solid fa-stethoscope"></i> 문제 해결', `<div class="ss-row-btns"><button class="ss-btn" data-act="diagnose"><i class="fa-solid fa-stethoscope"></i> 자가 진단 · 고치기</button></div><p class="ss-hint">창이 안 뜨거나 숫자가 이상할 때 눌러 주세요. 망가진 기록을 찾아 고쳐요 (AI 호출 없음).</p>`)}
+        ${sec('<i class="fa-solid fa-stethoscope"></i> 문제 해결', `<div class="ss-row-btns"><button class="ss-btn" data-act="diagnose"><i class="fa-solid fa-stethoscope"></i> 자가 진단 · 고치기</button><button class="ss-btn" data-act="pipcheck"><i class="fa-solid fa-magnifying-glass"></i> 마지막 답 칩 점검</button><button class="ss-btn" data-act="perf"><i class="fa-solid fa-gauge-simple-high"></i> 부하 재기</button></div><p class="ss-hint">창이 안 뜨거나 숫자가 이상할 때 눌러 주세요. 망가진 기록을 찾아 고쳐요 (AI 호출 없음).</p>`)}
         ${sec('전체', `<div class="ss-grid-btns">
             <button class="ss-btn" data-act="wizard"><i class="fa-solid fa-wand-magic-sparkles"></i> 처음부터 다시 만들기</button>
             <button class="ss-btn" data-act="fillempty">${ai1} 비어 있는 칸 채우기</button>

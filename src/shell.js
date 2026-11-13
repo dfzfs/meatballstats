@@ -6,13 +6,13 @@ import { compute, buildInjection, setInjection, commit, addAdjust, gatherSources
 import { genModule, instructModule, genGroup, GEN_GROUPS } from './ai.js';
 import { PROMPT_DEFS, P, setPrompt, countTokens, estTokens, FEATURE_NAMES } from './prompts.js';
 import { popup, confirmPopup, askConfirm, busyBtn, editorHTML, bindEditor, diffHTML, ai1, gauge, seg, applyTheme, THEMES, THEME_KEYS, themeVars, avatar, emptyBox, sec, mascot } from './kit.js';
-import { VIEW, VIEW_ACTIONS, VIEW_CHANGES, GROUPS, TAB_MOD, TAB_INFO, PSEUDO, manageHTML, miniWidgets, MINI, MINI_REL_VALS, MINI_REL_SORT, miniRelOpt } from './views.js';
+import { VIEW, VIEW_ACTIONS, VIEW_CHANGES, GROUPS, TAB_MOD, TAB_INFO, PSEUDO, manageHTML, miniWidgets, MINI, MINI_REL_VALS, MINI_REL_SORT, miniRelOpt, freshDot } from './views.js';
 import { fullBackup, restoreFile, saveSlot, loadSlot, deleteSlot, attachToCard, detachFromCard, loadFromCard, cardPack, prepareCarry, startCarry, carryFor, diagnose } from './safe.js';
 import { applyPreset } from './extra.js';
 import { unreadNotes } from './notify.js';
 import { DICE_ACTIONS, DICE_CHANGES } from './dice.js';
 import { CONTACT_ACTIONS } from './contact.js';
-import { FEED_ACTIONS } from './feeds.js';
+import { FEED_ACTIONS, FEED_CHANGES } from './feeds.js';
 import { MONEY_ACTIONS } from './money.js';
 import { FATE_ACTIONS } from './fate.js';
 import { EDIT, viewTr } from './core.js';
@@ -40,8 +40,10 @@ const INSTRUCT_HINT = {
 };
 
 // ───── 탭 ─────
+// v2.7.3: 앨범 · 플레이 기록은 확장 설정에서 모든 채팅에 끌 수 있어요
+const PSEUDO_ON = { album: 'albumOn', record: 'recordOn' };
 function groupTabs(g, meta) {
-    return g.tabs.filter(t => PSEUDO.has(t) || modOn(TAB_MOD(t), meta));
+    return g.tabs.filter(t => (PSEUDO.has(t) ? !PSEUDO_ON[t] || settings()[PSEUDO_ON[t]] !== false : modOn(TAB_MOD(t), meta)));
 }
 // 즐겨찾기 그룹 (★) — 있으면 맨 앞
 function allGroups() {
@@ -54,9 +56,21 @@ function badgeFor(tab, s, meta) {
     if (tab === 'contact') { const n = unreadCount(s, meta); return n ? `<i class="ss-badge">${n}</i>` : ''; }
     if (tab === 'dice' && s.pendingRoll) return '<i class="ss-badge">!</i>';
     if (tab === 'news') { const n = s.data.news?.items.filter(x => !x.read).length; return n ? '<i class="ss-dot"></i>' : ''; }
+    if (freshTab(tab)) return '<i class="ss-fresh" title="방금 AI 답에서 바뀌었어요"></i>';
     return '';
 }
-function groupBadge(g, s, meta) { return groupTabs(g, meta).some(t => badgeFor(t, s, meta)) ? '<i class="ss-dot"></i>' : ''; }
+// 🔴 방금 AI 답에서 바뀐 탭 (v2.7.3) — 그 탭을 한 번 열면 탭 점은 꺼지고, 칸 안의 줄 점은 다음 답까지 남아요
+function freshTab(tab) {
+    const f = app.current?.fresh;
+    if (!f || settings().freshDot === false) return false;
+    const mod = TAB_MOD(tab);
+    return !!(f.mods.has(mod) && !f.seen.has(mod));
+}
+function groupBadge(g, s, meta) {
+    const b = groupTabs(g, meta).map(t => badgeFor(t, s, meta)).filter(Boolean);
+    if (!b.length) return '';
+    return b.some(x => !x.includes('ss-fresh')) ? '<i class="ss-dot"></i>' : '<i class="ss-fresh" title="방금 AI 답에서 바뀌었어요"></i>'; // 🔴 새 변화만 있으면 작은 빨간 점
+}
 
 // ───── 패널 ─────
 export function renderPanel(el) {
@@ -86,6 +100,8 @@ export function renderPanel(el) {
     st.group = g.id;
     const tab = st.tab;
     const mod = TAB_MOD(tab);
+    const fresh0 = app.current?.fresh;
+    if (fresh0 && fresh0.mods.has(mod)) fresh0.seen.add(mod); // 🔴 이 탭을 열었으니 탭 점은 끔 (칸 안의 줄 점은 다음 답까지)
     const pseudo = PSEUDO.has(tab) && tab !== 'home';
     const data = pseudo ? {} : mod === 'core' ? s.core : s.data[mod];
     const editable = !pseudo;
@@ -154,7 +170,7 @@ export function renderPanel(el) {
 app.renderPanel = renderPanel;
 
 const ACTIONS = { ...VIEW_ACTIONS, ...DICE_ACTIONS, ...CONTACT_ACTIONS, ...FEED_ACTIONS, ...MONEY_ACTIONS, ...FATE_ACTIONS };
-const CHANGES = { ...VIEW_CHANGES, ...DICE_CHANGES };
+const CHANGES = { ...VIEW_CHANGES, ...DICE_CHANGES, ...FEED_CHANGES };
 
 async function onPanelAction(el, act, arg, btn) {
     const st = el._ss;
@@ -309,6 +325,8 @@ const MANAGE_ACTIONS = {
     carddetach: () => detachFromCard(),
     carryprep: () => prepareCarry(),
     diagnose: () => diagnose(),
+    pipcheck: async () => { const { openPip } = await import('./pip.js'); return openPip(); },
+    perf: () => app.measureLoad?.(),
     export: () => {
         const meta = getMeta();
         const blob = new Blob([JSON.stringify({ statussim: VERSION, base: { core: app.current.state.core, data: app.current.state.data }, mods: meta.mods, difficulty: meta.difficulty }, null, 2)], { type: 'application/json' });
@@ -349,8 +367,8 @@ function hudHTML() {
     if (s.pendingRoll && modOn('dice', meta)) alerts.push(`<button data-hud="roll">🎲 판정 요청 — ${esc(s.pendingRoll.label)}</button>`);
     const d0 = DIFFS[diffOf(meta)];
     return `<div class="ss-hud-row">
-        <button class="ss-hud-t" data-hud="open"><b>${esc(s.core.title || TITLE)}</b><small>${[cal ? `${dateShort(cal)} ${esc(cal.time)}` : '', here ? `📍 ${esc(here)}` : ''].filter(Boolean).join(' · ') || '상태창 열기'}</small></button>
-        <div class="ss-hud-chips">${modOn('wallet', meta) && d.wallet ? `<span class="ss-chip"><i class="fa-solid fa-coins"></i> ${fmtNum(d.wallet.cash)}</span>` : ''}<span class="ss-chip diff-${diffOf(meta)}" title="난이도"><i class="fa-solid ${d0.icon}"></i><span class="lbl"> ${d0.name}</span></span></div>
+        <button class="ss-hud-t" data-hud="open"><b>${esc(s.core.title || TITLE)}</b><small>${[cal ? `${dateShort(cal)} ${esc(cal.time)}${freshDot('calendar')}` : '', here ? `📍 ${esc(here)}${freshDot('map', 'here')}` : ''].filter(Boolean).join(' · ') || '상태창 열기'}</small></button>
+        <div class="ss-hud-chips">${modOn('wallet', meta) && d.wallet ? `<span class="ss-chip"><i class="fa-solid fa-coins"></i> ${fmtNum(d.wallet.cash)}${freshDot('wallet', 'cash')}</span>` : ''}<span class="ss-chip diff-${diffOf(meta)}" title="난이도"><i class="fa-solid ${d0.icon}"></i><span class="lbl"> ${d0.name}</span></span></div>
         <div class="ss-hud-a">
             ${modOn('dice', meta) && d.dice ? `<button class="ss-ib" data-hud="roll" title="주사위"><i class="fa-solid fa-dice-d20"></i></button>` : ''}
             ${modOn('contact', meta) && d.contact ? `<button class="ss-ib" data-hud="tab:contact" title="연락"><i class="fa-solid ${d.contact.mode === 'letter' ? 'fa-envelope' : 'fa-comment'}"></i>${un ? `<i class="ss-badge">${un}</i>` : ''}</button>` : ''}
@@ -359,7 +377,7 @@ function hudHTML() {
             ${bars.length ? `<button class="ss-ib" data-hud="fold" title="게이지 접기/펼치기"><i class="fa-solid fa-chevron-${settings().hudOpen ? 'up' : 'down'}"></i></button>` : ''}
         </div></div>
         ${meta.paused ? `<div class="ss-hud-pause"><i class="fa-solid fa-pause"></i> 일시정지 중 · AI에게 상태를 보내지 않아요</div>` : ''}
-        ${bars.length && settings().hudOpen ? `<div class="ss-hud-bars">${bars.map(b => gauge(b, true)).join('')}</div>` : ''}
+        ${bars.length && settings().hudOpen ? `<div class="ss-hud-bars">${bars.map(b => gauge(b, true, freshDot('stats', 'bars', b.name))).join('')}</div>` : ''}
         ${alerts.length ? `<div class="ss-hud-alert">${alerts.join('')}</div>` : ''}`;
 }
 function onHud(e) {

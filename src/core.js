@@ -3,7 +3,7 @@ import { toEnglish, usedPairs } from './skeleton_en.js'; // 영어 저장일 때
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.7.2';
+export const VERSION = '2.7.3';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
 export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
@@ -125,7 +125,21 @@ export const DEFAULTS = Object.freeze({
     mascotBuddy: true,       // 상태창 머리에 마스코트 항상 (누르면 반응)
     mascotSound: 'meow',     // 누르면 나는 소리: meow (냥냥) · off (v2.7: 다른 소리 · 내 소리 파일은 뺌)
     mascotVolume: 60,        // 효과음 크기 0~100
+    // ── v2.7.3: 기능 켜고 끄기 (모든 채팅) ──
+    memoOn: true,            // 📝 메모 칸 — 끄면 모든 채팅에서 메모 탭 · 메모 주입 · AI의 memo 키가 빠져요
+    albumOn: true,           // 🖼 추억 앨범 — 끄면 답마다 붙던 앨범 버튼 · 앨범 탭이 사라져요 (담아 둔 건 지우지 않음)
+    peekOn: true,            // 💗 속마음 엿보기 버튼 (관계 카드 · AI 1회)
+    recordOn: true,          // 📊 플레이 기록 탭
+    pipCheck: true,          // 🔍 칩 점검: 마지막 AI 답에 칩이 안 보이면 작은 🔍 표시 → 눌러서 「씹혔나 / 안 보이나」 확인 · 다시 읽기
+    freshDot: true,          // 🔴 방금 AI 답에서 바뀐 칸 · 줄에 작은 빨간 점
+    questJudge: 'ask',       // 🎲 퀘스트 완료 판정: ask (완료 누르면 판정할지 물어봄) · roll (늘 판정) · off (판정 없이 완료)
+    questJudgeAI: false,     // 본편 AI가 「완료」라고 적은 퀘스트도 보상 판정을 자동으로 굴림 (토큰 0)
+    goneInject: true,        // 🗑 버리거나 판 물건을 AI에게 「이제 없음」으로 알려 주기 (다시 꺼내 쓰지 않게)
+    chipOutside: false,      // 변동 칩을 본문(.mes_text) 밖 아래에 붙이기 — 번역 확장이 원문을 숨겨 칩이 안 보일 때
 });
+// 전역 끄기 스위치가 있는 칸 (모든 채팅에서 꺼짐 — 채팅마다 켜고 끄는 「쓸 기능」보다 먼저)
+export const GLOBAL_OFF = { memo: 'memoOn' };
+export const featOn = (k) => settings()[k] !== false;
 
 // 연락: 최근에 주고받은 상대를 맨 앞으로 (본편 주입 순서)
 export function touchContact(ct, who) {
@@ -149,7 +163,7 @@ export const MODS = [
     { id: 'gossip', name: '가십지', icon: 'fa-wine-glass', desc: '인물들에 대한 소문 · 스캔들' },
     { id: 'board', name: '게시판', icon: 'fa-clipboard-list', desc: '커뮤니티 · 길드 게시판 (글·댓글)' },
     { id: 'ach', name: '업적', icon: 'fa-trophy', desc: '세계관 맞춤 업적' },
-    { id: 'memo', name: '메모', icon: 'fa-note-sticky', desc: '내 메모 · AI 메모' },
+    { id: 'memo', name: '메모', icon: 'fa-note-sticky', desc: '꼭 기억할 약속·단서를 📌 고정해 매 턴 AI에게 (요약 확장과 달리 내가 고른 것만)' },
     { id: 'fate', name: '운명', icon: 'fa-hat-wizard', desc: '저주·축복 · 이벤트 카드 · 자동 규칙 · 미니게임' },
     { id: 'sns', name: 'SNS', icon: 'fa-hashtag', desc: '인물들의 SNS 피드 (사진 묘사 · 좋아요 · 댓글)' },
     { id: 'music', name: '추천 음악', icon: 'fa-music', desc: '장면에 어울리는 곡 추천 (▶ 누르면 검색)' },
@@ -440,6 +454,7 @@ export async function saveMeta(now = false) {
 }
 export function modOnRaw(id, meta = getMeta()) {
     if (!meta) return false;
+    if (GLOBAL_OFF[id] && settings()[GLOBAL_OFF[id]] === false) return false; // v2.7.3: 모든 채팅에서 끈 칸
     if (meta.mods?.[id] === false) return false;
     const need = MOD[id]?.needs;
     if (need && meta.mods?.[need] === false) return false;
@@ -606,8 +621,11 @@ export const NORM = {
             status: ['open', 'active', 'done', 'failed'].includes(q.status) ? q.status : 'open',
             steps: arr(q.steps).map(s => (typeof s === 'string' ? { text: s, done: false } : { text: str(s?.text), done: !!s?.done })).filter(s => s.text),
             paid: !!q.paid,
+            ...(q.check && typeof q.check === 'object' ? { check: { attr: str(q.check.attr), dc: Math.max(2, Math.min(30, num(q.check.dc, 12))) } } : {}), // 🎲 완료 판정 (v2.7.3)
+            ...(['crit', 'ok', 'fail', 'fumble'].includes(q.judge) ? { judge: q.judge } : {}),
         })),
         archive: arr(d.archive),
+        gone: arr(d.gone).map(String).filter(Boolean).slice(-60), // 내가 지운 퀘스트 이름 — AI가 다시 살리지 못하게 (v2.7.3)
     }),
     news: (d) => ({ name: str(d.name), items: arr(d.items).filter(x => x?.title).map(x => ({ id: str(x.id) || uid(), title: str(x.title), body: str(x.body), tag: str(x.tag), date: str(x.date), read: !!x.read })), archive: arr(d.archive) }),
     gossip: (d) => ({ name: str(d.name), issues: arr(d.issues).filter(x => x?.title).map(x => ({ id: str(x.id) || uid(), title: str(x.title), body: str(x.body), about: arr(x.about).map(String).filter(Boolean), heat: clamp(Math.round(num(x.heat, 2)), 1, 3), date: str(x.date), read: !!x.read })), archive: arr(d.archive) }),
@@ -700,7 +718,7 @@ export const SCHEMA = {
     map: `{"name":"지도 이름","here":"현재 위치(장소 이름)","places":[{"name":"장소","desc":"설명","kind":"마을/건물/던전/자연 등","x":50,"y":50,"links":["이어진 장소 이름"],"known":true,"area":"속한 구역 (선택)","fare":0,"icon":"🏠"}]}  (x,y는 0~100 좌표, 겹치지 않게 퍼뜨림 · fare = 그곳까지 가는 요금, 보통 0 · icon = 그 장소를 나타내는 이모지 하나)`,
     calendar: `{"era":"연호/기원(선택)","y":1,"m":1,"d":1,"time":"아침","months":[{"name":"1월","days":31}],"week":["월","화","수","목","금","토","일"],"times":["새벽","아침","낮","저녁","밤","심야"],"weather":"오늘 날씨 (맑음/비/눈 등)","events":[{"y":null,"m":3,"d":14,"title":"일정/기념일/축제","desc":"설명","repeat":"yearly|once"}]}`,
     contact: `{"mode":"phone|instant|letter","app":"연락 수단 이름(스마트폰 메신저 / 마법 통신구 / 편지 등)","contacts":[{"name":"연락 가능한 인물","handle":"아이디/주소(선택)","status":"상태 메시지 또는 사는 곳","courier":"(letter일 때) 이 인물이 주로 쓰는 배달 수단 이름"}],"couriers":[{"name":"배달 수단(배달부/갈매기/올빼미/강아지/전서구/마법 등 세계관에 맞게)","icon":"이모지 1개","min":1,"max":3,"fee":0,"note":"설명"}],"express":{"name":"급행 수단 이름(퀵·특급 파발 등)","fee":100}}  (min/max = 도착까지 걸리는 날 수, fee = 화폐 단위 요금)`,
-    quest: `{"list":[{"title":"의뢰/목표 이름","giver":"의뢰인","desc":"내용","place":"장소","deadline":"기한(선택)","reward":"보상 설명","cash":0,"items":["보상 아이템"],"status":"open|active","steps":[{"text":"단계","done":false}]}]}`,
+    quest: `{"list":[{"title":"의뢰/목표 이름","giver":"의뢰인","desc":"내용","place":"장소","deadline":"기한(선택)","reward":"보상 설명","cash":0,"items":["보상 아이템"],"status":"open|active","steps":[{"text":"단계","done":false}],"check":{"attr":"완료 판정에 쓸 능력치 이름 (없으면 빈칸)","dc":12}}]}`,
     news: `{"name":"매체 이름(신문·방송·관보·포털 등 세계관에 맞게)","items":[{"title":"헤드라인","body":"기사 2~4문장","tag":"정치/사회/사건/경제/문화/연예 등"}]}`,
     gossip: `{"name":"가십지 이름","issues":[{"title":"자극적인 제목","body":"소문 내용 2~4문장 (가십지 말투)","about":["관련 인물"],"heat":1}]}  (heat 1~3 = 화제성)`,
     board: `{"name":"게시판 이름(길드 게시판·익명 커뮤니티·학교 게시판 등)","posts":[{"author":"닉네임","title":"글 제목","body":"본문","tag":"말머리","replies":[{"author":"닉네임","text":"댓글"}]}]}`,

@@ -1,6 +1,6 @@
 // 💡 기능 추천 (v2.7): 처음엔 꼭 필요한 칸만 켜 두고, 이야기에 맞는 순간에 「이런 기능도 있어요」를 한 번씩 알려 준다.
 // AI 호출 없음. 한 채팅에서 기능마다 한 번만 · 몇 턴에 한 번만 · 설정에서 끌 수 있음 · 「다시 안 볼래요」는 모든 채팅에 적용.
-import { app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, MOD, GENRES, normalize, TITLE, LOG, ssWarn } from './core.js';
+import { app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, MOD, GENRES, normalize, TITLE, LOG, ssWarn, GLOBAL_OFF } from './core.js';
 import { commit, stripStatus } from './engine.js';
 import { skeleton } from './skeleton.js';
 
@@ -37,7 +37,7 @@ export function maybeTip() {
         const never = set.tipNever ?? {};
         const text = (ctx().chat ?? []).slice(-4).map(m => stripStatus(m?.mes)).join('\n');
         const age = turn - (T.start ?? 0);
-        const open = TIPS.filter(t => !modOn(t.mod, meta) && !T.seen[t.mod] && !never[t.mod]);
+        const open = TIPS.filter(t => !modOn(t.mod, meta) && !T.seen[t.mod] && !never[t.mod] && !(GLOBAL_OFF[t.mod] && settings()[GLOBAL_OFF[t.mod]] === false)); // 모든 채팅에서 끈 칸은 권하지 않음
         // 이야기에 관련 말이 나오면 우선 · 말이 안 나와도 권하는 건 간격을 두 배로 (광고처럼 자주 뜨지 않게)
         const tip = open.find(t => t.kw && t.kw.test(text)) ?? (since >= gap * 2 ? open.find(t => age >= t.after) : null);
         if (!tip) return;
@@ -86,7 +86,7 @@ export const TAB_HINTS = {
     map: [H('map.travel', '장소를 눌러 「이동」하면 거리만큼 시간이 흐르고 요금이 빠져요.'), H('map.who', '프로필에 사는 곳·일과를 적으면, 지금 그 장소에 누가 있는지 지도에 나와요.'), H('map.zoom', '지도는 확대·축소하고 구역별로 나눠 볼 수 있어요.'), H('map.new', '이야기에서 새 장소에 가면 AI가 지도에 저절로 추가해요.')],
     calendar: [H('cal.event', '날짜를 눌러 일정을 넣을 수 있어요 (매년 반복도).'), H('cal.bday', '프로필에 「생일」 항목을 적으면 달력에 저절로 들어가요.'), H('cal.weather', '날씨는 계절에 맞게 저절로 바뀌고, 직접 정할 수도 있어요.'), H('cal.skip', '「하루 지나기」 · 「다음 시간대」 버튼으로 시간을 직접 넘길 수 있어요.')],
     contact: [H('ct.pin', '말풍선을 📌 고정하면 그 메시지만 본편 AI에게 알려 주게 할 수 있어요 (연락처 ⋮ 메뉴).'), H('ct.attach', '사진·음성 묘사, 선물, 송금도 보낼 수 있어요.'), H('ct.unsend', '보낸 메시지를 지울 수 있어요. 상대가 이미 읽었다면 내용을 기억해요.'), H('ct.ping', '「선톡」을 누르면 상대가 먼저 연락해 와요 (AI 1회).'), H('ct.reflect', '연락처 ⋮에서 이 사람과의 대화를 본편 AI에게 「항상 · 고른 것만 · 숨기기」로 정할 수 있어요.'), H('ct.read', '상대가 읽고 답을 안 할 수도 있어요 (읽씹). 호감이 낮으면 더 그래요.')],
-    quest: [H('q.pay', '퀘스트를 완료하면 보상 돈·아이템이 저절로 들어와요.'), H('q.find', '「의뢰 찾기」로 이 세계에 맞는 의뢰를 받아 볼 수 있어요 (AI 1회).'), H('q.step', '진행 단계를 체크해 두면 AI가 다음 할 일을 알고 이야기에 써요.')],
+    quest: [H('q.pay', '퀘스트를 완료하면 보상 돈·아이템이 저절로 들어와요.'), H('q.judge', '진행 중 퀘스트 카드에서 완료 판정에 쓸 능력치 · 목표를 고를 수 있어요. 대성공이면 보상 1.5배!'), H('q.find', '「의뢰 찾기」로 이 세계에 맞는 의뢰를 받아 볼 수 있어요 (AI 1회).'), H('q.step', '진행 단계를 체크해 두면 AI가 다음 할 일을 알고 이야기에 써요.')],
     dice: [H('dice.send', '굴린 결과를 「보내기」로 메시지에 넣으면, AI가 그 결과대로 이야기를 써요.'), H('dice.free', '2d6+1 같은 자유 주사위도 굴릴 수 있어요.'), H('dice.diff', '난이도 이지는 −2, 하드는 +2로 판정 목표가 바뀌어요.'), H('dice.ask', 'AI가 위험한 순간엔 「판정 요청」을 보내요. 답 밑의 🎲 버튼을 누르면 바로 굴려요.')],
     memo: [H('memo.pin', '📌 고정한 메모는 매 턴 AI에게 가요 (최대 8개). AI에게 안 보낼 메모는 끄기.'), H('memo.ai', 'AI도 중요한 약속·단서를 메모에 적어 둬요.')],
     news: [H('feed.kw', '소식이 많으면 확장 설정 › 칸별 보내는 때를 「관련 말이 나올 때만」으로 두면 토큰이 줄어요.'), H('feed.arc', '오래된 소식은 저절로 보관함으로 옮겨져서 쌓여도 무겁지 않아요.')],
@@ -153,7 +153,8 @@ export function hintAfterAction(tab) {
         const set = settings(), last = Math.max(session.at, Number(set.hintAt) || 0);
         if (session.n >= HINT_PER_SESSION || Date.now() - last < HINT_GAP) return;
         if (set.hintDay?.d === today() && set.hintDay.n >= HINT_PER_DAY) return;
-        let list = (TAB_HINTS[tab] ?? []).filter(h => !seen(h.id, h.kind));
+        const offHint = { 'home.album': 'albumOn', 'rel.peek': 'peekOn' }; // 꺼 둔 기능의 팁은 안 보여요 (v2.7.3)
+        let list = (TAB_HINTS[tab] ?? []).filter(h => !seen(h.id, h.kind) && !(offHint[h.id] && set[offHint[h.id]] === false));
         if (!list.length) list = GENERAL.filter(h => !seen(h.id, h.kind)); // 그 칸 팁을 다 봤으면 공통 팁
         if (!list.length || Math.random() > HINT_CHANCE) return; // 매번 말고 가끔
         const h = list[Math.floor(Math.random() * list.length)];

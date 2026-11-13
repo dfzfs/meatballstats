@@ -18,6 +18,18 @@ export async function confirmPopup(el, ok = '적용', cancel = '취소') {
     const r = await p.show();
     return r === 1 || r === true;
 }
+// 버튼 여러 개 중 하나 고르기 (v2.7.3) — 창 안의 [data-choice] 단추를 누르면 그 값, 닫기(취소)면 null
+// 실리 판마다 다른 customButtons 대신 창 안 단추를 써서 어느 판에서도 같아요
+export async function choosePopup(el, cancel = '취소') {
+    let choice = null;
+    el.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-choice]'); if (!b || b.disabled) return;
+        choice = b.dataset.choice;
+        el.closest('dialog')?.querySelector('.popup-button-ok')?.click();
+    });
+    await popup(el, { okButton: cancel });
+    return choice;
+}
 export const askConfirm = async (text) => !!(await ctx().Popup.show.confirm('미트볼 상태창', text));
 export const askInput = async (title, text, def = '') => { const v = await ctx().Popup.show.input(title, text, def); return v === false || v === null || v === undefined ? null : String(v); };
 export function insertInput(text, send = false) {
@@ -41,11 +53,11 @@ export const ai1 = '<span class="ss-ai" title="확장 AI를 1번 부릅니다 (�
 export const emptyBox = (t, icon = 'fa-feather') => `<div class="ss-empty-s"><i class="fa-solid ${icon}"></i><span>${t}</span></div>`;
 export const sec = (title, inner, right = '') => `<section class="ss-sec"><div class="ss-sec-h"><h4>${title}</h4>${right ? `<div class="ss-sec-r">${right}</div>` : ''}</div>${inner}</section>`;
 export const chip = (t, cls = '') => `<span class="ss-chip ${cls}">${t}</span>`;
-export function gauge(b, compact = false) {
+export function gauge(b, compact = false, dot = '') {
     const pct = clamp((b.cur / Math.max(1, b.max)) * 100, 0, 100);
     const low = pct <= 25 ? 'low' : '';
     return `<div class="ss-gauge ${low} ${compact ? 'c' : ''}" title="${esc(b.name)} ${fmtNum(b.cur)}/${fmtNum(b.max)}${b.desc ? ` — ${esc(b.desc)}` : ''}">
-        <div class="ss-gauge-h"><span>${esc(b.name)}</span><b>${fmtNum(b.cur)}<small>/${fmtNum(b.max)}</small></b></div>
+        <div class="ss-gauge-h"><span>${esc(b.name)}${dot}</span><b>${fmtNum(b.cur)}<small>/${fmtNum(b.max)}</small></b></div>
         <div class="ss-gauge-t"><i style="width:${pct}%;${b.color ? `--g:${esc(b.color)}` : ''}"></i></div></div>`;
 }
 export function meter(name, v, cls) {

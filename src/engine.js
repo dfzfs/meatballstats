@@ -1,6 +1,6 @@
 // 상태 엔진: <meatball> 변화량 → 상태 재계산 · 직접 편집 기록 · 프롬프트 주입
 import {
-    app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
+    app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, DIFFS, GLOBAL_OFF, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
     signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, trBack, viewTr, weekday,
     PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser, ssWarn, relAxes, romanceStart, INJ, isHidden, modOnRaw } from './core.js';
 import { P } from './prompts.js';
@@ -561,6 +561,7 @@ export function applyOp(s, rawKey, rawVal, info) {
     }
     const mod = KEY_MOD[key];
     if (mod && info.mods && info.mods[mod] === false) return;
+    if (mod && GLOBAL_OFF[mod] && settings()[GLOBAL_OFF[mod]] === false) return; // 모든 채팅에서 끈 칸 (v2.7.3)
     if (!val && !key.startsWith('_')) return;
     const L = (t) => info.labels.push(t);
     const T = (s.tally ??= { earn: 0, spend: 0, places: [], rolls: 0, good: 0, crit: 0, fumble: 0, sent: 0, got: 0, quests: 0, curses: 0 });
@@ -1072,6 +1073,14 @@ export function applyOp(s, rawKey, rawVal, info) {
             if (!title) return;
             const st = QSTATUS[norm(st0)] ?? (st0 ? null : 'open');
             let q = findBy(qs.list, title, 'title');
+            // v2.7.3: 내가 지운 퀘스트 · 끝난(완료·실패·포기) 퀘스트 · 보관함으로 간 퀘스트는 AI가 다시 살리지 못해요
+            //   (예전: 포기한 퀘스트를 AI가 「진행」이라고 다시 적으면 진행 중으로 돌아오고, 지운 퀘스트는 「받을 수 있음」으로 되살아났어요)
+            if (info.ai) {
+                const key = norm(title);
+                if ((qs.gone ?? []).some(g => norm(g) === key)) return;
+                if (q && (q.status === 'done' || q.status === 'failed')) return;
+                if (!q && (qs.archive ?? []).some(a => norm(a.title) === key)) return;
+            }
             if (!q) {
                 q = { id: `${info.seed}:q${qs.list.length}`, title: title.trim(), giver: '', desc: desc ?? (st ? '' : st0 ?? ''), place: '', deadline: '', reward: '', cash: 0, items: [], status: st ?? 'open', steps: [], paid: false };
                 qs.list.push(q);
@@ -1084,12 +1093,22 @@ export function applyOp(s, rawKey, rawVal, info) {
                 q.steps.push({ text: st0, done: false }); L(`📜 ${q.title}: ${short(st0, 20)}`);
             }
             if (desc && st) q.desc ||= desc;
-            if (q.status === 'done' && !q.paid) payQuest(s, q, info);
+            if (q.status === 'done' && !q.paid) {
+                // 본편 AI가 끝낸 퀘스트도 보상 판정 (설정 · 같은 답은 늘 같은 결과가 나오게 답마다 정해진 주사위)
+                if (info.ai && settings().questJudgeAI) { const r = questRoll(s, q, `${info.seed}:${q.title}`); q.judge = r.cls; L(`🎲 ${q.title}: ${JUDGE_NAME[r.cls]}`); if (r.cls === 'fumble') { q.status = 'failed'; return; } payQuest(s, q, info, JUDGE_MUL[r.cls]); }
+                else payQuest(s, q, info);
+            }
             return;
         }
-        case '_questpay': {
-            const q = s.data.quest?.list.find(x => x.id === val);
-            if (q) { q.status = 'done'; if (!q.paid) payQuest(s, q, info); }
+        case '_questpay': { // id · id|판정(crit·ok·fail·fumble)
+            const [id, cls] = splitBar(val);
+            const q = s.data.quest?.list.find(x => x.id === id);
+            if (!q) return;
+            if (cls && JUDGE_MUL[cls] !== undefined) {
+                q.judge = cls;
+                if (cls === 'fumble') { q.status = 'failed'; return; } // 대실패: 보상 없이 실패
+                q.status = 'done'; if (!q.paid) payQuest(s, q, info, JUDGE_MUL[cls]);
+            } else { q.status = 'done'; if (!q.paid) payQuest(s, q, info); }
             return;
         }
         case 'news': {
@@ -1134,18 +1153,32 @@ export function applyOp(s, rawKey, rawVal, info) {
         default: return;
     }
 }
-function payQuest(s, q, info) {
+// 🎲 퀘스트 완료 판정 (v2.7.3): 대성공 1.5배 · 성공 그대로 · 실패 돈 절반(아이템 없음) · 대실패 보상 없이 실패
+export const JUDGE_MUL = { crit: 1.5, ok: 1, fail: 0.5, fumble: 0 };
+export const JUDGE_NAME = { crit: '대성공', ok: '성공', fail: '아쉬운 완료', fumble: '대실패' };
+const seedNum = (str) => { let h = 2166136261; for (const ch of String(str)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0) / 4294967296; };
+export function questRoll(s, q, seed) {
+    const attrs = s.data.stats?.attrs ?? [];
+    const a = q.check?.attr ? findBy(attrs, q.check.attr) : null;
+    const dc = num(q.check?.dc, 12) + (DIFFS[diffOf()]?.dc ?? 0);
+    const roll = seed === undefined ? Math.floor(Math.random() * 20) + 1 : Math.floor(seedNum(seed) * 20) + 1;
+    const mod = a?.val ?? 0;
+    const cls = roll === 20 ? 'crit' : roll === 1 ? 'fumble' : roll + mod >= dc ? 'ok' : 'fail';
+    return { roll, mod, dc, cls, attr: a ? a.name : '', detail: `d20 ${roll}${mod ? `${mod > 0 ? '+' : ''}${mod}=${roll + mod}` : ''} vs ${dc}` };
+}
+function payQuest(s, q, info, mul = 1) {
     q.paid = true;
     if (s.tally) s.tally.quests++;
-    if (q.cash && s.data.wallet) applyOp(s, 'cash', `+${q.cash}`, info);
-    for (const it of q.items) if (s.data.wallet) applyOp(s, 'item', `+${it}`, info);
-    info.alerts.push(`퀘스트 완료 — ${q.title}${q.reward ? ` (${q.reward})` : ''}`);
+    const cash = Math.round((q.cash || 0) * mul);
+    if (cash && s.data.wallet) applyOp(s, 'cash', `+${cash}`, info);
+    if (mul >= 1) for (const it of q.items) if (s.data.wallet) applyOp(s, 'item', `+${it}`, info);
+    info.alerts.push(`퀘스트 완료 — ${q.title}${q.judge ? ` · 🎲 ${JUDGE_NAME[q.judge] ?? ''}` : ''}${q.reward ? ` (${q.reward})` : ''}`);
 }
 
 export function freshState(base) {
     const data = {};
     for (const id of MOD_IDS) data[id] = base?.data?.[id] ? clone(base.data[id]) : null;
-    const s = { core: clone(base?.core ?? EMPTY.core()), data, pendingRoll: null, recent: [], turn: 0, tally: clone(base?.tally) ?? null, days: clone(base?.days) ?? [], day0: base?.day0 ?? null };
+    const s = { core: clone(base?.core ?? EMPTY.core()), data, pendingRoll: null, recent: [], turn: 0, tally: clone(base?.tally) ?? null, days: clone(base?.days) ?? [], day0: base?.day0 ?? null, gone: clone(base?.gone) ?? [] };
     if (s.day0 === null && data.calendar) s.day0 = dayIndex(data.calendar);
     // 관계: 처음 단계 맞추기 (알림 없이)
     if (data.rel) { data.rel.stages ??= clone(DEFAULT_STAGES); data.rel.life ??= []; for (const r of data.rel.user ?? []) { r.jealous ??= 0; if (r.stage === undefined || r.stage === null || r.stage < 0) { r.stage = stageIndex(data.rel.stages, r.aff, r.trust); if (r.noLove) r.stage = noLoveStage(data.rel, data.rel.stages, r, r.stage); } } }
@@ -1175,7 +1208,15 @@ function resolveStart(meta, chat) {
     }
     return st;
 }
-function msgOps(m) {
+// 🔍 칩 점검 (v2.7.3): 이 키를 미트볼이 알아보나 · 어느 칸의 키인가
+export function opInfo(s, rawKey) {
+    let key = KEYMAP[String(rawKey).trim().toLowerCase()] ?? (String(rawKey).startsWith('_') ? String(rawKey) : null);
+    const nm = String(rawKey).trim();
+    if (!key && s?.data?.stats && (findBy(s.data.stats.bars, nm) || findBy(s.data.stats.attrs, nm))) key = 'stat';
+    if (!key && s?.data?.wallet && norm(nm) === norm(s.data.wallet.currency)) key = 'cash';
+    return { key, mod: key ? KEY_MOD[key] ?? null : null };
+}
+export function msgOps(m) {
     const ops = extractOps(m.mes);
     const extra = m.extra?.[MODULE]?.bySwipe?.[m.swipe_id ?? 0];
     if (Array.isArray(extra) && !ops.length) ops.push(...extra);
@@ -1197,7 +1238,7 @@ export function compute(limit, opts = {}) {
     const seed = String(c.getCurrentChatId?.() ?? MODULE);
     let lastAI = -1;
     for (let i = n - 1; i >= start; i--) if (isStoryAI(chat[i])) { lastAI = i; break; }
-    let ai = 0;
+    let ai = 0, fresh = null;
     markRomFrom(meta, chat);
     const romFrom = Number.isFinite(meta.romFrom) ? meta.romFrom : Infinity;
     const romRun = settings().romFatigue;
@@ -1212,8 +1253,10 @@ export function compute(limit, opts = {}) {
                 if (a.set.mod === 'calendar' && s.day0 === null) s.day0 = dayIndex(s.data.calendar);
             }
         }
+        const had = a.ops?.length || (a.set && a.label) ? owned(s) : null; // 번역 · 영어 저장으로 바꾼 칸(이름 없는 기록)은 「버림」으로 안 셈
         for (const [k, v] of a.ops ?? []) applyOp(s, k, v, info);
         checkRules(s, info);
+        if (had) trackGone(s, had, a.ops?.some(([k]) => k === '_sellused' || k === 'cash') ? 'sold' : 'discarded');
         if (a.label && !a.silent) s.dayBuf?.labels.push(a.label);
         adjEvents.set(a.t, info.alerts);
         if (a.at > lastAI && a.label && !a.silent) s.recent.push(a.label);
@@ -1227,9 +1270,12 @@ export function compute(limit, opts = {}) {
         if (!ops.length) continue;
         s.romActive = i >= romFrom;
         const info = { seed: `${seed}:${i}`, labels: [], alerts: [], mods: meta.mods, roll: null, meta, cut: 0, ai: true };
+        const before = i === lastAI && !opts.bake && settings().freshDot !== false ? freshSnap(s) : null; // 🔴 방금 AI 답에서 바뀐 곳 (v2.7.3)
         for (const [k, v] of ops) applyOp(s, k, v, info);
         if (romRun && s.romActive) { const used = info.romUsed ?? {}; const run = (s.romRun ??= {}); for (const k of new Set([...Object.keys(run), ...Object.keys(used)])) run[k] = used[k] > 0 ? (run[k] ?? 0) + 1 : 0; }
         checkRules(s, info);
+        if (before) fresh = freshDiff(before, s, `${seed}:${i}:${m.swipe_id ?? 0}`);
+        if (s.gone.length) trackGone(s, null); // AI가 다시 얻은 물건은 「없음」 목록에서 빼기
         s.dayBuf?.labels.push(...info.labels.slice(info.cut));
         snaps.set(i, { labels: info.labels, alerts: info.alerts, roll: info.roll, turn: s.turn });
         if (i === lastAI && info.roll) s.pendingRoll = info.roll;
@@ -1240,7 +1286,61 @@ export function compute(limit, opts = {}) {
     try { birthdays(s); } catch (e) { ssWarn(LOG, 'bday', e); }
     const cal = s.data.calendar;
     if (cal?.autoWeather && !cal.weather && modOn('calendar', meta)) cal.weather = pickWeather(cal, `${seed}:w${dayIndex(cal)}`);
-    return { state: s, snaps, lastAI, rest: adj.slice(ai) };
+    return { state: s, snaps, lastAI, rest: adj.slice(ai), fresh };
+}
+// ───── 🗑 버리거나 판 물건 (v2.7.3) ─────
+// 창고에서 버린 가구 · 판 물건은 상태창에선 사라져도, AI는 지난 이야기를 보고 「아직 있다」고 여겨 다시 쓰거나 decor로 되살렸다.
+// 내가 직접 없앤 것(편집 기록)만 모아서, 「이제 없음」으로 한 줄 알려 준다 (최근 30턴 · 12개까지 · 다시 얻으면 빠짐)
+function owned(s) {
+    const m = new Map();
+    const add = (n) => { const k = norm(n); if (k) m.set(k, String(n)); };
+    for (const it of s.data.wallet?.items ?? []) add(it.name);
+    for (const x of s.data.home?.storage ?? []) add(x);
+    for (const r of s.data.home?.rooms ?? []) for (const x of r.decor ?? []) add(x);
+    return m;
+}
+function trackGone(s, had, how = 'discarded') {
+    const now = owned(s);
+    if (had) for (const [k, n] of had) if (!now.has(k) && !s.gone.some(g => norm(g.name) === k)) s.gone.push({ name: n, how, turn: s.turn });
+    if (s.gone.length) s.gone = s.gone.filter(g => !now.has(norm(g.name)) && s.turn - g.turn <= 30).slice(-12);
+}
+export const goneLine = (s) => (settings().goneInject === false || !s?.gone?.length ? '' : `No longer owned by {{user}} (used up, thrown away or sold — do not use, wear, place or mention them as still owned, and do not re-add them unless the story gets them back): ${s.gone.map(g => g.name).join(', ')}`);
+// ───── 🔴 방금 AI 답에서 바뀐 곳 (v2.7.3) ─────
+// 마지막 AI 답의 변화를 적용하기 전 · 후를 칸마다 비교해서, 바뀐 칸(mod) · 줄(이름 있는 항목) · 값(key)을 모은다. 마지막 답 하나만 · 계산 1번에 1번.
+const freshName = (x) => (x && typeof x === 'object' ? x.name ?? x.title ?? x.text ?? x.who ?? null : null);
+function freshSnap(s) {
+    const o = { core: JSON.stringify(s.core) };
+    for (const [k, v] of Object.entries(s.data)) if (v) o[k] = JSON.stringify(v);
+    return o;
+}
+const freshKeep = new Map(); // 같은 답을 다시 계산해도 「이미 본 탭」은 그대로 (갱신마다 점이 되살아나지 않게)
+export function freshDiff(before, s, key) {
+    const mods = new Set(), items = new Set();
+    const after = freshSnap(s);
+    for (const mod of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        if (before[mod] === after[mod]) continue;
+        mods.add(mod);
+        let a, b; try { a = before[mod] ? JSON.parse(before[mod]) : {}; b = mod === 'core' ? s.core : s.data[mod] ?? {}; } catch { continue; }
+        for (const k of Object.keys({ ...a, ...b })) {
+            const x = a?.[k], y = b?.[k];
+            if (JSON.stringify(x) === JSON.stringify(y)) continue;
+            items.add(`${mod}.${k}`);
+            if (Array.isArray(y)) {
+                const old = new Map((Array.isArray(x) ? x : []).map(e => [freshName(e) ?? JSON.stringify(e), JSON.stringify(e)]));
+                for (const e of y) { const n = freshName(e) ?? JSON.stringify(e); if (old.get(n) !== JSON.stringify(e)) items.add(`${mod}.${k}:${norm(n)}`); }
+            }
+        }
+    }
+    if (!mods.size) return null;
+    let seen = freshKeep.get(key);
+    if (!seen) { seen = new Set(); freshKeep.set(key, seen); if (freshKeep.size > 6) freshKeep.delete(freshKeep.keys().next().value); }
+    return { key, mods, items, seen };
+}
+// 화면에서: 이 칸 · 이 값 · 이 이름의 줄이 방금 바뀌었나
+export function isFresh(fr, mod, k, name) {
+    if (!fr || settings().freshDot === false || !fr.mods.has(mod)) return false;
+    if (!k) return true;
+    return name === undefined ? fr.items.has(`${mod}.${k}`) : fr.items.has(`${mod}.${k}:${norm(name)}`);
 }
 
 // 직접 편집·구매·추가 지시 기록
@@ -1317,7 +1417,7 @@ export function squash(meta, keep = SQUASH_KEEP) {
         // 굳히기 전에 지금 기준점을 자동 세이브로 (분기·실수 대비, 최근 3개)
         meta.saves = arr(meta.saves).filter(x => !x.auto).concat(arr(meta.saves).filter(x => x.auto).slice(-1), [{ id: uid(), auto: true, name: '자동 세이브', t: Date.now(), at: meta.startAt ?? 0, key: meta.startKey ?? null, base: clone(meta.base), baseTurn: meta.baseTurn ?? 0, adjust: clone(meta.adjust ?? []), mods: { ...meta.mods }, difficulty: meta.difficulty }]);
     }
-    meta.base = { core: r.state.core, data: r.state.data, tally: r.state.tally, days: r.state.days, day0: r.state.day0 };
+    meta.base = { core: r.state.core, data: r.state.data, tally: r.state.tally, days: r.state.days, day0: r.state.day0, gone: r.state.gone };
     meta.baseTurn = r.state.turn;
     meta.startAt = cut;
     meta.startKey = chat[cut - 1]?.send_date ?? null;
@@ -1685,7 +1785,7 @@ function buildDelta(r, plan, opt = {}) {
 export function buildInjection(r, opt = {}) {
     const was = INJ.on; INJ.on = true; // 🙈 가린 칸은 이 안에서만 꺼진 것처럼
     try {
-        const inj = buildInjection1(r, opt);
+        const inj = withGone(buildInjection1(r, opt), r);
         if (r && !opt.noOutput) { try { inj.romance = swapUser(romanceBlock(r)); } catch (e) { ssWarn(LOG, 'romance', e); } }
         return inj;
     } finally { INJ.on = was; }
@@ -1745,6 +1845,14 @@ function buildInjection1(r, opt = {}) {
     const lines = swapUser(inj.main).split('\n');
     lines.splice(1, 0, line);
     return { main: lines.join('\n'), people: swapUser(inj.people) };
+}
+// 모든 주입 방식(전체 · 간결 · 초압축 · 변화 위주)에 「이제 없는 물건」 한 줄 (v2.7.3)
+function withGone(inj, r) {
+    const g = goneLine(r?.state);
+    if (!g || !inj.main) return inj;
+    const lines = inj.main.split('\n');
+    lines.splice(Math.min(2, lines.length), 0, swapUser(g));
+    return { ...inj, main: lines.join('\n') };
 }
 function buildInjection0(r, opt = {}) {
     if (!r) return { main: '', people: '' };
