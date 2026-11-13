@@ -536,6 +536,7 @@ export async function openWizard() {
     const recentTxt = (ctx().chat ?? []).slice(-12).map(m => String(m?.mes ?? '')).join(' ').replace(/<[^>]+>/g, ' ');
     const latin = (recentTxt.match(/[A-Za-z]/g) ?? []).length, hangul = (recentTxt.match(/[가-힣]/g) ?? []).length;
     const chatEn = latin > 200 && latin > hangul * 3;
+    W.tr = settings().trEngine === 'llm' ? 'llm' : 'st';
     W.lang = settings().ssGenLang === 'enview' || (settings().ssGenLang !== 'ko' && chatEn) ? 'enview' : settings().ssGenLang === 'ko' && !chatEn ? 'ko' : chatEn ? 'enview' : 'ko';
     const el = h(`<div class="ss-root ss-scope ss-wizard">
         <div class="ss-wz-head"><i class="fa-solid fa-wand-magic-sparkles"></i><div><b>상태창 만들기</b><small>어떤 카드든, 카드가 없어도 돼요. AI가 관련 칸끼리 묶어서 채워요.</small></div></div>
@@ -551,7 +552,9 @@ export async function openWizard() {
         </section>
         <section class="ss-sec"><div class="ss-sec-h"><h4>상태창 언어</h4></div>
             <div class="ss-seg wrap stack" data-w="lang"><button data-v="enview" class="${W.lang === 'enview' ? 'on' : ''}">🇺🇸 영어로 저장 · 화면은 한국어로<small>AI에게 영어로 가고(영어 롤플에 잘 맞음) · 상태창에선 한국어로 번역해 보여 줘요 · 기본 틀도 영어로</small></button><button data-v="ko" class="${W.lang === 'ko' ? 'on' : ''}">🇰🇷 한국어로 저장<small>저장도 화면도 한국어 · 번역 없음</small></button></div>
-            <p class="ss-hint">${chatEn ? '이 채팅은 영어로 보여서 「영어로 저장」을 골라 뒀어요. ' : ''}카드 · 로어북 · 지시가 어떤 언어든 고른 언어로 만들어요. 화면 번역 담당(실리 기본 번역 · 무료 / 번역 모델)은 확장 설정 › 상태창 언어 · 번역에서 골라요. 이 선택은 다른 채팅에도 적용돼요.</p>
+            <div class="ss-w-trbox ${W.lang === 'enview' ? '' : 'ss-hide'}"><small class="ss-hint">화면 한국어 번역은</small>
+                <div class="ss-seg wrap" data-w="tr"><button data-v="st" class="${W.tr === 'st' ? 'on' : ''}">무료 기본 번역 (추천)</button><button data-v="llm" class="${W.tr === 'llm' ? 'on' : ''}">AI 번역 모델 (토큰 듦)</button></div></div>
+            <p class="ss-hint">${chatEn ? '이 채팅은 영어로 보여서 「영어로 저장」을 골라 뒀어요. ' : ''}카드 · 로어북 · 지시가 어떤 언어든 고른 언어로 만들어요. 무료 기본 번역은 실리태번의 Chat Translation(기본 Google)을 써요. 이 선택은 다른 채팅에도 적용돼요.</p>
         </section>
         <section class="ss-sec"><div class="ss-sec-h"><h4>세계관</h4></div>
             <div class="ss-seg wrap stack" data-w="base"><button data-v="auto" class="${W.base === 'auto' ? 'on' : ''}">기존 설정 그대로<small>카드·로어북·채팅을 읽어요</small></button><button data-v="new" class="${W.base === 'new' ? 'on' : ''}">새 세계관 만들기<small>아래 지시대로 새로</small></button></div>
@@ -607,6 +610,7 @@ export async function openWizard() {
         }
         b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
         W[k] = b.dataset.v;
+        if (k === 'lang') el.querySelector('.ss-w-trbox')?.classList.toggle('ss-hide', W.lang !== 'enview');
         if (k === 'play') { el.querySelector('.ss-hero').classList.toggle('ss-hide', W.play !== 'director'); el.querySelector('.ss-cardworld').classList.toggle('ss-hide', W.play === 'auto'); }
         if (k === 'diff') el.querySelector('.ss-diffdesc').textContent = DIFFS[W.diff].desc;
         if (k === 'gm') { settings().genMode = W.gm; saveSettings(); cost(); }
@@ -674,6 +678,7 @@ export async function openWizard() {
         const src = Object.fromEntries([...el.querySelectorAll('[data-src]')].map(i => [i.dataset.src, i.checked]));
         mods = Object.fromEntries([...el.querySelectorAll('[data-mod]')].map(i => [i.dataset.mod, i.checked]));
         if (W.lang && settings().ssGenLang !== W.lang) { settings().ssGenLang = W.lang; saveSettings(); } // 생성 전에 — 모든 AI 호출 · 기본 틀이 이 언어로
+        if (W.lang === 'enview' && W.tr && settings().trEngine !== W.tr) { settings().trEngine = W.tr; saveSettings(); }
         const g = GENRES.find(x => x.id === W.genre);
         const canon = el.querySelector('.ss-w-canon').value.trim();
         let instruction = el.querySelector('.ss-w-ins').value.trim();

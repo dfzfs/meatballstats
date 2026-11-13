@@ -158,6 +158,14 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.2', title: '무료 번역 기본 · 상태창 언어 고르기 · 도우미 AI 없이', items: [
+        ['🌐 번역은 무료가 기본', '상태창 번역 담당의 기본이 무료 「실리 기본 번역」(Chat Translation · 기본 Google)이 됐어요. 번역 모델(AI)을 쓰던 분께는 한 번 물어봐요. 이야기 중 새로 생긴 영어도 저절로 한국어로 보여요.'],
+        ['🇺🇸 만들 때 상태창 언어 고르기', '상태창 만들기 창에 「상태창 언어」. 「영어로 저장 · 화면은 한국어로」를 고르면 카드 · 지시가 한국어여도 전부 영어로 만들어 저장하고(기본 틀 · 날씨까지), 화면에서만 한국어로 보여 줘요. 영어 채팅이면 미리 골라 둬요.'],
+        ['🐱 도우미가 AI 없이 답해요', '미트볼 도우미가 안내서(README)를 읽고 바로 답해요 (토큰 0). 「칩이 안 떠요」 「토큰 아끼기」는 지금 설정을 직접 확인해 줘요. 부족하면 「AI에게 더 물어보기」.'],
+        ['🗑 쓰레기통 완전 삭제 · ♻ 중고 값 자동', '쓰레기통에서 흔적 없이 지우기 · 비우기. 중고장터 팔기는 값을 알아서 매겨요 (AI 0회).'],
+        ['🗺 영어로 들어오던 이름 · 💱 환율 창', '영어 롤플에서 지도 · 소지품 이름이 영어로 들어오던 것을 고쳤어요. 화폐 · 환율 창은 「1 Berry = ○ 원」처럼 쉽게.'],
+        ['🧱 자잘한 것', '「이것도 아세요?」는 30분에 한 번 · 하루 4번까지. 신문 머리 · 「3월(3월)」 깨짐 고침.'],
+    ] },
     { v: '2.7.1', title: '가리기 · 토큰 줄이기 · 알림 편하게', items: [
         ['🙈 칸마다 가리기', '각 탭 도구줄의 👁 버튼을 누르면 그 칸을 AI에게 안 보내요. 턴이 지나도 그대로고, 다시 눌러야 다시 들어가요 (채팅마다). 화면·직접 편집·변화 기록은 그대로예요. 홈 탭에서 누르면 세계관 줄을 가려요.'],
         ['✂️ 세계관 요약은 매 턴 안 보내요', '세계관 요약·규칙은 보통 카드·로어북에 이미 있어서 중복이라 기본으로 뺐어요 (매 턴 최대 1천 자 절약). 칸을 AI로 만들 때는 계속 참고해요. 다시 보내려면 확장 설정 › 「세계관 요약·규칙도 매 턴 보내기」.'],
@@ -287,6 +295,29 @@ async function askV27() {
     refreshNow();
 }
 
+// v2.7.2: 번역 기본값 = 무료 「실리 기본 번역」. 업데이트한 분 중 번역 모델(AI)을 쓰는 분께 한 번 묻는다
+async function askTrFree() {
+    const s = settings();
+    if (s.trFreeAsked) return;
+    const done = () => { s.trFreeAsked = true; saveSettings(); };
+    if (s.trEngine !== 'llm') return done();
+    if (s.ssGenLang !== 'en' && s.ssGenLang !== 'enview') { s.trEngine = 'st'; return done(); } // 번역을 안 쓰는 중이면 조용히 무료로 맞춰 둠
+    const el = document.createElement('div');
+    el.className = 'ss-root ss-scope ss-v27';
+    el.innerHTML = `<div class="ss-wz-head">${mascot('think', 'md')}<div><b>상태창 번역을 무료로 바꿀까요?</b><small>한 번만 물어봐요 · 확장 설정 › 상태창 언어 · 번역에서 언제든 바꿀 수 있어요</small></div></div>
+        <p>지금은 상태창 번역을 <b>「번역 모델 (AI)」</b>이 맡고 있어서, <b>번역할 때마다 AI를 1번 더 불러 토큰이 들어요</b>.</p>
+        <p><b>「실리 기본 번역」</b>으로 바꾸면:</p>
+        <div class="ss-hk-li"><span>✅</span><div><b>무료 · 빠름</b> — 실리태번에 원래 있는 Chat Translation(기본 Google)을 써요.</div></div>
+        <div class="ss-hk-li"><span>✅</span><div>이야기 중에 새로 생긴 영어(새 장소 · 아이템 …)도 <b>저절로 한국어로</b> 보여요.</div></div>
+        <div class="ss-hk-li"><span>💡</span><div>대신 말투 지침은 못 따르고, 번역 지침의 「원문 = 번역」 줄(이름 고정)만 써요.</div></div>
+        <p class="ss-hint">번역기는 실리태번 확장 메뉴 › Chat Translation에서 골라요 (Google · DeepL …).</p>`;
+    const ok = await confirmPopup(el, '무료로 바꿀래요', '지금처럼 AI 번역');
+    if (ok) s.trEngine = 'st';
+    done();
+    if (ok) toastr.success('상태창 번역을 무료 「실리 기본 번역」으로 바꿨어요.', TITLE);
+    document.getElementById('ss-settings')?.remove(); renderSettings();
+}
+
 // ───── 정규식 ─────
 function regexScripts() {
     // 닫힌 <meatball> · 안 닫혔으면 「키: 값」 줄이 이어지는 데까지만 (본문·다른 태그를 끝까지 지우지 않게) · 옛 <status>는 예전 규칙 그대로 (설정이 켜져 있을 때)
@@ -391,7 +422,7 @@ function renderSettings() {
             <label>상태창 생성 언어<select class="text_pole" data-s="ssGenLang">${o('ssGenLang', 'ko', '한국어로 바로 생성 (번역 없음)')}${o('ssGenLang', 'enview', '영어로 저장 · 화면만 번역 — AI에겐 영어, 나한텐 번역본 (추천 · 생성마다 번역 1회)')}${o('ssGenLang', 'en', '영어로 생성 → 번역본을 저장 (AI에게도 번역본이 감 · 예전 방식)')}</select></label>
             <label>번역 모델 (연결 프로필)<div class="ss-set-inline"><select class="text_pole" data-s="trProfile">${profileOptions(s.trProfile).replace('메인 연결 그대로', '확장 AI 모델 그대로 (없으면 메인)')}</select></div></label>
             <label>번역할 언어<input class="text_pole" data-s="trLang" value="${esc(s.trLang)}"></label>
-            <label>번역 담당<select class="text_pole" data-s="trEngine">${o('trEngine', 'llm', '번역 모델 (LLM) — 말투·지침을 이해함 · 토큰 듦')}${o('trEngine', 'st', '실리 기본 번역 — Google·DeepL 등 · 무료 · 빠름')}</select>
+            <label>번역 담당<select class="text_pole" data-s="trEngine">${o('trEngine', 'st', '실리 기본 번역 (추천 · 기본) — Google·DeepL 등 · 무료 · 빠름')}${o('trEngine', 'llm', '번역 모델 (LLM) — 말투·지침을 이해함 · 번역마다 AI 1회 · 토큰 듦')}</select>
                 <small>실리 기본 번역은 확장 메뉴 › <b>Chat Translation</b>에서 고른 번역기를 써요.</small></label>
             <label>실리 기본 번역 언어 코드<input class="text_pole" data-s="trCode" value="${esc(s.trCode)}" placeholder="ko"></label>
             <label>번역 지침<textarea class="text_pole" rows="4" data-s="trRules" placeholder="Leon Hart = 레온 하트&#10;Kingdom of Ardel = 아르델 왕국&#10;편지는 반말로 옮길 것">${esc(s.trRules ?? '')}</textarea></label>
@@ -801,7 +832,10 @@ function init() {
     on('GENERATION_ENDED', onGenEnded);
     refreshNow();
     try { whatsNewOnLoad(fresh); } catch (e) { ssWarn(LOG, 'whatsnew', e); }
-    setTimeout(() => { askV27().catch(e => ssWarn(LOG, 'v27', e)); }, 3500);
+    setTimeout(async () => { // 묻는 창은 하나씩 차례로
+        await askV27().catch(e => ssWarn(LOG, 'v27', e));
+        await askTrFree().catch(e => ssWarn(LOG, 'trfree', e));
+    }, 3500);
     console.log(LOG, 'loaded', VERSION);
 }
 

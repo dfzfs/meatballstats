@@ -2,7 +2,7 @@
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.7.1';
+export const VERSION = '2.7.2';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
 export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
@@ -52,7 +52,7 @@ export const DEFAULTS = Object.freeze({
     ssGenLang: 'ko',         // 상태창(확장 AI) 생성 언어: ko = 바로 한국어 | en = 영어로 생성 → 번역본 저장 | enview = 영어로 저장 · 화면만 번역 (v2.6)
     trProfile: '',           // 번역 모델 (연결 프로필, '' = 확장 AI 모델 → 없으면 메인)
     trLang: '한국어',
-    trEngine: 'llm',         // 번역 담당: llm = 번역 모델 (지침 이해) | st = 실리 기본 번역 (Chat Translation의 Google·DeepL 등 · 무료) (v2.6)
+    trEngine: 'st',          // 번역 담당: st = 실리 기본 번역 (Chat Translation의 Google·DeepL 등 · 무료 · v2.7.2부터 기본) | llm = 번역 모델 (지침 이해 · 토큰)
     trCode: 'ko',            // 실리 기본 번역에 넘길 언어 코드
     trRules: '',
     legacyStatus: false,     // 옛 <status>도 미트볼 것으로 읽기 (v2.5 이전 채팅 호환 · 정규식이 모든 채팅에 걸려서 새로 설치하면 꺼진 채로 · v2.7)
