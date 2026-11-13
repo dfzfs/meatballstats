@@ -132,6 +132,7 @@ const session = { n: 0, at: 0 }; // 이번 접속에서 보여 준 수 · 마지
 // v2.7.1: 너무 자주 뜬다는 의견 → 접속당 2번 · 마지막 팁에서 30분 (새로고침해도 이어짐 · settings.hintAt) · 하루 4번 · 25% 확률
 const HINT_GAP = 30 * 60 * 1000, HINT_PER_SESSION = 2, HINT_PER_DAY = 4, HINT_CHANCE = 0.25;
 const today = () => new Date().toDateString();
+let pendingHint = false;
 // 팁은 그냥 닫으면 한 번 더 (최대 2번) · 주의는 한 번이면 끝 (「추후 한 번」)
 function seen(id, kind = 'tip') { const v = settings().hintSeen?.[id]; return v === true || v >= (kind === 'warn' ? 1 : 2); }
 function bump(id) { const s = settings(); s.hintSeen = { ...(s.hintSeen ?? {}) }; if (s.hintSeen[id] !== true) s.hintSeen[id] = (s.hintSeen[id] ?? 0) + 1; saveSettings(); }
@@ -156,7 +157,9 @@ export function hintAfterAction(tab) {
         if (!list.length) list = GENERAL.filter(h => !seen(h.id, h.kind)); // 그 칸 팁을 다 봤으면 공통 팁
         if (!list.length || Math.random() > HINT_CHANCE) return; // 매번 말고 가끔
         const h = list[Math.floor(Math.random() * list.length)];
-        setTimeout(() => show(h), 1500); // 방금 한 일의 알림이 먼저 보이게
+        if (pendingHint) return; // 1.5초 기다리는 사이 또 불려도 한 번만 (두 번씩 뜨던 것)
+        pendingHint = true; session.at = Date.now(); // 시간 제한도 지금 바로 잡아 둔다
+        setTimeout(() => { pendingHint = false; show(h); }, 1500); // 방금 한 일의 알림이 먼저 보이게
     } catch (e) { ssWarn(LOG, 'hint', e); }
 }
 // 확장 설정을 바꾼 바로 그때 — 주의할 게 있으면 한 번 (이건 3분 제한 없이)

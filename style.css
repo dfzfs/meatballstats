@@ -1187,3 +1187,10 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-scope .ss-callout.help { border-color: color-mix(in srgb, var(--ss-hi) 30%, var(--ss-line)); background: color-mix(in srgb, var(--ss-hi) 5%, var(--ss-bg)); }
 .ss-scope .ss-callout.help > i { color: var(--ss-hi); }
 @media (max-width: 380px) { .ss-scope .ss-helpchip span { display: none; } .ss-scope .ss-helpchip { padding: 0 8px; } }
+
+/* ───── 🌐 번역 고치기 창 ───── */
+.ss-trfix .ss-trf-q { margin: 6px 0 8px; }
+.ss-trfix .ss-trf-list { display: flex; flex-direction: column; gap: 6px; max-height: 55vh; overflow-y: auto; padding-right: 4px; }
+.ss-trfix .ss-trf-row { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border: 1px solid var(--ss-line); border-radius: var(--ss-r); background: var(--ss-bg); }
+.ss-trfix .ss-trf-row small { color: var(--ss-dim); overflow-wrap: anywhere; }
+.ss-trfix .ss-trf-lock { font-size: .85em; color: var(--ss-hi); margin-left: 4px; }
