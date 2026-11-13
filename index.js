@@ -232,7 +232,11 @@ async function showWhatsNew(all = false, latestOnly = false) {
     const el = document.createElement('div');
     el.className = 'ss-root ss-scope ss-whatsnew';
     el.innerHTML = `<div class="ss-wz-head">${mascot('happy', 'md')}<div><b>😼 미트볼 상태창이 업데이트됐어요</b><small>v${esc(VERSION)}</small></div></div>
-        ${list.map(c => `<h4>v${esc(c.v)} — ${esc(c.title)}</h4><ul class="ss-newlist">${c.items.map(([h, d]) => `<li><b>${esc(h)}</b><br><small>${esc(d)}</small></li>`).join('')}</ul>`).join('')}
+        ${(() => { // 최근 2개 버전만 펼치고, 그 전은 「이전 버전 더 보기」 안에 (오래 안 들어온 분께 전부 쏟아지지 않게)
+            const one = (c) => `<h4>v${esc(c.v)} — ${esc(c.title)}</h4><ul class="ss-newlist">${c.items.map(([h, d]) => `<li><b>${esc(h)}</b><br><small>${esc(d)}</small></li>`).join('')}</ul>`;
+            const head = list.slice(0, 2), rest = list.slice(2);
+            return head.map(one).join('') + (rest.length ? `<details class="ss-more ss-wn-old"><summary>이전 버전 더 보기 (${rest.length}개)</summary>${rest.map(one).join('')}</details>` : '');
+        })()}
         <div class="ss-row-btns"><button class="ss-btn sm" data-wn-help><i class="fa-solid fa-circle-question"></i> 🐱 도우미로 더 자세히 (AI 0회)</button></div>
         <p class="ss-hint">새 기능은 모두 선택 사항이라, 켜지 않으면 예전과 똑같이 동작해요. 다시 보려면 확장 설정 › 데이터 · 화면 › 「업데이트 내역」.</p>`;
     el.addEventListener('click', (e) => {
@@ -253,7 +257,7 @@ function whatsNewOnLoad(fresh) {
     if (fresh || s.updateNotice === false) { done(); return; } // 처음 설치 · 알림 끔
     const sameVer = s.lastSeenVersion === VERSION; // 버전은 같은데 내역만 바뀜 → 맨 위 내역만
     const list = sameVer ? CHANGELOG.slice(0, 1) : CHANGELOG.filter(c => !s.lastSeenVersion || verGt(c.v, s.lastSeenVersion));
-    const heads = list.flatMap(c => c.items.map(([h]) => h.replace(/^\S+\s/u, ''))).slice(0, 4).join(' · ');
+    const heads = list.slice(0, 1).flatMap(c => c.items.map(([h]) => h.replace(/^\S+\s/u, ''))).slice(0, 4).join(' · '); // 알림 한 줄엔 최신 버전 것만
     setTimeout(() => {
         try {
             // 팝업 알림 한 장 (누르면 「바뀐 점」 자세히) — 화면을 막는 창은 띄우지 않는다
