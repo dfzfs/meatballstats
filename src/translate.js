@@ -229,7 +229,28 @@ export async function openTrFix(only = null) {
     app.rerenderPanels?.(true); translateView(); app.renderHud?.();
     toastr.success(`번역 ${n}개를 고쳐서 고정했어요.`, TITLE);
 }
-app.openTrFix = openTrFix; // 기본 틀 영어판이 화면 번역 짝을 넣을 때 (skeleton.js → 순환 import 없이)
+app.openTrFix = openTrFix;
+// 🧹 번역 사전 정리 (v2.7.6): 지금 상태창 · 변동 칩 어디에도 없는 옛 번역을 지워요 (📌 고정한 건 남김 · AI 0회)
+// 사전은 채팅 파일에 저장돼서, 오래 쓰면 지워진 아이템 · 옛 소식 번역이 쌓여 파일이 커지고 화면 번역이 느려져요
+export async function pruneTr() {
+    const meta = getMeta(); const d = meta?.tr;
+    if (!d || !Object.keys(d).length) { toastr.info('정리할 번역 사전이 없어요.', TITLE); return 0; }
+    const s = app.current?.state; if (!s) { toastr.info('상태창이 있는 채팅에서 눌러 주세요.', TITLE); return 0; }
+    const parts = [JSON.stringify(s.core), JSON.stringify(s.data), JSON.stringify(s.recent ?? [])];
+    for (const sn of app.current.snaps?.values?.() ?? []) parts.push(sn.labels.join('\n'));
+    const hay = parts.join('\n');
+    const lock = meta.trLock ?? {};
+    const drop = Object.keys(d).filter(k => !lock[k] && !hay.includes(k) && !hay.includes(JSON.stringify(k).slice(1, -1)));
+    if (!drop.length) { toastr.success('지울 옛 번역이 없어요. 사전이 깔끔해요.', TITLE); return 0; }
+    const kb = Math.round(drop.reduce((n, k) => n + k.length + String(d[k]).length, 0) / 1024 * 3) ; // 한글은 3바이트쯤
+    if (!(await SillyTavern.getContext().Popup.show.confirm(TITLE, `번역 사전 ${Object.keys(d).length}개 중 지금 상태창에 없는 ${drop.length}개를 지울까요? (약 ${kb}KB · 📌 고정한 건 남겨요)<br><small>나중에 그 글이 다시 나오면 다시 번역돼요.</small>`))) return 0;
+    for (const k of drop) delete d[k];
+    trVer++; memo.clear();
+    await saveMeta();
+    app.rerenderPanels?.(true); translateView();
+    toastr.success(`옛 번역 ${drop.length}개를 지웠어요.`, TITLE);
+    return drop.length;
+} // 기본 틀 영어판이 화면 번역 짝을 넣을 때 (skeleton.js → 순환 import 없이)
 export function addPairs(pairs) {
     const meta = getMeta(true);
     if (!meta) return 0;

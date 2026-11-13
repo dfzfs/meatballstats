@@ -1,6 +1,6 @@
 // 💰 재산: 소지금 · 환율 · 소지품(사용 효과) · 물가표 · 일거리 · 정기 수입/지출 · 빚
 import { app, ctx, settings, getMeta, modOn, esc, short, clone, findBy, norm, clamp, num, fmtNum, splitBar, nextTime, dateStr, dayIndex, TITLE, EMPTY } from './core.js';
-import { addAdjust, commit, priceMul, loanBlocked, LOAN_KIND } from './engine.js';
+import { addAdjust, commit, priceMul, loanBlocked, LOAN_KIND, skillRoll, JUDGE_MUL, JUDGE_NAME } from './engine.js';
 import { askPrice } from './ai.js';
 import { sec, emptyBox, chip, ai1, seg, askInput, askConfirm, busyBtn, insertInput, closeIfPopup } from './kit.js';
 import { isFresh } from './engine.js';
@@ -117,10 +117,15 @@ export const MONEY_ACTIONS = {
     },
     mwork: (el, arg, btn, s) => {
         const j = s.data.wallet.jobs[Number(arg)]; if (!j) return;
-        const ops = [['cash', `+${j.pay}`]];
-        if (j.effect) ops.push(['_effect', j.effect]);
+        // 🎲 일하기 판정 (v2.7.6): 일 이름과 같은 능력치가 있으면 그걸로 · 대성공 1.5배 · 실패 절반 · 대실패 허탕 (AI 0회)
+        const attrs = s.data.stats?.attrs ?? [];
+        const r = settings().extraJudge !== false ? skillRoll(s, attrs.find(a => String(j.name).includes(a.name) || String(j.effect ?? '').includes(a.name))?.name ?? null, 10) : null;
+        const pay = Math.round(j.pay * (r ? JUDGE_MUL[r.cls] : 1));
+        const ops = pay ? [['cash', `+${pay}`]] : [];
+        if (j.effect && (!r || r.cls !== 'fumble')) ops.push(['_effect', j.effect]);
         if (s.data.calendar && modOn('calendar')) ops.push(['time', nextTime(s.data.calendar)]);
-        return addAdjust({ ops, label: `${j.name}(으)로 일했다 +${fmtNum(j.pay)} ${s.data.wallet.currency}` });
+        if (r) toastr[r.cls === 'fumble' ? 'warning' : 'info'](`${esc(j.name)}: ${{ crit: '🌟 대성공 — 일당 1.5배!', ok: '✅ 성공', fail: '😅 실패 — 일당 절반', fumble: '💥 대실패 — 허탕쳤어요' }[r.cls]}<br><small>${esc(r.detail)}</small>`, TITLE, { escapeHtml: false });
+        return addAdjust({ ops, label: `${j.name}(으)로 일했다${r && r.cls !== 'ok' ? ` (🎲 ${JUDGE_NAME[r.cls]})` : ''} +${fmtNum(pay)} ${s.data.wallet.currency}` });
     },
     mrepay: async (el, arg, btn, s) => {
         const l = s.data.wallet.loans.find(x => x.id === arg); if (!l) return;

@@ -1240,3 +1240,7 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-relc.out { opacity: .62; }
 .ss-relc .ss-outbar { font-size: .82em; color: var(--ss-dim); margin: -2px 0 6px; }
 .ss-ib.ss-leave.on { color: var(--ss-hi); }
+/* v2.7.6: 편집 기록에서 골라 되돌리기 · 흥정 */
+.ss-undolist .ss-undo-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--ss-line); }
+.ss-undolist .ss-undo-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: .9em; }
+.ss-good-a s.ss-dim { font-weight: 400; font-size: .85em; }

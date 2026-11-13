@@ -1206,6 +1206,16 @@ function questClock(s, info) {
 export const JUDGE_MUL = { crit: 1.5, ok: 1, fail: 0.5, fumble: 0 };
 export const JUDGE_NAME = { crit: '대성공', ok: '성공', fail: '아쉬운 완료', fumble: '대실패' };
 const seedNum = (str) => { let h = 2166136261; for (const ch of String(str)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0) / 4294967296; };
+// 🎲 판정 공통 (v2.7.6): d20 + 능력치 보정 vs 목표(난이도 보정 포함) — 20 대성공 · 1 대실패
+export const SOCIAL_RE = /매력|화술|말솜씨|설득|사교|교섭|협상|카리스마|charisma|charm|persuasion|speech|social|negotiat/i;
+export function skillRoll(s, attrPick, dc = 12) {
+    const attrs = s.data.stats?.attrs ?? [];
+    const a = attrPick instanceof RegExp ? attrs.find(x => attrPick.test(x.name)) : attrPick ? findBy(attrs, attrPick) : null;
+    const goal = num(dc, 12) + (DIFFS[diffOf()]?.dc ?? 0);
+    const roll = Math.floor(Math.random() * 20) + 1, mod = a?.val ?? 0;
+    const cls = roll === 20 ? 'crit' : roll === 1 ? 'fumble' : roll + mod >= goal ? 'ok' : 'fail';
+    return { roll, mod, dc: goal, cls, attr: a ? a.name : '', detail: `d20 ${roll}${mod ? `${mod > 0 ? '+' : ''}${mod}=${roll + mod}` : ''} vs ${goal}` };
+}
 export function questRoll(s, q, seed) {
     const attrs = s.data.stats?.attrs ?? [];
     const a = q.check?.attr ? findBy(attrs, q.check.attr) : null;
@@ -1458,6 +1468,16 @@ export async function undoLast() {
     const idx = (meta?.adjust ?? []).findLastIndex(e => !isPurge(e));
     if (idx < 0) return null;
     const a = meta.adjust.splice(idx, 1)[0];
+    await saveMeta();
+    app.refreshNow?.();
+    return a;
+}
+// 편집 기록 하나만 골라 되돌리기 (v2.7.6 · 관리 탭 › 되돌리기 › 편집 기록) — 그 뒤의 기록은 그대로 다시 계산돼요
+export async function undoAt(t) {
+    const meta = getMeta();
+    const i = (meta?.adjust ?? []).findIndex(e => e.t === t);
+    if (i < 0) return null;
+    const a = meta.adjust.splice(i, 1)[0];
     await saveMeta();
     app.refreshNow?.();
     return a;

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 let bad = 0;
-for (const t of ['t-smoke', 't-quest', 't-pip', 't-misc', 't-tr', 't-v275']) {
+for (const t of ['t-smoke', 't-quest', 't-pip', 't-misc', 't-tr', 't-v275', 't-v276']) {
     const r = spawnSync(process.execPath, [path.join(here, `${t}.mjs`)], { encoding: 'utf8', timeout: 240000 });
     const out = `${r.stdout}${r.stderr}`;
     const fails = out.split('\n').filter(l => l.includes('✘') || /Error/.test(l));

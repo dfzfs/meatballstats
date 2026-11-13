@@ -3,7 +3,7 @@ import { toEnglish, usedPairs } from './skeleton_en.js'; // 영어 저장일 때
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.7.5';
+export const VERSION = '2.7.6';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
 export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
@@ -134,6 +134,7 @@ export const DEFAULTS = Object.freeze({
     freshDot: true,          // 🔴 방금 AI 답에서 바뀐 칸 · 줄에 작은 빨간 점
     questJudge: 'ask',       // 🎲 퀘스트 완료 판정: ask (완료 누르면 판정할지 물어봄) · roll (늘 판정) · off (판정 없이 완료)
     questJudgeAI: false,     // 본편 AI가 「완료」라고 적은 퀘스트도 보상 판정을 자동으로 굴림 (토큰 0)
+    extraJudge: true,        // 🎲 흥정(상점) · 일하기 판정 (AI 0회 · v2.7.6)
     questExpire: true,       // ⌛ 퀘스트 기한이 지나면 실패 · 마지막 날 알림 (달력이 켜져 있을 때 · v2.7.5)
     goneInject: true,        // 🗑 버리거나 판 물건을 AI에게 「이제 없음」으로 알려 주기 (다시 꺼내 쓰지 않게)
     chipOutside: false,      // 변동 칩을 본문(.mes_text) 밖 아래에 붙이기 — 번역 확장이 원문을 숨겨 칩이 안 보일 때

@@ -3,7 +3,7 @@ import {
     app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, MODS, MOD, MOD_IDS, DIFFS, diffOf, esc, short, clamp, norm, findBy, fmtNum, clone, splitBar, parseNum,
     dateStr, dateShort, dayIndex, eventsOn, nextTime, upcoming, userName, TITLE, VERSION, EMPTY, CONTACT_MODES, stamp, relAxes, DEFAULT_STAGES, viewTr, GLOBAL_OFF,
 } from './core.js';
-import { addAdjust, commit, unreadCount, dueLetters, inTransit, priceMul, peopleAt, hopsBetween, whereNow, seasonOf, SEASON_NAME, stageIndex, purgeTrash, isFresh } from './engine.js';
+import { addAdjust, commit, unreadCount, dueLetters, inTransit, priceMul, peopleAt, hopsBetween, whereNow, seasonOf, SEASON_NAME, stageIndex, purgeTrash, isFresh, undoAt, skillRoll, SOCIAL_RE, JUDGE_NAME } from './engine.js';
 // 🔴 방금 AI 답에서 바뀐 곳 (v2.7.3) — 작은 빨간 점 하나
 export const FRESH_DOT = '<i class="ss-fresh" title="방금 AI 답에서 바뀌었어요"></i>';
 export const freshDot = (mod, k, name) => (isFresh(app.current?.fresh, mod, k, name) ? FRESH_DOT : '');
@@ -145,6 +145,8 @@ function homeView(s, ui) {
     </div>`;
 }
 
+// 🎲 흥정 결과 (오늘 · 이 상점 · 이 물건) — 1 = 흥정 안 함
+function haggleMul(s, i, j) { const day = s.data.calendar ? dayIndex(s.data.calendar) : s.turn; return getMeta()?.haggle?.[`${day}|${i}|${j}`] ?? 1; }
 // ───── 칸별 화면 ─────
 export const VIEW = {
     home: (s, d, ui) => homeView(s, ui),
@@ -165,13 +167,13 @@ export const VIEW = {
     fate: fateView,
     shop: (s, d, ui) => {
         const w = s.data.wallet;
-        const mul = priceMul(s), pr = (it) => Math.round(it.price * mul);
         const i0 = clamp(ui.shop ?? 0, 0, Math.max(0, d.shops.length - 1));
+        const mul = priceMul(s), pr = (it, j) => Math.round(it.price * mul * (j === undefined ? 1 : haggleMul(s, i0, j)));
         const sh = d.shops[i0];
         return `${d.shops.length > 1 ? seg(d.shops.map((x, i) => [i, esc(x.name)]), i0, 'shoptab', 'class="ss-seg wrap"') : ''}
         ${sh ? `<div class="ss-shop-h"><div><b>${esc(sh.name)}</b><small>${esc(sh.desc)}${sh.place ? ` · 📍 ${esc(sh.place)}` : ''}</small></div>${w ? `<span class="ss-chip"><i class="fa-solid fa-coins"></i> ${fmtNum(w.cash)} ${esc(w.currency)}${fxText(w, w.cash) ? ` <small class="ss-dim">${esc(fxText(w, w.cash))}</small>` : ''}</span>` : ''}</div>
         <div class="ss-goods">${sh.items.map((it, j) => `<div class="ss-good ${it.stock === 0 ? 'out' : ''}"><div class="ss-good-b"><b>${esc(it.name)}</b>${it.kind === 'deco' ? chip('가구') : ''}${it.stock === 0 ? chip('품절', 'neg') : it.stock > 0 ? `<small>재고 ${it.stock}</small>` : ''}<small>${esc(it.desc)}</small></div>
-            <div class="ss-good-a"><b class="ss-price ${mul > 1 ? 'up' : mul < 1 ? 'down' : ''}">${fmtNum(pr(it))}${fxText(w, pr(it)) ? `<small class="ss-fx">${esc(fxText(w, pr(it)))}</small>` : ''}</b><button class="ss-btn sm pri" data-act="buy" data-arg="${i0}|${j}" ${it.stock === 0 || (w && w.cash < pr(it)) ? 'disabled' : ''}>구매</button></div></div>`).join('') || emptyBox('상품이 없어요')}</div>` : emptyBox('상점이 없어요. ✨ AI로 수정에서 "○○ 상점 추가"라고 해 보세요.', 'fa-store')}`;
+            <div class="ss-good-a">${(() => { const hm = haggleMul(s, i0, j), p = pr(it, j); return `<b class="ss-price ${mul * hm > 1 ? 'up' : mul * hm < 1 ? 'down' : ''}">${hm !== 1 ? `<s class="ss-dim">${fmtNum(pr(it))}</s> ` : ''}${fmtNum(p)}${fxText(w, p) ? `<small class="ss-fx">${esc(fxText(w, p))}</small>` : ''}</b>${settings().extraJudge !== false && it.stock !== 0 ? `<button class="ss-btn sm ghost" data-act="haggle" data-arg="${i0}|${j}" title="🎲 흥정 — 매력 · 화술 같은 능력치로 d20 (하루에 물건마다 한 번 · AI 0회)" ${hm !== 1 || getMeta()?.haggle?.[`${s.data.calendar ? dayIndex(s.data.calendar) : s.turn}|${i0}|${j}`] ? 'disabled' : ''}>🎲</button>` : ''}<button class="ss-btn sm pri" data-act="buy" data-arg="${i0}|${j}" ${it.stock === 0 || (w && w.cash < p) ? 'disabled' : ''}>구매</button>`; })()}</div></div>`).join('') || emptyBox('상품이 없어요')}</div>` : emptyBox('상점이 없어요. ✨ AI로 수정에서 "○○ 상점 추가"라고 해 보세요.', 'fa-store')}`;
     },
     rel: relView,
     map: (s, d, ui) => {
@@ -396,7 +398,7 @@ export function manageHTML(s) {
             ${p.cast.length ? `<p class="ss-hint">등장인물: ${p.cast.map(esc).join(', ')}</p>` : ''}
             <div class="ss-row-btns"><button class="ss-btn sm" data-act="playauto">${ai1} 자동으로 알아보고 맞추기</button></div>`); })()}
         ${modOn('profile') ? sec('프로필 모드', seg([['minimal', '최소 — 카드·로어북 그대로'], ['detailed', '상세 — 이 시트로만']], s.data.profile?.mode ?? 'minimal', 'pmode', 'class="ss-seg wrap"')) : ''}
-        ${sec('되돌리기', `<div class="ss-row-btns"><button class="ss-btn" data-act="undo" ${meta.adjust?.length ? '' : 'disabled'}><i class="fa-solid fa-rotate-left"></i> 마지막 편집 되돌리기</button></div><p class="ss-hint">${meta.adjust?.length ? `마지막: ${esc(meta.adjust.at(-1).label || '(이름 없는 편집)')}` : '되돌릴 편집이 없어요.'} · 상태창에서 직접 한 편집·구매·연락만 되돌려요 (AI 답의 변화는 ✏️ 칩으로).</p>`)}
+        ${sec('되돌리기', `<div class="ss-row-btns"><button class="ss-btn" data-act="undo" ${meta.adjust?.length ? '' : 'disabled'}><i class="fa-solid fa-rotate-left"></i> 마지막 편집 되돌리기</button></div><p class="ss-hint">${meta.adjust?.length ? `마지막: ${esc(meta.adjust.at(-1).label || '(이름 없는 편집)')}` : '되돌릴 편집이 없어요.'} · 상태창에서 직접 한 편집·구매·연락만 되돌려요 (AI 답의 변화는 ✏️ 칩으로).</p><details class="ss-more ss-undolist"><summary>편집 기록에서 골라 되돌리기 <small>(최근 ${Math.min(20, (meta.adjust ?? []).filter(a => a.label && !a.silent).length)}개)</small></summary>${(meta.adjust ?? []).filter(a => a.label && !a.silent).slice(-20).reverse().map(a => `<div class="ss-undo-row"><span>${esc(short(a.label, 60))}</span><small class="ss-dim">${a.at}번 뒤</small><button class="ss-btn sm ghost" data-act="undoat" data-arg="${a.t}" title="이 편집 하나만 되돌리기"><i class="fa-solid fa-rotate-left"></i></button></div>`).join('') || '<p class="ss-hint">되돌릴 편집이 없어요.</p>'}<p class="ss-hint">AI 답에서 바뀐 건 여기 없어요 — 그 답 밑 칩의 ✏️로 고쳐요. 오래돼서 굳힌 기록도 여기선 못 되돌려요.</p></details>`)}
         ${sec('<i class="fa-solid fa-floppy-disk"></i> 세이브', slotsHTML(meta))}
         ${sec('<i class="fa-solid fa-shield-heart"></i> 백업 · 카드', `<div class="ss-grid-btns">
             <button class="ss-btn" data-act="fullbackup"><i class="fa-solid fa-box-archive"></i> 전체 백업 (파일)</button>
@@ -433,11 +435,29 @@ export const VIEW_ACTIONS = {
     dec: (el, arg) => addAdjust({ ops: [['item', `-${arg} 1|`]], label: `${arg} 1개 버림` }),
     sell: (el, arg, btn, s) => { const p = sellPrice(s, arg); return addAdjust({ ops: [['item', `-${arg} 1|`], ['cash', `+${p}`]], label: `${arg} 판매 +${p} ${s.data.wallet.currency}` }); },
     shoptab: (el, arg) => { el._ss.ui.shop = Number(arg); app.renderPanel(el); },
+    undoat: async (el, arg) => {
+        const t = Number(arg); const a = getMeta()?.adjust?.find(e => e.t === t); if (!a) return;
+        if (!(await askConfirm(`「${esc(a.label || '이름 없는 편집')}」 하나만 되돌릴까요? 그 뒤의 편집은 그대로예요.`))) return;
+        await undoAt(t); toastr.success('되돌렸어요.', TITLE);
+    },
+    haggle: async (el, arg, btn, s) => { // 🎲 흥정 (v2.7.6): 매력 · 화술 같은 능력치로 d20 — 하루에 물건마다 한 번
+        const [i, j] = arg.split('|').map(Number);
+        const sh = s.data.shop.shops[i], it = sh?.items[j]; if (!it) return;
+        const meta = getMeta(true), day = s.data.calendar ? dayIndex(s.data.calendar) : s.turn, key = `${day}|${i}|${j}`;
+        if (meta.haggle?.[key]) { toastr.info('오늘은 이 물건을 이미 흥정했어요.', TITLE); return; }
+        const r = skillRoll(s, SOCIAL_RE, 12);
+        const mul = { crit: 0.7, ok: 0.85, fail: 1, fumble: 1.1 }[r.cls];
+        meta.haggle = Object.fromEntries(Object.entries(meta.haggle ?? {}).filter(([k]) => k.startsWith(`${day}|`)));
+        meta.haggle[key] = mul;
+        await saveMeta(); app.refreshNow?.(); app.renderPanel(el);
+        const msg = { crit: '🌟 대성공 — 30% 깎았어요!', ok: '✅ 성공 — 15% 깎았어요.', fail: '😅 실패 — 값은 그대로예요.', fumble: '💥 대실패 — 기분이 상해서 10% 올랐어요…' }[r.cls];
+        toastr[r.cls === 'fumble' ? 'warning' : 'info'](`${esc(it.name)}: ${msg}<br><small>${esc(r.attr ? `${r.attr} · ` : '')}${esc(r.detail)}</small>`, TITLE, { escapeHtml: false });
+    },
     buy: async (el, arg, btn, s) => {
         const [i, j] = arg.split('|').map(Number);
         const sh = s.data.shop.shops[i], it = sh?.items[j]; if (!it) return;
         const w = s.data.wallet;
-        const price = Math.round(it.price * priceMul(s));
+        const price = Math.round(it.price * priceMul(s) * haggleMul(s, i, j));
         if (w && w.cash < price) { toastr.warning('돈이 모자라요.', TITLE); return; }
         const ops = [['cash', `-${price}`]];
         if (it.kind === 'deco' && modOn('home')) ops.push(['decor', `+${it.name}`]); else ops.push(['item', `+${it.name} 1|${it.desc ? ` ${it.desc}` : ''}`]);

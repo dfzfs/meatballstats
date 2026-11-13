@@ -183,6 +183,12 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.6', title: '골라 되돌리기 · 흥정 · 일하기 판정 · 번역 사전 정리', items: [
+        ['↩ 골라 되돌리기', '관리 탭 › 되돌리기 › 「편집 기록에서 골라 되돌리기」 — 최근 편집 20개 중 하나만 골라 취소해요. 그 뒤의 편집은 그대로예요.'],
+        ['🎲 흥정', '상점 물건 옆 🎲 — 매력 · 화술 같은 능력치로 d20. 대성공 30% · 성공 15% 깎고, 대실패면 10% 올라요. 하루에 물건마다 한 번 (AI 0회).'],
+        ['🎲 일하기 판정', '일거리도 d20 — 대성공 일당 1.5배 · 실패 절반 · 대실패 허탕. 확장 설정 › 기능 켜고 끄기에서 끌 수 있어요.'],
+        ['🧹 번역 사전 정리', '확장 설정 › 상태창 언어 · 번역 › 「번역 사전 정리」 — 지금 상태창에 없는 옛 번역을 지워 채팅 파일을 줄이고 화면 번역을 빠르게 (📌 고정한 건 남겨요).'],
+    ] },
     { v: '2.7.5', title: '퀘스트 기한 · 진행 기록 · 이야기에서 빠진 사람 · 안 씹히게', items: [
         ['⌛ 퀘스트 기한', '「3일 안에」 · 「3월 14일까지」 같은 기한을 달력으로 읽어 카드에 D-3처럼 보여 주고, 마지막 날엔 알림, 지나면 실패로 넘겨요. AI에게도 남은 날을 알려 줘요 (토큰 0 · 확장 설정에서 끌 수 있어요).'],
         ['📜 진행 기록이 깔끔해졌어요', 'AI가 적는 진행 내용은 「해 둔 일」로 체크된 채 들어가고, 할 일 목록과 비슷하면 그 단계를 체크해요. 받지도 않은 퀘스트의 진행이 오면 진행 중으로 옮겨요.'],
@@ -475,7 +481,7 @@ app.measureLoad = measureLoad;
 
 // ───── 확장 설정 서랍 ─────
 // 바꾸면 화면을 바로 다시 그려야 하는 스위치 (v2.7.3)
-const VIEW_KEYS = new Set(['questExpire', 'memoOn', 'albumOn', 'peekOn', 'recordOn', 'freshDot', 'pipCheck', 'questJudge', 'msgCard', 'chipOutside']);
+const VIEW_KEYS = new Set(['extraJudge', 'questExpire', 'memoOn', 'albumOn', 'peekOn', 'recordOn', 'freshDot', 'pipCheck', 'questJudge', 'msgCard', 'chipOutside']);
 // 「부가 기능 한 번에 끄기」 — 상태 계산 · 본편 롤플에 꼭 필요하지 않은 것만
 const LIGHT_OFF = { memoOn: false, albumOn: false, peekOn: false, recordOn: false, daySummary: false, featureTips: false, showMascot: false, mascotBuddy: false, musicToast: false };
 function profileOptions(sel) {
@@ -526,6 +532,7 @@ function renderSettings() {
             <label class="checkbox_label"><input type="checkbox" data-s="goneInject" ${s.goneInject !== false ? 'checked' : ''}> 🗑 버리거나 판 물건을 AI에게 「이제 없음」으로 알려 주기 <small>(창고에서 버린 가구 · 판 물건을 AI가 다시 꺼내 쓰지 않게 · 주입 한 줄)</small></label>
             <label>🎲 퀘스트 완료 판정<select class="text_pole" data-s="questJudge">${o('questJudge', 'ask', '물어보기 — 완료 누르면 「판정하고 완료 / 판정 없이 완료」 (기본)')}${o('questJudge', 'roll', '늘 판정 — 대성공 1.5배 · 성공 · 실패 절반 · 대실패 보상 없음')}${o('questJudge', 'off', '끔 — 판정 없이 바로 보상')}</select></label>
             <label class="checkbox_label"><input type="checkbox" data-s="questExpire" ${s.questExpire !== false ? 'checked' : ''}> ⌛ 퀘스트 기한이 지나면 실패로 · 마지막 날 알림 <small>(「3일 안에」 · 「3월 14일까지」 같은 기한을 달력으로 읽어요 · 달력이 켜져 있을 때 · 토큰 0)</small></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="extraJudge" ${s.extraJudge !== false ? 'checked' : ''}> 🎲 흥정 · 일하기 판정 <small>(상점 물건 옆 🎲로 값을 깎고, 일거리는 d20으로 일당이 달라져요 · AI 0회)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="questJudgeAI" ${s.questJudgeAI ? 'checked' : ''}> 본편 AI가 「완료」라고 적은 퀘스트도 자동으로 보상 판정 <small>(토큰 0 · 같은 답은 늘 같은 결과)</small></label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="lightall" title="메모 · 앨범 · 속마음 · 플레이 기록 · 하루 정리 · 팁 · 마스코트를 한 번에 꺼요"><i class="fa-solid fa-feather"></i> 부가 기능 한 번에 끄기</button><button class="menu_button" data-s-act="perf"><i class="fa-solid fa-gauge-simple-high"></i> 부하 재기</button></div>
             <b class="ss-set-h">상태창 언어 · 번역</b>
@@ -539,7 +546,7 @@ function renderSettings() {
             <label>번역 지침<textarea class="text_pole" rows="4" data-s="trRules" placeholder="Leon Hart = 레온 하트&#10;Kingdom of Ardel = 아르델 왕국&#10;편지는 반말로 옮길 것">${esc(s.trRules ?? '')}</textarea></label>
             <label>화면만 번역: 본편 AI가 새로 쓴 영어 글 자동 번역<select class="text_pole" data-s="trAuto">${o('trAuto', 'st', '실리 기본 번역일 때만 (무료 · 추천)')}${o('trAuto', 'always', '항상 — 번역 모델이면 새 글이 생길 때 AI 1회씩')}${o('trAuto', 'off', '끔 — 「상태창 전체 번역」을 누를 때만')}</select></label>
             <small><b>번역 모델</b>: 적은 글이 그대로 지침으로 가요. <b>실리 기본 번역</b>: 지침을 읽지 못해서 <code>원문 = 번역</code> 모양의 줄만 써요 (이름·용어 고정). 다른 줄은 무시돼요.</small>
-            <div class="ss-set-btns"><button class="menu_button" data-s-act="trsheet"><i class="fa-solid fa-language"></i> 상태창 전체 번역</button><button class="menu_button" data-s-act="toenglish" title="예전에 한국어로 저장된 칸을 영어 저장으로 바꿔요. 지금 보이는 한국어는 화면 번역으로 남아요."><i class="fa-solid fa-right-left"></i> 한국어로 저장된 칸을 영어 저장으로 바꾸기</button></div>
+            <div class="ss-set-btns"><button class="menu_button" data-s-act="trsheet"><i class="fa-solid fa-language"></i> 상태창 전체 번역</button><button class="menu_button" data-s-act="trprune" title="지금 상태창에 없는 옛 번역을 지워 채팅 파일을 줄이고 화면 번역을 빠르게 (📌 고정한 건 남김 · AI 0회)"><i class="fa-solid fa-broom"></i> 번역 사전 정리</button><button class="menu_button" data-s-act="toenglish" title="예전에 한국어로 저장된 칸을 영어 저장으로 바꿔요. 지금 보이는 한국어는 화면 번역으로 남아요."><i class="fa-solid fa-right-left"></i> 한국어로 저장된 칸을 영어 저장으로 바꾸기</button></div>
             <small>「화면만 번역」으로 바꿔도 <b>이미 한국어로 저장된 칸</b>은 그대로 한국어로 AI에게 가요. 위 오른쪽 버튼을 한 번 누르면 이 채팅의 칸들이 영어 저장으로 바뀌고, 지금 보이는 한국어는 화면 번역으로 그대로 남아요. (채팅마다 한 번)</small>
             <b class="ss-set-h">일시정지 · OOC</b>
             <label class="checkbox_label"><input type="checkbox" data-s="oocDetect" ${s.oocDetect ? 'checked' : ''}> 내 메시지가 OOC로 시작하면 그 턴은 상태창 안 보냄 <small>((, (OOC, [OOC, //</small></label>
@@ -674,6 +681,7 @@ function renderSettings() {
         if (a === 'whatsnew') return showWhatsNew(true);
         if (a === 'help') return openHelp();
         if (a === 'toenglish') return convertToEnglish(e.target.closest('button'));
+        if (a === 'trprune') { const { pruneTr } = await import('./src/translate.js'); return pruneTr(); }
         if (a === 'romrec' || a === 'romoff') {
             const set = settings(), on = a === 'romrec';
             if (on) { set.romBond = true; set.romCap = true; set.romFacts = true; }
