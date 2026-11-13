@@ -54,18 +54,23 @@ async function stMany(list, rev = false) {
     let cur = [], len = 0;
     for (const s of list) { const f = flat(s); if (cur.length && (len + f.length > 1500 || cur.length >= 40)) { batches.push(cur); cur = []; len = 0; } cur.push(s); len += f.length + 1; }
     if (cur.length) batches.push(cur);
-    for (const b of batches) {
+    const one = async (b) => {
         let lines = null;
         try { lines = (await stTranslate(b.map(flat).join('\n'), rev)).split(/\r?\n/).map(x => x.trim()).filter(Boolean); } catch (e) { ssWarn(LOG, 'st batch', e); }
         if (lines && lines.length === b.length) b.forEach((s, i) => out.set(s, lines[i]));
-        else for (const s of b) { try { out.set(s, (await stTranslate(s, rev)).trim()); } catch (e) { ssWarn(LOG, 'st one', e); } }
-    }
+        else await Promise.all(b.map(async (s) => { try { out.set(s, (await stTranslate(s, rev)).trim()); } catch (e) { ssWarn(LOG, 'st one', e); } }));
+    };
+    // v2.7.2: 묶음을 3개씩 동시에 (예전엔 하나씩 차례로라 느렸음)
+    const q = [...batches];
+    await Promise.all(Array.from({ length: Math.min(3, q.length) }, async () => { while (q.length) await one(q.shift()); }));
     return out;
 }
 // 코드 값(상태·종류·id 같은 것)은 번역하면 안 된다
-const CODE_KEYS = new Set(['id', 'kind', 'role', 'status', 'mode', 'type', 'cls', 'repeat', 'by', 'from', 'icon', 'color', 'unit', 'every', 'key', 'currencyCode', 'genre', 'contact', 'play']);
+const CODE_KEYS = new Set(['id', 'kind', 'role', 'status', 'mode', 'type', 'cls', 'repeat', 'by', 'from', 'icon', 'color', 'unit', 'every', 'key', 'currencyCode', 'contact', 'play']);
 // rev = 한국어 → 영어 (옛 번역본을 영어 저장으로 바꿀 때): 한글이 든 칸만
-const isCode = (k, v, rev = false) => CODE_KEYS.has(k) || (rev ? !/[가-힣]/.test(v) : (/^[a-z0-9_\-]{1,14}$/.test(v) || !/[A-Za-z]/.test(v)));
+// SNS 아이디 · 핸들(@luffy, mugiwara_luffy, law.d.water 같은 것)은 이름이 아니라 번역하지 않는다 (v2.7.2)
+const HANDLE = (v) => /^@?[A-Za-z0-9_.]{2,30}$/.test(v.trim()) && (v.trim().startsWith('@') || /[_.\d]/.test(v));
+const isCode = (k, v, rev = false) => CODE_KEYS.has(k) || (rev ? !/[가-힣]/.test(v) : (/^[a-z0-9_\-]{1,14}$/.test(v) || !/[A-Za-z]/.test(v) || HANDLE(v)));
 function leaves(o, acc = new Set(), k = '', rev = false) {
     if (typeof o === 'string') { if (o.trim() && !isCode(k, o, rev)) acc.add(o); return acc; }
     if (Array.isArray(o)) { for (const v of o) leaves(v, acc, k, rev); return acc; }
@@ -159,7 +164,39 @@ const TR_MAX = 3000;
 const TR_CHARS = 300000; // 사전 전체 글자 수 상한 (약 300KB)
 let trVer = 0; // 사전이 바뀔 때마다 +1 (화면 번역기 캐시 갱신)
 const hasLatin = (x) => /[A-Za-z]/.test(x);
-app.addTrPairs = (p) => addPairs(p); // 기본 틀 영어판이 화면 번역 짝을 넣을 때 (skeleton.js → 순환 import 없이)
+app.addTrPairs = (p) => addPairs(p);
+// ───── 🌐 번역 고치기 (v2.7.2): 화면에 보이는 한국어가 이상할 때 직접 고친다 (토큰 0 · 이 채팅만) ─────
+// 고친 짝은 잠가서 자동 번역이 다시 덮어쓰지 않고, 이름을 고치면 그 이름이 든 다른 번역 문장 속 옛 이름도 같이 바꾼다
+export async function openTrFix(data, title = '') {
+    const meta = getMeta(true); if (!meta) return;
+    const d = (meta.tr ??= {}), lock = (meta.trLock ??= {});
+    const strs = [...new Set([...leaves(data)])].filter(s => /[A-Za-z]/.test(s) && s.trim().length >= 2 && s.length <= 200).map(s => s.trim());
+    const list = [...new Set(strs)].sort((a, b) => a.length - b.length).slice(0, 200); // 짧은 것(이름)부터
+    const el = document.createElement('div');
+    el.className = 'ss-root ss-scope ss-trfix ss-notr';
+    el.innerHTML = `<div class="ss-wz-head"><i class="fa-solid fa-language"></i><div><b>번역 고치기${title ? ` — ${esc(title)}` : ''}</b><small>왼쪽은 저장된 영어 · 오른쪽 칸을 고치면 화면에 그렇게 보여요 (AI 0회 · 이 채팅만)</small></div></div>
+        <input class="ss-in ss-trf-q" placeholder="찾기 (영어나 한국어)">
+        <div class="ss-trf-list">${list.map(en => `<label class="ss-trf-row" data-s="${esc((en + ' ' + (d[en] ?? '')).toLowerCase())}"><small>${esc(en)}${lock[en] ? ' <b class="ss-trf-lock">고침</b>' : ''}</small><input class="ss-in" data-en="${esc(en)}" value="${esc(d[en] ?? '')}" placeholder="(아직 번역 없음 — 비워 두면 자동)"></label>`).join('') || '<p class="ss-hint">이 칸에는 고칠 영어 글이 없어요.</p>'}</div>
+        <p class="ss-hint">이름을 고치면 그 이름이 들어간 다른 문장 번역 속 옛 이름도 같이 바뀌어요. 칸을 비우면 자동 번역으로 되돌아가요.</p>`;
+    el.querySelector('.ss-trf-q').addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase(); el.querySelectorAll('.ss-trf-row').forEach(r => { r.style.display = !q || r.dataset.s.includes(q) ? '' : 'none'; }); });
+    const ok = await app.popup(el, { okButton: '저장', cancelButton: '취소', large: true });
+    if (!ok) return;
+    let n = 0;
+    for (const inp of el.querySelectorAll('[data-en]')) {
+        const en = inp.dataset.en, ko = inp.value.trim(), old = d[en] ?? '';
+        if (ko === inp.defaultValue.trim()) continue; // 내가 안 건드린 칸 (위에서 이름을 고쳐 문장이 바뀌었어도 그대로 둠)
+        n++;
+        if (!ko) { delete d[en]; delete lock[en]; continue; }
+        d[en] = ko; lock[en] = true;
+        if (old && en.length <= 40) for (const [k, v] of Object.entries(d)) if (k !== en && k.includes(en) && typeof v === 'string' && v.includes(old)) d[k] = v.split(old).join(ko);
+    }
+    if (!n) return;
+    trVer++; memo.clear();
+    await saveMeta();
+    app.rerenderPanels?.(true); translateView();
+    toastr.success(`번역 ${n}개를 고쳤어요.`, TITLE);
+}
+app.openTrFix = openTrFix; // 기본 틀 영어판이 화면 번역 짝을 넣을 때 (skeleton.js → 순환 import 없이)
 export function addPairs(pairs) {
     const meta = getMeta(true);
     if (!meta) return 0;
@@ -169,6 +206,7 @@ export function addPairs(pairs) {
         const en = String(en0 ?? '').trim(), ko = String(ko0 ?? '').trim();
         if (!en || !ko || en === ko || !hasLatin(en)) continue;
         if (Object.hasOwn(d, en) && d[en] === ko) continue;
+        if (meta.trLock?.[en]) continue; // 내가 「번역 고치기」로 고친 건 덮어쓰지 않음
         delete d[en]; d[en] = ko; n++;
     }
     const keys = Object.keys(d);
@@ -334,6 +372,7 @@ export function scheduleFill() {
     clearTimeout(fillTimer);
     fillTimer = setTimeout(() => { fillNew().catch(e => ssWarn(LOG, 'fill', e)); }, 2500);
 }
+let failedOnce = false, fillRetries = 0;
 async function fillNew() {
     if (filling || running || !viewTr()) return;
     if (app.generatingAt && Date.now() - app.generatingAt < 300000) return scheduleFill(); // 본편 AI가 답을 쓰는 동안엔 부르지 않는다 (끝난 뒤 다시 · 5분 넘으면 끝난 걸로 봄)
@@ -357,7 +396,13 @@ async function fillNew() {
         const out = await trJSON(src);
         // 개수가 다르면(모델이 줄을 합치거나 뺐으면) 짝이 어긋나므로 버린다
         if (out !== src && Array.isArray(out?.list) && out.list.length === need.length) { addPairs(pairsOf(src, out)); addPairs(rulePairs()); translateView(); }
+        // 번역이 안 돌아온 글은 다음에 다시 (예전엔 한 번 실패하면 이번 접속 내내 영어로 남았음)
+        const d2 = trDict() ?? {};
+        for (const k of need) if (!Object.hasOwn(d2, k)) { tried.delete(k); failedOnce = true; }
     } finally { filling = false; }
+    // 60개씩 끊어서 → 남은 게 있으면 이어서 (예전엔 첫 60개만 번역하고 멈췄음) · 실패가 있었으면 잠깐 쉬었다가
+    if (failedOnce && ++fillRetries > 3) failedOnce = false; // 번역기가 계속 실패하면 이번 접속에선 3번까지만 다시
+    if (need.length >= 60 || failedOnce) { const wait = failedOnce ? 20000 : 1500; failedOnce = false; clearTimeout(fillTimer); fillTimer = setTimeout(() => { fillNew().catch(e => ssWarn(LOG, 'fill', e)); }, wait); }
 }
 // 「한국어로 저장된 칸을 영어 저장으로 바꾸기」: 예전 방식(번역본 저장)이나 한국어 생성으로 만든 상태창을
 // 화면만 번역으로 옮긴다. 원래 있던 한국어는 화면 번역(사전)으로 그대로 남는다.

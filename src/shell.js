@@ -15,7 +15,7 @@ import { CONTACT_ACTIONS } from './contact.js';
 import { FEED_ACTIONS } from './feeds.js';
 import { MONEY_ACTIONS } from './money.js';
 import { FATE_ACTIONS } from './fate.js';
-import { EDIT } from './core.js';
+import { EDIT, viewTr } from './core.js';
 import { translateSheet } from './translate.js';
 import { GEN_MODES, HYBRID_TPL, skeleton, skeletonCore, skeletonHint } from './skeleton.js';
 import { REC_MODS, defaultModOn } from './core.js';
@@ -110,6 +110,7 @@ export function renderPanel(el) {
     const tools = editable && data && st.mode !== 'edit' && st.mode !== 'json' ? `<div class="ss-tools">${favBtn}${hideBtn}
             <button class="ss-tool ${st.ui.instructOpen ? 'on' : ''}" data-act="instructtog" title="AI에게 이 칸을 고치라고 지시 (AI 1회)"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI로 수정</span></button>
             <button class="ss-tool" data-act="edit" title="직접 편집"><i class="fa-solid fa-pen"></i><span>편집</span></button>
+            ${viewTr() ? '<button class="ss-tool" data-act="trfix" title="번역 고치기 — 이름·낱말이 이상하게 번역돼 보일 때 (AI 0회)"><i class="fa-solid fa-language"></i><span>번역 고치기</span></button>' : ''}
             <button class="ss-tool" data-act="json" title="JSON 편집"><i class="fa-solid fa-code"></i></button>
             <button class="ss-tool" data-act="regen" title="이 칸만 다시 생성 (AI 1회)"><i class="fa-solid fa-rotate"></i></button></div>` : (favBtn || hideBtn) && (pseudo || !data) ? `<div class="ss-tools">${favBtn}${hideBtn}</div>` : '';
     const instruct = st.ui.instructOpen && editable && data ? `<div class="ss-instruct"><textarea class="ss-in" rows="2" placeholder="${esc(INSTRUCT_HINT[mod] ?? '예: 스토리에 맞게 ○○를 추가하고 △△는 바꿔줘')}">${esc(st.ui.instructText ?? '')}</textarea>
@@ -178,6 +179,7 @@ async function onPanelAction(el, act, arg, btn) {
             toastr.info(now ? `「${mname}」을(를) 가렸어요. 다시 켤 때까지 AI에게 안 보내요 (화면·기록은 그대로).` : `「${mname}」을(를) 다시 AI에게 보내요.`, TITLE);
             return rerenderPanels(true);
         }
+        case 'trfix': return app.openTrFix?.(mod === 'core' ? s.core : s.data[mod], mname);
         case 'inbox': return app.openInbox?.();
         case 'search': return app.openSearch?.();
         case 'help': return app.openHelp?.();
@@ -667,13 +669,15 @@ export async function openWizard() {
             if (getMeta()?.base && !(await askConfirm('지금 이 채팅의 상태창을 새로 만든 것으로 바꿀까요?'))) return;
             if (results.data.rel && results.data.profile) relFromProfiles(results.data.rel, results.data.profile); // 프로필에 있는 사람은 관계에도 꼭
             await setBase({ core: results.core, data: results.data }, mods, W.diff, results.play);
+            applied = true;
             toastr.success('상태창을 만들었어요!', TITLE);
             el.closest('dialog')?.querySelector('.popup-button-ok')?.click();
             if (!document.querySelector('.ss-panel-pop')) setTimeout(() => openSheet(), 300);
         });
         prog.appendChild(b);
     };
-    el.querySelector('.ss-w-go').addEventListener('click', async (e) => {
+    let running = false, applied = false; // 만드는 중에 창을 닫아도 계속 (v2.7.2)
+    const goRun = async (e) => {
         const btn = e.currentTarget;
         const src = Object.fromEntries([...el.querySelectorAll('[data-src]')].map(i => [i.dataset.src, i.checked]));
         mods = Object.fromEntries([...el.querySelectorAll('[data-mod]')].map(i => [i.dataset.mod, i.checked]));
@@ -729,9 +733,32 @@ export async function openWizard() {
         busyBtn(btn, false);
         btn.innerHTML = '<i class="fa-solid fa-rotate"></i> 다시 생성';
         showApply();
+    };
+    el.querySelector('.ss-w-go').addEventListener('click', async (e) => {
+        if (running) return;
+        running = true;
+        try { await goRun(e); } finally { running = false; }
     });
+    // 창을 닫았을 때: 만드는 중이면 뒤에서 계속 → 다 되면 창을 다시 열어 「적용하기」 · 다 만들고 적용 안 했으면 다시 열 수 있게
+    const reopen = () => popup(el, { large: true }).then(after);
+    const after = () => {
+        if (applied) { app.playTemp = null; return; }
+        if (running) {
+            toastr.info('창을 닫아도 계속 만들고 있어요. 다 되면 다시 열어 드릴게요.', TITLE);
+            const t = setInterval(() => {
+                if (running) return;
+                clearInterval(t);
+                if (applied) return;
+                if (results.core) { toastr.success('상태창을 다 만들었어요! 확인하고 「적용하기」를 눌러 주세요.', TITLE); reopen(); }
+                else toastr.warning('상태창을 만들지 못했어요. 「상태창 만들기」에서 다시 해 주세요.', TITLE);
+            }, 500);
+            return;
+        }
+        if (results.core) { toastr.info('만든 상태창을 아직 적용하지 않았어요. 여기를 누르면 다시 열려요.', TITLE, { timeOut: 20000, onclick: () => reopen() }); return; }
+        app.playTemp = null;
+    };
     await popup(el, { large: true });
-    app.playTemp = null;
+    after();
 }
 
 // ───── 프롬프트 · 토큰 창 ─────

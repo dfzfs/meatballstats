@@ -70,6 +70,10 @@ export function notify(a, { save = true } = {}) {
     const set = settings();
     if (n.kind === 'music' && !set.musicToast) { if (save) remember({ ...n, id: uid(), t: Date.now() }); return; }
     if (n.kind === 'day' && !set.daySummary) return;
+    // 같은 알림이 5초 안에 또 오면 한 번만 (어디서 두 번 불려도)
+    const sig = `${n.kind}|${n.title}|${n.text}`;
+    if (notify._last?.sig === sig && Date.now() - notify._last.t < 5000) return;
+    notify._last = { sig, t: Date.now() };
     n.id = uid(); n.t = Date.now();
     try { n.when = app.current ? stamp(app.current.state) : ''; } catch { n.when = ''; }
     if (save) remember(n);
