@@ -233,7 +233,8 @@ const noteKey = () => { const s = JSON.stringify(CHANGELOG[0] ?? ''); let h = 0;
 function whatsNewOnLoad(fresh) {
     const s = settings();
     const key = noteKey();
-    if (s.lastSeenNote === key) return;
+    // 버전이 바뀔 때만 한 번 (같은 버전에서 「바뀐 점」 글만 고쳐졌을 땐 다시 안 띄움 — 너무 자주 뜬다는 의견)
+    if (s.lastSeenNote === key || s.lastSeenVersion === VERSION) { if (s.lastSeenNote !== key) { s.lastSeenNote = key; saveSettings(); } return; }
     const done = () => { s.lastSeenVersion = VERSION; s.lastSeenNote = key; saveSettings(); };
     if (fresh || s.updateNotice === false) { done(); return; } // 처음 설치 · 알림 끔
     const sameVer = s.lastSeenVersion === VERSION; // 버전은 같은데 내역만 바뀜 → 맨 위 내역만

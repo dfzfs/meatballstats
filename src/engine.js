@@ -714,6 +714,12 @@ export function applyOp(s, rawKey, rawVal, info) {
             else { const p = Math.max(0, Math.round(num(price, 0))); if (p) applyOp(s, 'cash', `+${p}`, info); L(`♻ ${item} 중고 판매`); }
             return;
         }
+        case '_purge': { // 🗑 완전 삭제: 「버렸다」 기록을 바꿔 쓴 것 — 창고에서 조용히 빼기만 (쓰레기통·기록·라벨 없음)
+            const hm = s.data.home; if (!hm) return;
+            const k = hm.storage.findIndex(x => norm(x) === norm(val));
+            if (k >= 0) hm.storage.splice(k, 1);
+            return;
+        }
         case '_restore': {
             const hm = s.data.home; if (!hm) return;
             const k = hm.trash.findIndex(x => norm(x.name) === norm(val)); if (k < 0) return;
@@ -1239,12 +1245,44 @@ export async function addAdjust(entry) {
     app.refreshNow?.();
     for (const t of adjEvents.get(a.t) ?? []) app.notify ? app.notify(t) : toastr.info(esc(typeof t === 'string' ? t : t.text ?? ''), TITLE);
 }
+// 🗑 쓰레기통 완전 삭제 — 찌꺼기 없이: 「버렸다」 편집 기록을 조용한 삭제로 바꿔 쓰고, 굳힌 기준점·하루 기록·칸 스냅샷에서도 지운다.
+// 채팅 메시지는 건드리지 않고, AI에게 가는 「UI 행동」 줄에도 안 남는다. 세이브 슬롯(일부러 저장한 과거 시점)은 그대로.
+export async function purgeTrash(names) {
+    const meta = getMeta();
+    if (!meta?.base || !names?.length) return 0;
+    const said = (nm) => (l) => typeof l === 'string' && (l === `${nm}을(를) 버렸다` || l === `🗑 ${nm}`);
+    let n = 0;
+    for (const nm of names) {
+        const key = norm(nm);
+        // ① 아직 굳히지 않은 편집 기록: 가장 최근에 이 이름을 버린 기록 하나를 찾아 바꿔 쓴다
+        const adj = (meta.adjust ?? []).slice().sort((a, b) => b.at - a.at || b.t - a.t);
+        const hit = adj.find(a => (a.ops ?? []).some(([k, v]) => k === '_trash' && norm(splitBar(v)[0]) === key));
+        if (hit) {
+            hit.ops = hit.ops.map(([k, v]) => (k === '_trash' && norm(splitBar(v)[0]) === key ? ['_purge', splitBar(v)[0]] : [k, v]));
+            if (hit.ops.every(([k]) => k === '_purge')) { delete hit.label; hit.silent = true; }
+            n++;
+        } else {
+            // ② 이미 굳힌 기준점 안의 쓰레기통에서 하나 지우기
+            const tr = meta.base.data?.home?.trash;
+            const k = tr ? tr.map(t => norm(t.name)).lastIndexOf(key) : -1;
+            if (k >= 0) { tr.splice(k, 1); n++; }
+        }
+        // ③ 칸을 통째로 저장한 기록(직접 편집·AI로 수정)에 남은 쓰레기통 사본에서도 빼기
+        for (const a of meta.adjust ?? []) if (a.set?.mod === 'home' && Array.isArray(a.set.data?.trash)) a.set.data.trash = a.set.data.trash.filter(t => norm(t.name) !== key);
+        // ④ 하루 정리 기록에 남은 「버렸다」 줄 지우기 (굳힌 것)
+        for (const d of meta.base.days ?? []) if (Array.isArray(d.labels)) { const before = d.labels.length; d.labels = d.labels.filter(l => !said(nm)(l)); d.n = Math.max(0, (d.n ?? before) - (before - d.labels.length)); }
+    }
+    if (n) { await saveMeta(); app.refreshNow?.(); }
+    return n;
+}
 // 마지막 편집 되돌리기 (상태창에서 한 것만 · AI 답은 그대로)
 export async function undoLast() {
     const meta = getMeta();
-    const a = meta?.adjust?.at(-1);
-    if (!a) return null;
-    meta.adjust.pop();
+    // 완전 삭제로 바꿔 쓴 기록은 건너뛴다 (되돌리기로 지운 물건이 창고에 되살아나지 않게)
+    const isPurge = (e) => e?.silent && (e.ops ?? []).length && e.ops.every(([k]) => k === '_purge');
+    const idx = (meta?.adjust ?? []).findLastIndex(e => !isPurge(e));
+    if (idx < 0) return null;
+    const a = meta.adjust.splice(idx, 1)[0];
     await saveMeta();
     app.refreshNow?.();
     return a;
