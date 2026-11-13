@@ -60,6 +60,37 @@ function miniRelHTML(s) {
     };
     return `<div class="ss-mini-rel">${list.map(r => `<div>${avatar(r.name, 'xs')}<span>${esc(r.name)}</span><i class="ss-mini-rel-v">${o.show.map(k => val(r, k)).join('')}</i></div>`).join('')}</div>`;
 }
+// ♻ 중고 시세 (AI 0회 · 입력 없음): 새것 값을 짐작 → 난이도 비율 × 상태(낡은·부서진 …) × 그날 시세(±25%)
+// 새것 값: ① 상점에 같은 이름 ② 이름이 겹치는 상품(「양털 러그」 ↔ 「낡은 양털 러그」) ③ 물가표에서 겹치는 것 ④ 상점 가구·물건 값의 중간값 ⑤ 물가표 중간값
+function usedPrice(s, name) {
+    const n = norm(name);
+    const goods = (s.data.shop?.shops ?? []).flatMap(sh => sh.items ?? []).filter(i => i.price > 0);
+    const prices = (s.data.wallet?.prices ?? []).filter(p => p.price > 0);
+    const words = n.split(/\s+/).filter(w => w.length >= 2);
+    const overlap = (x) => { const m = norm(x); return m.includes(n) || n.includes(m) || words.filter(w => m.includes(w)).length >= Math.min(2, words.length); };
+    const median = (a) => { const v = a.map(x => x.price).sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : 0; };
+    let base = 0, how = '';
+    const exact = goods.find(i => norm(i.name) === n);
+    if (exact) { base = exact.price; how = '상점 가격 기준'; }
+    else {
+        const like = goods.filter(i => overlap(i.name));
+        if (like.length) { base = median(like); how = `비슷한 상품 「${like[0].name}」 기준`; }
+        else {
+            const lp = prices.filter(p => overlap(p.name));
+            if (lp.length) { base = median(lp); how = '물가표 기준'; }
+            else {
+                const deco = goods.filter(i => i.kind === 'deco');
+                base = median(deco.length ? deco : goods) || median(prices);
+                how = base ? '이 세계 가구·물건 평균값으로 짐작' : '값을 알 수 없어 기본값';
+                if (!base) base = 50;
+            }
+        }
+    }
+    const rate = { easy: 0.3, normal: 0.2, hard: 0.1 }[diffOf()] ?? 0.2;
+    const worn = /낡|헌|부서|깨진|금 간|녹슨|찢어|빈 |빛바랜|오래된|broken|old|worn|rusty/i.test(name) ? 0.5 : 1;
+    const day = 0.75 + Math.random() * 0.5; // 그날 시세
+    return { base, price: Math.max(1, Math.round(base * rate * worn * day)), how: worn < 1 ? `${how} · 상태가 안 좋아 반값` : how };
+}
 export function miniWidgets(s, keys, clickable = true) {
     const meta = getMeta();
     const d = s.data;
@@ -402,14 +433,9 @@ export const VIEW_ACTIONS = {
     },
     restore: (el, arg) => addAdjust({ ops: [['_restore', arg]], label: `${arg}을(를) 쓰레기통에서 꺼냈다` }),
     sellused: async (el, arg, btn, s) => {
-        // 중고 시세: 상점 가격의 이지 30% · 보통 20% · 하드 10% (모르면 직접 입력)
-        let base = 0;
-        for (const sh of s.data.shop?.shops ?? []) { const it = findBy(sh.items, arg); if (it && norm(it.name) === norm(arg)) { base = it.price; break; } }
-        const rate = { easy: 0.3, normal: 0.2, hard: 0.1 }[diffOf()] ?? 0.2;
-        let price = Math.max(1, Math.floor(base * rate));
         const cur = s.data.wallet?.currency ?? '';
-        if (!base) { const v = await askInput(TITLE, `「${esc(arg)}」 중고 값 (${esc(cur)}) — 원래 값을 몰라서 직접 정해 주세요`, '10'); price = Math.max(0, Math.round(Number(v) || 0)); if (!price) return; }
-        else if (!(await askConfirm(`「${esc(arg)}」을(를) 중고장터에 ${fmtNum(price)} ${esc(cur)}에 팔까요?<br><small>원래 ${fmtNum(base)} — 헐값이에요 😭</small>`))) return;
+        const { base, price, how } = usedPrice(s, arg);
+        if (!(await askConfirm(`「${esc(arg)}」을(를) 중고장터에 <b>${fmtNum(price)} ${esc(cur)}</b>에 팔까요?<br><small>${esc(how)}${base ? ` · 새것 ${fmtNum(base)}` : ''} — 헐값이에요 😭</small>`))) return;
         return addAdjust({ ops: [['_sellused', `${arg}|${price}`]], label: `${arg}을(를) 중고로 팔았다 +${fmtNum(price)} ${cur}` });
     },
     setweather: async (el, arg, btn, s) => {
