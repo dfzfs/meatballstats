@@ -26,4 +26,20 @@ try {
     check(!/RELATIONSHIP FACTS/.test(one), 'no facts header when only the spark line is sent');
     check(r.same, 'same turn → same roll (swipes agree)');
     check(!/heart-fluttering|new development/.test(r.off), 'off by default → nothing sent');
+    // v2.7.15: 스트리밍 중엔 마지막 답에 칩이 없다가 끝나면 붙는다 · 인물 줄에 「등장 강요 안 함」
+    const sm = await page.evaluate(async () => {
+        document.body.dataset.generating = 'true';
+        await window.__addUser('go'); await window.__addAI('walk\n<meatball>\ncash: -1\n</meatball>');
+        await new Promise(r => setTimeout(r, 200));
+        const last = () => [...document.querySelectorAll('#chat .mes')].at(-1);
+        const during = !!last().querySelector('.ss-slot')?.firstChild;
+        delete document.body.dataset.generating;
+        await SillyTavern.getContext().eventSource.emit('generation_ended');
+        await new Promise(r => setTimeout(r, 300));
+        const after = !!last().querySelector('.ss-slot')?.firstChild;
+        const E = await import('/ext/src/engine.js');
+        return { during, after, people: E.buildInjection(window.__SS_TEST__.api.app.current).people };
+    });
+    check(!sm.during && sm.after, `no chip flicker while streaming, chip after (${sm.during}/${sm.after})`);
+    check(!sm.people || /does NOT mean being present/.test(sm.people), 'people list says listed ≠ present');
 } finally { if (logs.length) console.log(logs.filter(l => !/404/.test(l)).slice(0, 5).join('\n')); await close(); }
