@@ -1376,10 +1376,41 @@ export function orderAdjust(list) {
 // 메시지를 지웠을 때: 그 뒤에 묶였던 편집을 지금 끝으로 당긴다 (편집은 남기고, 분기 채팅과 구별되게) → 당긴 개수
 // 묶음 열쇠: 메시지의 첫 스와이프 시각(다시 생성하면 새 메시지라 다름) + 지금 스와이프
 // 메시지 열쇠: 실리의 send_date는 분 단위라 1분 안에 다시 생성하면 옛 답과 같아짐 → 첫 스와이프의 밀리초 생성 시각(gen_started)을 먼저
-export function msgKey(m) {
-    const first = m?.swipe_info?.[0];
-    const t = first?.gen_started ?? (first ? null : m?.gen_started) ?? first?.send_date ?? m?.send_date ?? '';
-    return `${m?.is_user ? 'u' : 'a'}:${m?.name ?? ''}:${t}`;
+// 시각은 숫자(밀리초)로 통일 — 실리는 방금 만든 답엔 Date 객체, 저장 뒤 다시 읽으면 ISO 글자를 줘서 그대로 쓰면 다시 열 때 열쇠가 달라짐 (v2.7.21)
+// ISO 꼴만 숫자로 (그 밖의 날짜 글자는 브라우저마다 읽는 법이 달라 PC ↔ 모바일에서 어긋나므로 글자 그대로)
+const timeKey = (t) => {
+    if (t === null || t === undefined || t === '') return '';
+    if (t instanceof Date) { const n = t.getTime(); return Number.isFinite(n) ? String(n) : ''; }
+    if (typeof t === 'number') return String(t);
+    const x = String(t);
+    if (/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(x)) { const n = Date.parse(x); if (Number.isFinite(n)) return String(n); }
+    return x;
+};
+const msgHead = (m) => `${m?.is_user ? 'u' : 'a'}:${m?.name ?? ''}:`;
+const msgTime = (m) => { const first = m?.swipe_info?.[0]; return first?.gen_started ?? (first ? null : m?.gen_started) ?? first?.send_date ?? m?.send_date ?? ''; };
+export function msgKey(m) { return msgHead(m) + timeKey(msgTime(m)); }
+// 이어쓰기: 실리가 그 답의 생성 시각을 새로 써서 열쇠가 바뀜 → 시작할 때 옛 열쇠를 적어 두고, 바뀌면 묶인 편집을 새 열쇠로 옮김
+let contNote = null;
+export function noteGeneration(type) {
+    const chat = ctx().chat ?? [], last = chat.at(-1);
+    contNote = type === 'continue' && last && !last.is_user ? { i: chat.length - 1, old: msgKey(last), sid: last.swipe_id ?? 0, m: last } : null;
+}
+export const dropContinueNote = () => { contNote = null; };
+function moveContinued(meta, chat) {
+    const n = contNote; if (!n) return;
+    const m = chat[n.i];
+    if (m !== n.m || (m.swipe_id ?? 0) !== n.sid) { contNote = null; return; } // 다른 메시지가 됐으면 버림
+    const now = msgKey(m); if (now === n.old) return;
+    for (const a of meta.adjust ?? []) if (a.an && a.an.slice(0, a.an.lastIndexOf('|')) === n.old) a.an = `${now}${a.an.slice(a.an.lastIndexOf('|'))}`;
+    n.old = now;
+}
+// 2.7.21 시험판이 남긴 옛 꼴 열쇠(시각을 글자 그대로)를 지금 메시지와 맞춰 새 꼴로 — 못 찾을 때만 한 번
+function legacyKeys(chat) {
+    const map = new Map();
+    chat.forEach((m, i) => { const t = msgTime(m), h = msgHead(m); const d = t instanceof Date ? t : (typeof t === 'string' && /^\d{4}-\d\d-\d\dT/.test(t) ? new Date(t) : null);
+        if (typeof t === 'string') map.set(h + t, i);
+        if (d && Number.isFinite(d.getTime())) { map.set(h + String(d), i); map.set(h + d.toISOString(), i); } });
+    return map;
 }
 export const anchorOf = (m) => `${msgKey(m)}|${m?.swipe_id ?? 0}`;
 // 이야기와 상관없는 정리 · 설정 편집은 묶지 않음 (메시지를 지워도 남음): 번역 · 영어 저장(라벨 없는 칸 저장) · 완전 삭제 · 읽음 · 메모 · 업적 표시 · 애정 끄기 · 연인 확정
@@ -1420,8 +1451,16 @@ export function compute(limit, opts = {}) {
     // 지운 메시지 뒤의 편집은 지울 때 당겨 둔다(clampAdjust) · 2.7.20 앞 채팅은 처음 한 번 당긴다
     if (!meta.atFix) { clampAdjust(meta, chat.length); meta.atFix = true; }
     // 묶인 편집: 묶인 메시지가 지금 채팅에 그 스와이프로 있을 때만 · 자리는 그 메시지 바로 뒤
+    moveContinued(meta, chat);
     const byKey = new Map(); chat.forEach((m, i) => byKey.set(msgKey(m), i));
-    const live = (a) => { if (!a.an) return true; const k = a.an.lastIndexOf('|'), i = byKey.get(a.an.slice(0, k)); if (i === undefined || String(chat[i].swipe_id ?? 0) !== a.an.slice(k + 1)) return false; a.at = i + 1; return true; };
+    let legacy = null;
+    const live = (a) => {
+        if (!a.an) return true;
+        const k = a.an.lastIndexOf('|'); let i = byKey.get(a.an.slice(0, k));
+        if (i === undefined && !/:\d*$/.test(a.an.slice(0, k))) { i = (legacy ??= legacyKeys(chat)).get(a.an.slice(0, k)); if (i !== undefined) a.an = `${msgKey(chat[i])}${a.an.slice(k)}`; }
+        if (i === undefined || String(chat[i].swipe_id ?? 0) !== a.an.slice(a.an.lastIndexOf('|') + 1)) return false;
+        a.at = i + 1; return true;
+    };
     for (const a of meta.adjust ?? []) a._off = !live(a);
     const adj = orderAdjust(meta.adjust);
     const seed = String(c.getCurrentChatId?.() ?? MODULE);

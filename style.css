@@ -1456,3 +1456,12 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
 .ss-tbhost.has-img .ss-mini-head b { color: #3a3226; }
 .ss-bgp { display: inline-block; width: 26px; height: 26px; border-radius: 8px; border: 1px solid rgba(0,0,0,.15); cursor: pointer; }
 .ss-bgp.on { outline: 2px solid var(--ss-acc); outline-offset: 1px; }
+/* 손가락(모바일): 편집 배지는 작게 보이되 누르는 자리는 넓게 (v2.7.21) */
+@media (pointer: coarse) { .ss-tb .ss-t-x::after, .ss-tb .ss-t-rs::after { content: ''; position: absolute; top: -8px; right: -8px; bottom: -8px; left: -8px; } }
+/* 모바일 HUD: 단추 줄을 판 아래로 내려 판이 화면 폭을 다 씀 (옆에 두면 칸이 50px로 찌그러짐) · 단추는 손가락 크기 (v2.7.21) */
+@media (max-width: 700px) {
+    #ss-hud .ss-tb-row { flex-wrap: wrap; }
+    #ss-hud .ss-tb-row > .ss-tg { flex: 1 1 100%; }
+    #ss-hud .ss-tb-acts { margin-left: auto; gap: 4px; }
+    #ss-hud .ss-tb-acts .ss-t { width: 30px; height: 28px; }
+}

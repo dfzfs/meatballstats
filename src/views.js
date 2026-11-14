@@ -170,7 +170,12 @@ async function shrinkImage(file, max = 128, q = 0.85) {
     const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
     const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
     cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
-    return cv.toDataURL('image/webp', q);
+    const out = cv.toDataURL('image/webp', q);
+    if (out.startsWith('data:image/webp')) return out;
+    // 사파리(아이폰 · 아이패드)는 webp로 못 만들어 큰 PNG가 됨 → 투명한 그림만 PNG, 나머지는 JPEG로 (v2.7.21)
+    let clear = false;
+    try { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; for (let i = 3; i < d.length; i += 4 * 7) if (d[i] < 250) { clear = true; break; } } catch { /* */ }
+    return clear ? out : cv.toDataURL('image/jpeg', q);
 }
 const saveDeco = (attr, list) => { const set = settings(); set.tileDeco = { ...(set.tileDeco ?? {}), [attr]: list }; saveSettings(); };
 // 편집: 칸을 끌어 아무 줄 · 자리에 · ⤡ 끌어 크기 · 스티커 옮기기 · 칸 누르면 고르기 · 색 · 그림 올리기 (마우스 · 손가락 공통)

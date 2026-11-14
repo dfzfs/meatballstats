@@ -98,7 +98,27 @@
     window.__renderAll = () => { document.getElementById('chat').innerHTML = ''; state.chat.forEach((_, i) => renderMes(i)); };
 
     let t0 = Date.UTC(2026, 10, 14, 0, 0, 0);
-    const mk = (name, is_user, mes) => ({ name, is_user, is_system: false, mes, send_date: String(t0 += 60000), swipe_id: 0, swipes: [mes], swipe_info: [{ extra: {} }], extra: {} });
+    // 진짜 실리처럼: 방금 만든 AI 답의 gen_started · gen_finished는 Date 객체 (저장 뒤 다시 읽으면 ISO 글자) · 유저 메시지엔 없음
+    const mk = (name, is_user, mes) => {
+        const send_date = String(t0 += 60000);
+        if (is_user) return { name, is_user, is_system: false, mes, send_date, extra: {} };
+        const gen_started = new Date(t0 + 137), gen_finished = new Date(t0 + 4137);
+        return { name, is_user, is_system: false, mes, send_date, gen_started, gen_finished, swipe_id: 0, swipes: [mes], swipe_info: [{ send_date, gen_started, gen_finished, extra: {} }], extra: {} };
+    };
+    // 채팅을 저장했다 다시 읽기 (Date → ISO 글자)
+    window.__reload = async () => { const j = JSON.parse(JSON.stringify(state.chat)); state.chat.length = 0; state.chat.push(...j); state.chatMetadata = JSON.parse(JSON.stringify(state.chatMetadata)); window.__renderAll(); await eventSource.emit(event_types.CHAT_CHANGED); };
+    // 이어쓰기: 실리가 마지막 답의 생성 시각을 새로 씀
+    window.__continue = async (more) => {
+        const i = state.chat.length - 1, m = state.chat[i];
+        await eventSource.emit(event_types.GENERATION_STARTED, 'continue', {}, false);
+        m.gen_started = new Date(Date.now() - 4000);
+        await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, 'continue', {}, false);
+        m.mes += more; m.gen_finished = new Date(); m.send_date = String(t0 += 60000);
+        m.swipes[m.swipe_id] = m.mes; m.swipe_info[m.swipe_id] = { send_date: m.send_date, gen_started: m.gen_started, gen_finished: m.gen_finished, extra: structuredClone(m.extra) };
+        await eventSource.emit(event_types.MESSAGE_RECEIVED, i, 'continue'); renderMes(i);
+        await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, i, 'continue');
+        await eventSource.emit(event_types.GENERATION_ENDED, i);
+    };
     window.__addUser = async (text) => { state.chat.push(mk('Me', true, text)); renderMes(state.chat.length - 1); await eventSource.emit(event_types.USER_MESSAGE_RENDERED, state.chat.length - 1); };
     // Simulates a full AI turn: before-generate hook → message received → rendered → generation ended
     window.__addAI = async (text, { type = 'normal' } = {}) => {

@@ -2,7 +2,7 @@
 // 어떤 카드·세계관에도 붙는 상태창. 모든 칸은 AI가 처음 채우고, 직접 편집 · 추가 지시 · 다시 생성이 된다.
 import { rev, ctxReset, app, ctx, settings, saveSettings, migrateParts, getMeta, saveMeta, isActive, ready, modOn, MODS, MOD_IDS, MOD, esc, short, splitBar, findBy, TITLE, LOG, VERSION, MODULE, sub, rand, DIFFS, ssErr, ssWarn } from './src/core.js';
 import { opInfo } from './src/engine.js';
-import { clampAdjust, compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, shiftSwipeKeys, drawerOps, setDrawer, extractOps, ssValue, undoLast, hasStatus, autoBake, slimLegacy } from './src/engine.js';
+import { clampAdjust, noteGeneration, compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, shiftSwipeKeys, drawerOps, setDrawer, extractOps, ssValue, undoLast, hasStatus, autoBake, slimLegacy } from './src/engine.js';
 import { analyzeMessage, instructModule } from './src/ai.js';
 import { listProfiles, mainBusy } from './src/prompts.js';
 import { diffHTML, confirmPopup, applyTheme, askInput, mascot, popup } from './src/kit.js';
@@ -234,6 +234,7 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
     { v: '2.7.21', title: 'HUD · 미니창 새 모양 · 속마음 · 보일 것 × AI', items: [
+        ['📱 모바일 HUD', '폰에서는 단추 줄이 판 아래로 내려가 칸이 화면 폭을 다 써요. 편집 배지도 손가락으로 누르기 쉽게 넓혔고, 아이폰에서 그림 올리기가 「너무 커요」로 막히던 것도 고쳤어요.'],
         ['🧩 HUD · 미니창 타일 판', 'HUD와 사이드 미니창이 같은 타일 판이 됐어요. ✎ 편집에서 칸을 끌어 아무 줄 · 자리에 놓고, 모서리 ⤡를 끌어 크기를 바꾸고, − 로 빼고 ＋ 로 더해요. 글은 자르지 않고 칸에 맞게 줄어들어요.'],
         ['🌼 배경 · 스티커 · 색', '판 배경 무늬(모눈 데이지 · 하늘 체크 · 땡땡이 · 줄무늬)와 내 배경 그림 · 이모지와 그림 스티커 · 판과 칸마다 배경 · 테두리 · 글자 색을 바꿔요.'],
         ['💭 속마음', '관계 탭이나 꾸미기에서 켜면 장면 속 인물의 속마음을 1인칭 짧은 말 · 이모티콘 · 카모지로 보여 줘요. 빈도는 항상 · 랜덤. 본편 AI가 같이 적어서 추가 호출이 없어요.'],
@@ -1179,7 +1180,7 @@ function init() {
         try { const meta = getMeta(); if (meta?.base && clampAdjust(meta, ctx().chat?.length ?? 0)) await saveMeta(); } catch (e) { ssWarn(LOG, 'clamp', e); }
         refresh(true);
     });
-    on('GENERATION_STARTED', (type, opts, dry) => { if (!dry) app.generatingAt = Date.now(); });
+    on('GENERATION_STARTED', (type, opts, dry) => { if (!dry) { app.generatingAt = Date.now(); try { noteGeneration(type); } catch { /* */ } } });
     on('GENERATION_ENDED', () => { app.generatingAt = 0; setTimeout(() => { try { decorateAll(); } catch { /* */ } }, 50); });
     on('GENERATION_STOPPED', () => { app.generatingAt = 0; setTimeout(() => { try { decorateAll(); } catch { /* */ } }, 300); });
     on('GENERATION_ENDED', onGenEnded);
