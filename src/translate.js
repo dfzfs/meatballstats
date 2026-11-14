@@ -559,7 +559,8 @@ async function fillNew() {
     for (const o of [s.core, ...MOD_IDS.filter(id => modOn(id, meta) && s.data[id]).map(id => s.data[id])]) {
         for (const x of leaves(o)) {
             const k = x.trim();
-            if (!k || k.length > 600 || /[가-힣]/.test(k) || Object.hasOwn(d, k) || tried.has(k)) continue;
+            if (!k || k.length > 600 || /[가-힣]/.test(k) || tried.has(k) || stuck.has(k)) continue;
+            if (Object.hasOwn(d, k)) { if (lockOf(k) !== undefined || !halfDone(k, d[k])) continue; delete d[k]; } // 반쯤 된 옛 번역은 저절로 다시 (누를 필요 없이)
             need.push(k); tried.add(k);
             if (need.length >= 60) break;
         }
