@@ -16,7 +16,7 @@ import { FEED_ACTIONS, FEED_CHANGES } from './feeds.js';
 import { MONEY_ACTIONS } from './money.js';
 import { FATE_ACTIONS } from './fate.js';
 import { EDIT, viewTr } from './core.js';
-import { translateSheet } from './translate.js';
+import { translateSheet, missingTr } from './translate.js';
 import { GEN_MODES, HYBRID_TPL, skeleton, skeletonCore, skeletonHint } from './skeleton.js';
 import { REC_MODS, defaultModOn } from './core.js';
 import { hintAfterAction } from './tips.js';
@@ -147,7 +147,7 @@ export function renderPanel(el) {
                 <button class="ss-ib" data-act="search" title="검색"><i class="fa-solid fa-magnifying-glass"></i></button>
                 <button class="ss-ib ${meta.paused ? 'on' : ''}" data-act="pause" title="${meta.paused ? '재개' : '일시정지 (AI에게 상태를 보내지 않음)'}"><i class="fa-solid ${meta.paused ? 'fa-play' : 'fa-pause'}"></i></button>
                 <button class="ss-ib" data-act="prompts" title="프롬프트 · 토큰"><i class="fa-solid fa-scroll"></i></button>
-                ${viewTr() ? '<button class="ss-ib" data-act="trfix" title="🌐 번역 고치기 — 이상하게 번역된 이름·낱말을 고쳐서 고정 (상태창 전체 · AI 0회)"><i class="fa-solid fa-language"></i></button>' : ''}
+                ${viewTr() ? (() => { const nTr = missingTr().length; return `<button class="ss-ib" data-act="trfix" title="🌐 번역 — ${nTr ? `아직 영어로 남은 글 ${nTr}개 번역하기 · ` : ''}이상하게 번역된 이름·낱말 고치기"><i class="fa-solid fa-language"></i>${nTr ? `<i class="ss-badge">${nTr > 99 ? '99+' : nTr}</i>` : ''}</button>`; })() : ''}
                 <button class="ss-helpchip" data-act="help" title="미트볼 도우미 — 모르는 기능을 물어보면 바로 답해요 (AI 0회)"><i class="fa-solid fa-circle-question"></i><span>도우미</span></button>
                 <button class="ss-ib" data-act="fullscreen" title="${!inSide && settings().sheetFull ? '전체화면 끄기' : '전체화면'}"><i class="fa-solid ${!inSide && settings().sheetFull ? 'fa-compress' : 'fa-expand'}"></i></button>
                 ${inSide ? `<button class="ss-ib" data-act="sidemini" title="작게"><i class="fa-solid fa-down-left-and-up-right-to-center"></i></button>` : ''}
