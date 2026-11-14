@@ -4,7 +4,7 @@ import { rev, ctxReset, app, ctx, settings, saveSettings, getMeta, saveMeta, isA
 import { opInfo } from './src/engine.js';
 import { compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, shiftSwipeKeys, drawerOps, setDrawer, extractOps, ssValue, undoLast, hasStatus, autoBake, slimLegacy } from './src/engine.js';
 import { analyzeMessage, instructModule } from './src/ai.js';
-import { listProfiles } from './src/prompts.js';
+import { listProfiles, mainBusy } from './src/prompts.js';
 import { diffHTML, confirmPopup, applyTheme, askInput, mascot, popup } from './src/kit.js';
 import { ensureUI, rerenderPanels, openSheet, openWizard, openRoll, openPromptWindow, openThemeWindow, panels, renderHud } from './src/shell.js';
 import { receivePing } from './src/contact.js';
@@ -39,9 +39,11 @@ function decorateAll() {
     const lastAI = app.current.lastAI;
     const outWas = app.chipOutWas ?? false; app.chipOutWas = out;
     if (outWas !== out) doneEl = new WeakMap(); // 칩 자리를 바꿨으면 모든 답을 한 번 다시
+    const streaming = mainBusy(); // v2.7.15: 답이 써지는 중인 마지막 메시지엔 칩을 안 붙인다 (글자마다 지워졌다 붙으며 깜빡이던 것) — 다 쓰면 붙음
     document.querySelectorAll('#chat .mes').forEach(mesEl => {
         const i = Number(mesEl.getAttribute('mesid'));
         if (Number.isNaN(i)) return;
+        if (streaming && i === chat.length - 1 && !chat[i]?.is_user) { mesEl.querySelector('.ss-slot')?.remove(); doneEl.delete(mesEl); return; }
         const snap = app.current.snaps.get(i);
         const m = chat[i];
         const on0 = !!album && !!m && album.has(`${m.send_date}|${m.name}`);
@@ -105,6 +107,7 @@ function watchSlots() {
     if (!chatEl || typeof MutationObserver === 'undefined') return;
     if (slotObs) { if (slotObs._el === chatEl) return; slotObs.disconnect(); }
     slotObs = new MutationObserver((muts) => {
+        if (mainBusy()) return; // 스트리밍 중엔 본문이 글자마다 다시 그려진다 — 끝난 뒤 한 번만 붙인다
         for (const m of muts) for (const n of m.removedNodes) {
             if (n.nodeType === 1 && (n.classList.contains('ss-slot') || n.querySelector('.ss-slot'))) {
                 clearTimeout(slotTimer);
@@ -187,6 +190,10 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.15', title: '스트리밍 칩 깜빡임 · 관계 인물 따라다님', items: [
+        ['🎬 칩 깜빡임', '답이 써지는 동안엔 칩을 안 붙이고, 다 쓴 뒤 한 번만 붙여요.'],
+        ['🚶 따라다님', '관계 목록에 있다고 매 장면 나타나지 않게 AI에게 알려요.'],
+    ] },
     { v: '2.7.14', title: '점검에서 나온 것 고침', items: [
         ['🌐 한국어 섞임', '영어 저장인데 키 설명이 한국어로 AI에게 가던 것을 고쳤어요.'],
         ['🔤 번역 그대로', '번역기가 영어를 그대로 돌려주면 다시 보내지 않고 한 번 알려 줘요. surgeon · sleeping 같은 한 낱말도 번역돼요.'],
@@ -1077,7 +1084,7 @@ function init() {
     for (const ev of ['USER_MESSAGE_RENDERED', 'MORE_MESSAGES_LOADED', 'GENERATION_STOPPED']) on(ev, () => refresh());
     for (const ev of ['MESSAGE_UPDATED', 'MESSAGE_DELETED']) on(ev, () => refresh(true)); // 옛 메시지가 바뀌면 다시 계산
     on('GENERATION_STARTED', (type, opts, dry) => { if (!dry) app.generatingAt = Date.now(); });
-    on('GENERATION_ENDED', () => { app.generatingAt = 0; });
+    on('GENERATION_ENDED', () => { app.generatingAt = 0; setTimeout(() => { try { decorateAll(); } catch { /* */ } }, 50); });
     on('GENERATION_STOPPED', () => { app.generatingAt = 0; });
     on('GENERATION_ENDED', onGenEnded);
     refreshNow();
