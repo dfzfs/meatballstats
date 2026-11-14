@@ -1,12 +1,15 @@
 // 배경 그림 자르기 창: 판 모양 틀 · 끌기 · 크기 → 자른 그림이 판 배경으로 · 취소하면 그대로 · 설정 체크 줄이 쪼개지지 않음
 import { open, makeStatus, sleep, check } from './lib.mjs';
+import { fileURLToPath } from 'node:url';
+// 시험 그림은 이 저장소 안에서 찾는다 (어느 폴더에 받아도 돌게)
+const IMG = fileURLToPath(new URL('../../img/mascot_party.webp', import.meta.url));
 const { page, logs, close } = await open({ width: 1300, height: 900 });
 try {
     await page.addStyleTag({ content: '.menu_button{width:min-content;display:flex}.checkbox_label{display:flex;flex-direction:row;column-gap:5px;align-items:baseline}' });
     await makeStatus(page); await page.evaluate(async () => { await window.__addUser('hi'); await window.__addAI('x\n<meatball>\ncash: -5\n</meatball>'); }); await sleep(300);
     await page.evaluate(() => { window.__autoPopup = null; });
     await page.click('#ss-hud [data-hud="edit"]'); await sleep(150); await page.click('#ss-hud [data-hud="colmenu"]'); await sleep(150);
-    const pick = async () => { const [ch] = await Promise.all([page.waitForEvent('filechooser'), page.click('#ss-hud label.ss-t.up:has([data-bgup])')]); await ch.setFiles('/home/claude/meatballstats/img/mascot_party.webp'); await page.waitForSelector('dialog .ss-crop canvas'); await sleep(200); };
+    const pick = async () => { const [ch] = await Promise.all([page.waitForEvent('filechooser'), page.click('#ss-hud label.ss-t.up:has([data-bgup])')]); await ch.setFiles(IMG); await page.waitForSelector('dialog .ss-crop canvas'); await sleep(200); };
     const key = () => page.evaluate(() => { const s = window.__st.extensionSettings; const k = Object.keys(s).find(x => s[x]?.tileDeco !== undefined); return s[k]?.tileDeco?.hudBg ?? null; });
     // 취소
     await pick(); await page.click('dialog .popup-button-cancel'); await sleep(300);

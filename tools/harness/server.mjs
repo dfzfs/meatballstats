@@ -10,6 +10,8 @@ export function serve(port = 0) {
     const srv = http.createServer((req, res) => {
         let u = decodeURIComponent(new URL(req.url, 'http://x').pathname);
         if (u === '/') u = '/harness/index.html';
+        // 브라우저가 스스로 청하는 파비콘 — 404면 「콘솔 오류 없음」 검사에 걸려서 빈 답을 준다
+        if (u === '/favicon.ico') { res.writeHead(204); res.end(); return; }
         const pre = Object.keys(roots).find(k => u.startsWith(k));
         const file = pre ? path.join(roots[pre], u.slice(pre.length)) : null;
         if (!file || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end('nf'); return; }
