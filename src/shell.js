@@ -370,7 +370,7 @@ function hudHTML() {
     if (s.pendingRoll && modOn('dice', meta)) alerts.push(`<button data-hud="roll">🎲 판정 요청 — ${esc(s.pendingRoll.label)}</button>`);
     const d0 = DIFFS[diffOf(meta)];
     return `<div class="ss-hud-row">
-        <button class="ss-hud-t" data-hud="open"><b>${esc(s.core.title || TITLE)}</b><small>${[cal ? `${dateShort(cal)} ${esc(cal.time)}${freshDot('calendar')}` : '', here ? `📍 ${esc(here)}${freshDot('map', 'here')}` : ''].filter(Boolean).join(' · ') || '상태창 열기'}</small></button>
+        <button class="ss-hud-t" data-hud="open"><b>${esc(s.core.title || TITLE)}</b><small>${[cal ? `${esc(dateShort(cal))} ${esc(cal.time)}${freshDot('calendar')}` : '', here ? `📍 ${esc(here)}${freshDot('map', 'here')}` : ''].filter(Boolean).join(' · ') || '상태창 열기'}</small></button>
         <div class="ss-hud-chips">${modOn('wallet', meta) && d.wallet ? `<span class="ss-chip"><i class="fa-solid fa-coins"></i> ${fmtNum(d.wallet.cash)}${freshDot('wallet', 'cash')}</span>` : ''}<span class="ss-chip diff-${diffOf(meta)}" title="난이도"><i class="fa-solid ${d0.icon}"></i><span class="lbl"> ${d0.name}</span></span></div>
         <div class="ss-hud-a">
             ${modOn('dice', meta) && d.dice ? `<button class="ss-ib" data-hud="roll" title="주사위"><i class="fa-solid fa-dice-d20"></i></button>` : ''}

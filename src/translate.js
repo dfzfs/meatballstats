@@ -1,7 +1,7 @@
 // 🌐 상태창 번역: 확장 AI가 상태창을 영어로 만들면 → 번역 모델(따로 고른 싼 모델)이 한국어로 옮긴다
 // 「상태창 전체 번역」 버튼은 이미 있는 칸들을 통째로 번역한다.
 import { app, ctx, settings, esc, TITLE, LOG, MOD_IDS, MOD, modOn, getMeta, saveMeta, viewTr, trDict, ssWarn } from './core.js';
-import { P, aiGenerate, parseJSON } from './prompts.js';
+import { P, aiGenerate, parseJSON, mainBusy } from './prompts.js';
 import { commit } from './engine.js';
 
 export const needTr = () => settings().ssGenLang === 'en' || settings().ssGenLang === 'enview';
@@ -460,7 +460,7 @@ export function scheduleFill() {
 let failedOnce = false, fillRetries = 0;
 async function fillNew() {
     if (filling || running || !viewTr()) return;
-    if (app.generatingAt && Date.now() - app.generatingAt < 300000) return scheduleFill(); // 본편 AI가 답을 쓰는 동안엔 부르지 않는다 (끝난 뒤 다시 · 5분 넘으면 끝난 걸로 봄)
+    if (mainBusy()) return scheduleFill(); // 본편 AI가 답을 쓰는 동안엔 부르지 않는다 (끝난 뒤 다시 · 5분 넘으면 끝난 걸로 봄)
     const s = app.current?.state; if (!s) return;
     const d = trDict() ?? {};
     const meta = getMeta();

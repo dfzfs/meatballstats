@@ -195,7 +195,7 @@ export const VIEW = {
             const o = pos.get(p.name); const here = norm(p.name) === norm(d.here); const isSel = sel && sel.name === p.name;
             const n = people ? peopleAt(s, p.name).now.length : 0;
             return `<g class="node ${here ? 'here' : ''} ${isSel ? 'sel' : ''} ${p.known ? '' : 'unk'}" data-act="selplace" data-arg="${esc(p.name)}">
-                ${here ? `<circle cx="${o.x}" cy="${o.y}" r="4.6" class="ring"/>` : ''}<circle cx="${o.x}" cy="${o.y}" r="${here ? 3.2 : 2.8}" class="dot"/><text class="ico" x="${o.x}" y="${o.y + 1.15}">${ic}</text>
+                ${here ? `<circle cx="${o.x}" cy="${o.y}" r="4.6" class="ring"/>` : ''}<circle cx="${o.x}" cy="${o.y}" r="${here ? 3.2 : 2.8}" class="dot"/><text class="ico" x="${o.x}" y="${o.y + 1.15}">${esc(ic)}</text>
                 <text x="${o.x}" y="${o.y - 4.4}">${esc(p.known ? short(viewTr() ? trString(p.name) : p.name, 8) : '???')}</text>${n ? `<text class="ppl" x="${o.x + 2.6}" y="${o.y + 1.2}">👥${n}</text>` : ''}</g>`;
         }).join('');
         const vb = ui.mapVB ?? fitBox(shown.map(p => pos.get(p.name)));

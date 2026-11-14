@@ -8,7 +8,7 @@
         async emit(name, ...args) { for (const fn of listeners.get(name) ?? []) { try { await fn(...args); } catch (e) { console.error('[stub] listener error', name, e); window.__errors.push(String(e?.stack || e)); } } },
     };
     const names = ['APP_READY', 'CHAT_CHANGED', 'GENERATION_AFTER_COMMANDS', 'MESSAGE_RECEIVED', 'CHARACTER_MESSAGE_RENDERED', 'MESSAGE_SWIPED', 'MESSAGE_EDITED',
-        'USER_MESSAGE_RENDERED', 'MORE_MESSAGES_LOADED', 'GENERATION_STOPPED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'GENERATION_STARTED', 'GENERATION_ENDED', 'SETTINGS_LOADED', 'EXTENSION_SETTINGS_LOADED'];
+        'USER_MESSAGE_RENDERED', 'MORE_MESSAGES_LOADED', 'GENERATION_STOPPED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'GENERATION_STARTED', 'GENERATION_ENDED', 'SETTINGS_LOADED', 'EXTENSION_SETTINGS_LOADED', 'MESSAGE_SWIPE_DELETED'];
     const event_types = Object.fromEntries(names.map(n => [n, n.toLowerCase()]));
     window.__errors = [];
     window.__toasts = [];

@@ -2,7 +2,7 @@
 // 어떤 카드·세계관에도 붙는 상태창. 모든 칸은 AI가 처음 채우고, 직접 편집 · 추가 지시 · 다시 생성이 된다.
 import { rev, ctxReset, app, ctx, settings, saveSettings, getMeta, saveMeta, isActive, ready, modOn, MODS, MOD_IDS, MOD, esc, short, splitBar, findBy, TITLE, LOG, VERSION, MODULE, sub, rand, DIFFS, ssErr, ssWarn } from './src/core.js';
 import { opInfo } from './src/engine.js';
-import { compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, drawerOps, setDrawer, extractOps, ssValue, undoLast, hasStatus, autoBake } from './src/engine.js';
+import { compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, shiftSwipeKeys, drawerOps, setDrawer, extractOps, ssValue, undoLast, hasStatus, autoBake, slimLegacy } from './src/engine.js';
 import { analyzeMessage, instructModule } from './src/ai.js';
 import { listProfiles } from './src/prompts.js';
 import { diffHTML, confirmPopup, applyTheme, askInput, mascot, popup } from './src/kit.js';
@@ -187,6 +187,13 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.10', title: '꼼꼼 점검 — 스와이프 삭제 · 채팅 바뀜 · 안전', items: [
+        ['🔀 스와이프 삭제', '앞 스와이프를 지우면 뒤 스와이프의 숫자가 조용히 바뀌던 것을 고쳤어요.'],
+        ['💾 스와이프 왕복', '칩 분석 결과가 스와이프 칸에도 저장돼서, 넘겼다 돌아와도 다시 AI를 부르지 않아요.'],
+        ['🚪 채팅 옮김', '답을 기다리는 사이 다른 채팅으로 옮기면, 그 결과를 옮긴 채팅에 넣지 않아요.'],
+        ['🛡 안전', 'AI가 칸 이름 등에 HTML을 적어도 화면에서 실행되지 않게 막았어요.'],
+        ['🪶 옛 채팅', '예전에 쌓인 연락 · 피드 통째 기록을 한 번 줄여요 (상태는 그대로).'],
+    ] },
     { v: '2.7.9', title: '계산 더 가볍게', items: [
         ['⚡ 상태 계산', '답 글이 그대로면 변화 줄을 다시 읽지 않아요 — 계산이 약 3배 빨라졌어요.'],
         ['🏷 변동 칩', '칩 내용이 그대로인 답은 다시 그리지 않아요.'],
@@ -906,6 +913,13 @@ function onReceived(id, type) {
     stashAt(id, { replace: type !== 'continue' });
 }
 function onSwiped(id) { stashAt(id, { replace: true, save: true }); refresh(true); }
+function onSwipeDeleted(e) {
+    try {
+        const m = ctx().chat?.[Number(e?.messageId)];
+        if (shiftSwipeKeys(m, Number(e?.swipeId))) { clearTimeout(stashSave); stashSave = setTimeout(() => ctx().saveChat?.(), 400); }
+    } catch (err) { ssWarn(LOG, 'swipe delete', err); }
+    refresh(true);
+}
 function onEdited(id) { stashAt(id, { replace: true, rerender: false, save: true }); refresh(true); }
 const analyzed = new Set();
 let pingCounter = 0;
@@ -950,6 +964,7 @@ async function onChatChanged() {
     pingCounter = 0;
     for (const el of panels) if (el._ss) { el._ss.mode = 'view'; el._ss.ui = {}; el._ss.tab = 'home'; el._ss.group = null; }
     try { await followBranch(); } catch (e) { ssWarn(LOG, 'branch', e); }
+    try { if (isActive() && ready()) { const n = slimLegacy(); if (n) { saveMeta(); console.log(LOG, `옛 연락 · 피드 기록 ${n}개를 줄였어요`); } } } catch (e) { ssWarn(LOG, 'slim', e); }
     refreshNow();
     // 카드에 상태창이 들어 있으면 (이 채팅에 아직 없을 때) 한 번 물어본다
     setTimeout(() => { offerCard(setBase).catch(e => ssWarn(LOG, 'card', e)); }, 400);
@@ -1006,6 +1021,7 @@ function init() {
     on('CHARACTER_MESSAGE_RENDERED', onCharRendered);
     on('MESSAGE_SWIPED', onSwiped);
     on('MESSAGE_EDITED', onEdited);
+    on('MESSAGE_SWIPE_DELETED', onSwipeDeleted);
     for (const ev of ['USER_MESSAGE_RENDERED', 'MORE_MESSAGES_LOADED', 'GENERATION_STOPPED']) on(ev, () => refresh());
     for (const ev of ['MESSAGE_UPDATED', 'MESSAGE_DELETED']) on(ev, () => refresh(true)); // 옛 메시지가 바뀌면 다시 계산
     on('GENERATION_STARTED', (type, opts, dry) => { if (!dry) app.generatingAt = Date.now(); });

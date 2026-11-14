@@ -1,7 +1,7 @@
 // 🔍 칩 점검 (v2.7.3): AI 답 밑 변동 칩이 안 보일 때 — 「변화를 못 읽었나(씹힘)」 · 「읽었는데 화면에 안 보이나」를 가려내고 손으로 다시 부른다
 // AI를 부르지 않는다 (「AI로 다시 분석」을 누를 때만 1회). 진단은 채팅 데이터 · 화면(DOM)만 본다.
 import { app, ctx, settings, saveSettings, getMeta, modOn, MOD, MODULE, esc, short, TITLE, isActive, ready } from './core.js';
-import { msgOps, opInfo, isStoryAI, hasStatus, extractOps, drawerOps, setDrawer, stashStatus } from './engine.js';
+import { msgOps, opInfo, isStoryAI, hasStatus, extractOps, drawerOps, setDrawer, stashStatus, syncSwipe } from './engine.js';
 import { choosePopup } from './kit.js';
 
 // 이 답이 왜 건너뛰어졌는지 (OOC · 일시정지 · 다음 1번 건너뛰기 · 조용한 생성) — onReceived에서 적어 둔 것
@@ -10,6 +10,7 @@ export function markSkip(m, reason) {
     if (!m || m.is_user) return;
     m.extra ??= {}; m.extra[MODULE] ??= {}; m.extra[MODULE].skip ??= {};
     if (reason) m.extra[MODULE].skip[m.swipe_id ?? 0] = reason; else delete m.extra[MODULE].skip[m.swipe_id ?? 0];
+    syncSwipe(m);
 }
 const SKIP_NAME = { ooc: 'OOC로 보낸 턴', pause: '⏸ 일시정지 중', skip: '「다음 1번 건너뛰기」', quiet: '조용한 생성 (/gen 등)', cont: '건너뛴 답의 이어쓰기' };
 
