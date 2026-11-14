@@ -487,7 +487,7 @@ export async function translateMissing(btn) {
     if (!need.length) { toastr.success('번역 안 된 글이 없어요. 그래도 이상한 번역이 보이면 「번역 고치기」로 직접 고칠 수 있어요.', TITLE); return; }
     const calls = engineST() ? '실리 기본 번역 · 토큰 0' : `번역 모델 약 ${Math.ceil(need.length / 60)}회`;
     if (!(await SillyTavern.getContext().Popup.show.confirm(TITLE, `아직 영어로 남은 글 ${need.length}개를 번역해요 (${esc(calls)}).<br><small>이미 번역된 글 · 직접 고친 글은 그대로예요. 다시 누르면 멈춰요.</small>`))) return;
-    { const m = getMeta(true); for (const k of need) if (m?.tr && Object.hasOwn(m.tr, k) && !lockOf(k)) delete m.tr[k]; } // 반쯤 된 옛 번역은 지우고 다시
+    { const m = getMeta(true); for (const k of need) if (m?.tr && Object.hasOwn(m.tr, k) && !lockOf(k)) { delete m.tr[k]; trVer++; } } // 반쯤 된 옛 번역은 지우고 다시
     running = true; stop = false;
     const old = btn?.innerHTML;
     let done = 0;
@@ -560,7 +560,7 @@ async function fillNew() {
         for (const x of leaves(o)) {
             const k = x.trim();
             if (!k || k.length > 600 || /[가-힣]/.test(k) || tried.has(k) || stuck.has(k)) continue;
-            if (Object.hasOwn(d, k)) { if (lockOf(k) !== undefined || !halfDone(k, d[k])) continue; delete d[k]; } // 반쯤 된 옛 번역은 저절로 다시 (누를 필요 없이)
+            if (Object.hasOwn(d, k)) { if (lockOf(k) !== undefined || !halfDone(k, d[k])) continue; delete d[k]; trVer++; } // 반쯤 된 옛 번역은 저절로 다시 (누를 필요 없이)
             need.push(k); tried.add(k);
             if (need.length >= 60) break;
         }

@@ -69,6 +69,11 @@ function bubbleBody(m) {
     return `<span>${esc(m.text)}</span>`;
 }
 function bubble(m, ui) {
+    // 간단 모드로 바꾸기 전에 부친 편지의 답장(기다리는 중)도 말풍선에서 열 수 있게 (v2.7.17 · 예전엔 편지 화면에서만 열려서 갇혔음)
+    if (m.pending) {
+        const s = app.current?.state, due = s && (m.arrive ?? 0) <= nowTick(s);
+        return `<div class="ss-bub k-text"><span>${due ? '📬 답장이 왔어요' : '✉️ 답장을 기다리는 중'}</span>${due ? `<div class="ss-bub-acts on"><button class="ss-btn sm pri" data-act="lopen" data-arg="${esc(m.id)}">열기 ${ai1}</button></div>` : ''}</div>`;
+    }
     if (ui.editId === m.id) return `<div class="ss-bub ${m.from === 'me' ? 'me' : ''} editing"><textarea class="ss-in ss-bub-ed" rows="2">${esc(m.text)}</textarea><div class="ss-bub-acts"><button class="ss-btn sm pri" data-act="cmsgsave" data-arg="${esc(m.id)}">저장</button><button class="ss-btn sm" data-act="cmsgcancel">취소</button></div></div>`;
     const mine = m.from === 'me';
     return `<div class="ss-bub ${mine ? 'me' : ''} ${m.ping ? 'ping' : ''} ${m.pin ? 'pinned' : ''} k-${m.kind}" data-id="${esc(m.id)}">${bubbleBody(m)}
