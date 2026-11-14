@@ -1,5 +1,5 @@
 // 확장 AI가 하는 일 (모두 토큰이 드는 호출)
-import { app, ctx, settings, getMeta, MOD, NORM, normalize, ensureLove, LOVE_AXES, relAxes, fixLoveLadder, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay, ssWarn, dayIndex } from './core.js';
+import { letterMode, app, ctx, settings, getMeta, MOD, NORM, normalize, ensureLove, LOVE_AXES, relAxes, fixLoveLadder, short, findBy, norm, dateStr, stamp, MODULE, LOG, DIFFS, diffOf, CONTACT_MODES, uid, msgText, fmtNum, playOf, normPlay, ssWarn, dayIndex } from './core.js';
 import { P, aiGenerate, parseJSON, aiJSON } from './prompts.js';
 import { SCHEMA } from './core.js';
 import { compute, buildInjection, tagKeysFor, extractOps, stripStatus, recentChat, chatCharacters, setDrawer } from './engine.js';
@@ -197,7 +197,7 @@ export async function letterReply(who, state, { courier, rush }) {
 // 선톡
 export async function pingMessage(who, state, auto = false) {
     const ct = state.data.contact;
-    const letter = ct.mode === 'letter';
+    const letter = letterMode(ct);
     const sys = P('ai.ping', { who, app: ct.app, format: letter ? 'a short letter: greeting, a paragraph or two, sign-off' : '1-3 short chat bubbles, one per line' });
     const out = await aiGenerate(auto ? 'autoping' : 'ping', sys, [...aboutPerson(who, state), `Earlier messages:\n${threadText(ct, who, 8) || '(none)'}`].join('\n\n'), letter ? 600 : 300);
     const t = stripStatus(out).trim();

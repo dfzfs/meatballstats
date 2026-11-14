@@ -3,7 +3,7 @@ import { toEnglish, usedPairs } from './skeleton_en.js'; // 영어 저장일 때
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.7.15';
+export const VERSION = '2.7.16';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
 export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
@@ -110,6 +110,7 @@ export const DEFAULTS = Object.freeze({
     romInject: '',           // 내가 넣는 추가 주입문 (비우면 안 보냄)
     romInit: false,          // 먼저 움직이기: 가끔 그 장면의 인물이 스스로 일을 벌이게
     romInitPct: 25,          // 그 확률 % (AI 답 1번마다)
+    contactSimple: true,     // 📱 연락 간단 모드 (v2.7.16): 편지도 바로 · 꾸밈 기능 숨김 — 끄면 예전 자세한 편지 · 배달
     romSpark: false,         // ✨ 설렘 한 스푼: 가끔 장면 속 인물이 지금 단계에 맞는 설레는 한 순간을 스스로 (v2.7.13)
     romSparkPct: 12,         // 그 확률 % (AI 답 1번마다 · 걸린 뒤 3턴은 쉼)
     storyPush: false,        // 🎬 사건 한 스푼: 가끔 세상 쪽에서 새 일 하나 (방문객 · 소식 · 기회 · 작은 문제)
@@ -352,6 +353,9 @@ export function findBy(list, name, field = 'name') {
 // ───── 화면만 번역 (v2.6): 상태창 데이터는 영어 그대로 (= AI에게도 영어), 화면에 그릴 때만 번역본 ─────
 // 번역 사전은 채팅마다 meta.tr = { 영어 원문: 번역 } 에 쌓인다.
 // 아주 자주 불린다 (이름 찾기 · 화면 번역기) → settings()의 기본값 채우기를 거치지 않고 바로 읽는다
+// 연락 「간단」(v2.7.16 · 기본): 편지 세계도 메신저처럼 바로 주고받음 — 배달 · 도착 시간 · 급행 · 동봉 · 반응 · 고정 · 수정 없음
+export const contactSimple = () => { try { return ctx().extensionSettings?.[MODULE]?.contactSimple !== false; } catch { return true; } };
+export const letterMode = (ct) => ct?.mode === 'letter' && !contactSimple();
 export const viewTr = () => { try { return ctx().extensionSettings?.[MODULE]?.ssGenLang === 'enview'; } catch { return false; } };
 export function trDict() { try { return viewTr() ? (getMeta()?.tr ?? null) : null; } catch { return null; } }
 export function trLook(en) { const d = trDict(); const k = String(en ?? '').trim(); return d && Object.hasOwn(d, k) ? d[k] : undefined; }

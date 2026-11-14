@@ -19,7 +19,7 @@ try {
     });
     const sparks = r.out.filter(x => /heart-fluttering/.test(x)).length, pushes = r.out.filter(x => /new development/.test(x)).length;
     check(sparks === 2, `spark at 100%: every 4th turn (rest 3) (${sparks}/8)`);
-    check(pushes >= 1 && pushes <= 2, `story push at 100%: every 5th turn (rest 4) (${pushes}/8)`);
+    check(pushes === 0, `story push removed (v2.7.16) (${pushes})`);
     const one = r.out.find(x => /heart-fluttering/.test(x)) ?? '';
     check(/Leon/.test(one) && /(NOT|not close yet|barely|no romantic|friendship)/i.test(one), 'spark names the person and keeps the stage limit', one.slice(0, 300));
     if (process.env.SHOW) console.log(one);
@@ -42,4 +42,7 @@ try {
     });
     check(!sm.during && sm.after, `no chip flicker while streaming, chip after (${sm.during}/${sm.after})`);
     check(!sm.people || /does NOT mean being present/.test(sm.people), 'people list says listed ≠ present');
+    // v2.7.16: 빠진 연출 주입은 켜져 있어도 안 감
+    const gone = await page.evaluate(async () => { const s = window.__st.extensionSettings.statussim; Object.assign(s, { romIntent: true, romInit: true, romInitPct: 100, romInject: 'MY CUSTOM LINE' }); const E = await import('/ext/src/engine.js'); const r = E.buildInjection(window.__SS_TEST__.api.app.current).romance ?? ''; Object.assign(s, { romIntent: false, romInit: false, romInject: '' }); return r; });
+    check(!/MY CUSTOM LINE|Before writing, silently decide|takes the initiative/.test(gone), 'removed romance extras are not injected');
 } finally { if (logs.length) console.log(logs.filter(l => !/404/.test(l)).slice(0, 5).join('\n')); await close(); }

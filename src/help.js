@@ -44,9 +44,9 @@ ROMANCE GUARD (💗 로맨스 보정) — NEW in v2.6, all optional, default OFF
 - ③ 연달아 꼬시면 덜 오르게: if the same person's 호감 rises 3 turns in a row, gains shrink to 60%, then 34%.
 - ④ 관계를 사실로 알려 주기: instead of "don't", tells the AI the current stage as a fact, what the character naturally does at this stage, and to deflect in character (not turn cold) when pushed past it.
 - ⑤ 인물의 욕구: per-person 끌리는 것 / 싫어하는 것 / 요즘 신경 쓰는 것, editable in 관계 편집 or filled by the 「욕구 AI로 채우기」 button; the AI updates them with "concern" / "taste".
-- ⑥ 의도 먼저: one line telling the AI to decide each character's own goal before writing, and to treat the user's message as an attempt, not an outcome.
-- ⑦ 내 추가 주입문: the user's own extra injected text, works with any preset.
-- ⑧ 먼저 움직이기: on some turns (chance %) tells the AI that a present character takes the initiative on their own.
+- (removed in v2.7.16) ⑥ 의도 먼저: one line telling the AI to decide each character's own goal before writing, and to treat the user's message as an attempt, not an outcome.
+- (removed in v2.7.16) ⑦ 내 추가 주입문: the user's own extra injected text, works with any preset.
+- (removed in v2.7.16) ⑧ 먼저 움직이기: on some turns (chance %) tells the AI that a present character takes the initiative on their own.
 - ①②③ only apply to replies that come AFTER they are turned on in that chat; old numbers never change. They do not apply to a swipe of a reply that existed before turning them on.
 - The romance text is injected separately with its own depth (「로맨스 보정 주입 깊이」, 0 = very end; use 0–1 if the model ignores it).
 
@@ -82,7 +82,9 @@ RECENT (v2.7.7–v2.7.12)
 - 「이것도 아세요?」 tips: once per session, 3h apart, 2 per day; 「팁 그만」 on the notification turns them off (setting actionTips). 「💡 팁 · 주의 알림」 turns off all tips.
 - Performance: stats-only adds ~15ms per AI reply on a phone, all panels ~20ms, idle 0. Injection with everything on is ~700 tokens per turn.
 
-- v2.7.13 ✨ 설렘 한 스푼 (romSpark, default off): sometimes a present character makes one stage-appropriate heart-flutter moment on their own (friends: small gift, a too-sincere line, no confession; lovers: affectionate surprise; 애정 꺼 둔 사람: friendship only). 🎬 사건 한 스푼 (storyPush, default off): sometimes one new development from the world. Both in extension settings › 「✨ 설렘 · 사건 한 스푼」, chance % per AI reply with a few turns of rest, same result on swipes.
+- v2.7.13 ✨ 설렘 한 스푼 (romSpark, default off): sometimes a present character makes one stage-appropriate heart-flutter moment on their own (friends: small gift, a too-sincere line, no confession; lovers: affectionate surprise; 애정 꺼 둔 사람: friendship only). (🎬 사건 한 스푼 was removed in v2.7.16.) In extension settings › 「✨ 설렘 · 사건 한 스푼」, chance % per AI reply with a few turns of rest, same result on swipes.
+
+- v2.7.16: the relationship side only does numbers/stages now (⑥⑦⑧ and 사건 한 스푼 removed; ⑦ text should go to Author's Note). Contacts default to 「간단」 (contactSimple): letters work like instant messages, no couriers/fees/reactions/pins; turn off in settings for the old detailed letters.
 
 COMMON PROBLEMS
 - New settings not visible after an update: hard refresh (Ctrl+Shift+R); check the installed branch in Manage extensions.

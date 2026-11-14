@@ -1,10 +1,11 @@
 // 📱/✉️ 연락: 메신저 · 즉시 통신 · 편지 (배달 수단 · 도착 시간 · 급행)
-import { app, settings, getMeta, modOn, esc, short, clone, findBy, norm, uid, randInt, rand, clamp, num, fmtNum, nowTick, tickUnit, stamp, CONTACT_MODES, TITLE, COURIER_PRESETS, touchContact, msgText, ssErr, ssWarn } from './core.js';
+import { letterMode, contactSimple, app, settings, getMeta, modOn, esc, short, clone, findBy, norm, uid, randInt, rand, clamp, num, fmtNum, nowTick, tickUnit, stamp, CONTACT_MODES, TITLE, COURIER_PRESETS, touchContact, msgText, ssErr, ssWarn } from './core.js';
 import { commit, addAdjust, dueLetters, inTransit, affMul } from './engine.js';
 import { phoneReply, letterReply, pingMessage, summarizeThread } from './ai.js';
 import { avatar, ai1, emptyBox, askInput, askConfirm, busyBtn } from './kit.js';
 
-const isLetter = (d) => d.mode === 'letter';
+const isLetter = (d) => letterMode(d);
+const simple = () => contactSimple();
 const names = (d) => [...new Set([...d.contacts.map(c => c.name), ...Object.keys(d.threads)])];
 const courierOf = (d, who) => findBy(d.couriers, findBy(d.contacts, who)?.courier) ?? d.couriers[0] ?? COURIER_PRESETS[0];
 const visible = (m, now) => !m.pending && !(m.from === 'them' && (m.arrive ?? -Infinity) > now);
@@ -55,16 +56,8 @@ function phoneView(s, d, ui) {
             <button class="ss-ib" data-act="cmenu" data-arg="${esc(who)}"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>
         ${d.summaries?.[who] ? `<div class="ss-csum"><i class="fa-solid fa-note-sticky"></i> ${esc(d.summaries[who].text)}</div>` : ''}
         <div class="ss-thread">${th.map(m => bubble(m, ui)).join('') || '<div class="ss-hint center">아직 대화가 없어요. 먼저 말을 걸어 보세요.</div>'}</div>
-        ${c.blocked ? '<div class="ss-callout"><i class="fa-solid fa-ban"></i><div><b>차단한 상대예요</b><span>⋮ 메뉴에서 차단을 풀 수 있어요</span></div></div>' : `<div class="ss-attach">
-            <button class="ss-ib" data-act="catt" data-arg="photo" title="사진"><i class="fa-solid fa-image"></i></button>
-            <button class="ss-ib" data-act="catt" data-arg="voice" title="음성 메시지"><i class="fa-solid fa-microphone"></i></button>
-            <button class="ss-ib" data-act="catt" data-arg="file" title="파일"><i class="fa-solid fa-paperclip"></i></button>
-            <button class="ss-ib" data-act="catt" data-arg="place" title="위치"><i class="fa-solid fa-location-dot"></i></button>
-            ${s.data.wallet && modOn('wallet') ? `<button class="ss-ib" data-act="catt" data-arg="gift" title="선물 (소지품)"><i class="fa-solid fa-gift"></i></button><button class="ss-ib" data-act="catt" data-arg="money" title="송금"><i class="fa-solid fa-money-bill-wave"></i></button>` : ''}
-        </div>
-        <div class="ss-phone-in"><textarea class="ss-in ss-cin" rows="1" placeholder="메시지 보내기">${esc(ui.draft ?? '')}</textarea><button class="ss-btn pri ss-send" data-act="csend" title="보내기"><i class="fa-solid fa-paper-plane"></i></button></div>
-        <div class="ss-phone-opt"><label class="ss-tog"><input type="checkbox" class="ss-switch ss-creply" ${ui.noReply ? '' : 'checked'}><span>답장 받기 ${ai1}</span></label>
-            <button class="ss-btn sm ghost" data-act="creply">${ai1} 지금 답장 받기</button><button class="ss-btn sm ghost" data-act="cping" data-arg="${esc(who)}">${ai1} 선톡 오게</button></div>`}
+        ${c.blocked ? '<div class="ss-callout"><i class="fa-solid fa-ban"></i><div><b>차단한 상대예요</b><span>⋮ 메뉴에서 차단을 풀 수 있어요</span></div></div>' : `        <div class="ss-phone-in"><textarea class="ss-in ss-cin" rows="1" placeholder="메시지 보내기">${esc(ui.draft ?? '')}</textarea><button class="ss-btn pri ss-send" data-act="csend" title="보내기"><i class="fa-solid fa-paper-plane"></i></button></div>
+        <div class="ss-phone-opt"><label class="ss-tog"><input type="checkbox" class="ss-switch ss-creply" ${ui.noReply ? '' : 'checked'}><span>보내면 답장 받기 ${ai1}</span></label></div>`}
     </div>`;
 }
 const ATT = { photo: ['fa-image', '사진'], voice: ['fa-microphone', '음성 메시지'], file: ['fa-paperclip', '파일'], place: ['fa-location-dot', '위치'], gift: ['fa-gift', '선물'], money: ['fa-money-bill-wave', '송금'] };
@@ -81,11 +74,11 @@ function bubble(m, ui) {
     return `<div class="ss-bub ${mine ? 'me' : ''} ${m.ping ? 'ping' : ''} ${m.pin ? 'pinned' : ''} k-${m.kind}" data-id="${esc(m.id)}">${bubbleBody(m)}
         ${m.react ? `<em class="ss-react">${esc(m.react)}</em>` : ''}
         <div class="ss-bub-meta">${mine && !m.read && m.kind !== 'deleted' ? '<b class="ss-unread">1</b> ' : ''}${m.pin ? '📌 ' : ''}${m.edited ? '수정됨 · ' : ''}${esc(m.date || '')}</div>
-        <div class="ss-bub-acts ${ui.reactFor === m.id ? 'on' : ''}">${!mine && m.kind !== 'deleted' ? (ui.reactFor === m.id ? REACTS.map(r => `<button class="ss-ib r ${m.react === r ? 'on' : ''}" data-act="creact" data-arg="${esc(m.id)}|${r}">${r}</button>`).join('') : `<button class="ss-ib" data-act="creactpick" data-arg="${esc(m.id)}" title="반응 달기"><i class="fa-regular fa-face-smile"></i></button>`) : ''}
+        ${simple() ? `<div class="ss-bub-acts"><button class="ss-ib" data-act="cmsgdel" data-arg="${esc(m.id)}" title="기록에서 지우기"><i class="fa-solid fa-trash-can"></i></button>${!mine ? `<button class="ss-ib" data-act="cmsgre" data-arg="${esc(m.id)}" title="다시 받기"><i class="fa-solid fa-rotate"></i></button>` : ''}</div>` : `<div class="ss-bub-acts ${ui.reactFor === m.id ? 'on' : ''}">${!mine && m.kind !== 'deleted' ? (ui.reactFor === m.id ? REACTS.map(r => `<button class="ss-ib r ${m.react === r ? 'on' : ''}" data-act="creact" data-arg="${esc(m.id)}|${r}">${r}</button>`).join('') : `<button class="ss-ib" data-act="creactpick" data-arg="${esc(m.id)}" title="반응 달기"><i class="fa-regular fa-face-smile"></i></button>`) : ''}
             <button class="ss-ib" data-act="cpin" data-arg="${esc(m.id)}" title="${m.pin ? '고정 해제' : '본편에 꼭 반영 (📌)'}"><i class="fa-solid fa-thumbtack"></i></button>
             ${m.kind === 'text' ? `<button class="ss-ib" data-act="cmsgedit" data-arg="${esc(m.id)}" title="수정"><i class="fa-solid fa-pen"></i></button>` : ''}
             ${mine && !['deleted', 'gift', 'money'].includes(m.kind) ? `<button class="ss-ib" data-act="cunsend" data-arg="${esc(m.id)}" title="전송 취소"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
-            <button class="ss-ib" data-act="cmsgdel" data-arg="${esc(m.id)}" title="기록에서 지우기"><i class="fa-solid fa-trash-can"></i></button>${!mine ? `<button class="ss-ib" data-act="cmsgre" data-arg="${esc(m.id)}" title="다시 받기 (AI 1회)"><i class="fa-solid fa-rotate"></i></button>` : ''}</div></div>`;
+            <button class="ss-ib" data-act="cmsgdel" data-arg="${esc(m.id)}" title="기록에서 지우기"><i class="fa-solid fa-trash-can"></i></button>${!mine ? `<button class="ss-ib" data-act="cmsgre" data-arg="${esc(m.id)}" title="다시 받기 (AI 1회)"><i class="fa-solid fa-rotate"></i></button>` : ''}</div>`}</div>`;
 }
 
 // ───── 편지 ─────
