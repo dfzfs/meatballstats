@@ -34,7 +34,7 @@ export function rulePairs() {
     const base = rulesText().split(/\r?\n/).map(l => l.match(/^\s*(.+?)\s*(?:=|->|→)\s*(.+?)\s*$/)).filter(Boolean).map(m => [m[1], m[2]]).filter(([a]) => /[A-Za-z]/.test(a)).sort((a, b) => b[0].length - a[0].length);
     return [...new Map([...base, ...lockedPairs()])].sort((a, b) => b[0].length - a[0].length); // 이 채팅에서 고정한 게 이김
 }
-// 번역기에 보내기 전에 「원문 = 번역」 · 고정한 이름을 미리 바꿔 넣기 — 영어 쪽은 낱말 통째로만 (「Law」가 「Lawyer」 안에서 바뀌지 않게)
+// 번역기에 보내기 전에 「원문 = 번역」 · 고정한 이름을 미리 바꿔 넣기 — 영어 쪽은 낱말 통째로만 (「Leon」가 「Lawyer」 안에서 바뀌지 않게)
 const wordRe = (w) => new RegExp(`(^|[^A-Za-z])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z])`, 'g');
 // 번역 결과에 남은 고정 이름 영어 → 한국어
 const postSub = (text) => { let t = String(text); for (const [a, b] of rulePairs()) t = t.replace(wordRe(a), (m0, pre) => pre + b); return t; };
@@ -92,7 +92,7 @@ const softCode = (v) => { const t = String(v).trim(); return codeLike(t) || SOFT
 const CODE_VALS = new Set(['open', 'active', 'done', 'failed', 'user', 'main', 'npc', 'minimal', 'detailed', 'phone', 'instant', 'letter', 'curse', 'bless', 'luck', 'bad', 'event', 'yearly', 'once', 'day', 'week', 'month', 'num', 'bar', 'text', 'ai', 'me', 'them', 'deco', 'item', 'mes', 'peek', 'song', 'auto', 'pinned', 'summary', 'off', 'on', 'true', 'false', 'none', 'rp', 'multi', 'director', 'easy', 'normal', 'hard', 'crit', 'ok', 'fail', 'fumble', 'info', 'bank', 'loan', 'pawn', 'shark', 'paid', 'late', 'tag', 'kw', 'always', 'aff', 'trust', 'stage', 'jealous', 'up', 'down', 'neg', 'pos', 'hi', 'warn', 'free', 'st', 'llm', 'ko', 'en', 'enview']);
 const codeLike = (v) => { const t = v.trim(); return /^[a-z0-9_\-]{1,14}$/.test(t) && (/[_\-\d]/.test(t) || CODE_VALS.has(t)); };
 // rev = 한국어 → 영어 (옛 번역본을 영어 저장으로 바꿀 때): 한글이 든 칸만
-// SNS 아이디 · 핸들(@luffy, mugiwara_luffy, law.d.water 같은 것)은 이름이 아니라 번역하지 않는다 (v2.7.2)
+// SNS 아이디 · 핸들(@lucy, mugiwara_lucy, leon.d.water 같은 것)은 이름이 아니라 번역하지 않는다 (v2.7.2)
 const HANDLE = (v) => /^@?[A-Za-z0-9_.]{2,30}$/.test(v.trim()) && (v.trim().startsWith('@') || /[_.\d]/.test(v));
 const isCode = (k, v, rev = false) => CODE_KEYS.has(k) || (SOFT_KEYS.has(k) && softCode(v)) || (rev ? !/[가-힣]/.test(v) : (codeLike(v) || !/[A-Za-z]/.test(v) || HANDLE(v)));
 function leaves(o, acc = new Set(), k = '', rev = false) {
@@ -206,7 +206,7 @@ export async function openTrFix(only = null) {
     const nMiss = only ? 0 : missingTr().length;
     el.innerHTML = `<div class="ss-wz-head"><i class="fa-solid fa-language"></i><div><b>🌐 번역 고치기</b><small>상태창 전체 · 고친 건 📌 고정 — 모든 탭과 앞으로 새로 생기는 글에도 그대로 (AI 0회)</small></div></div>
         ${nMiss ? `<div class="ss-card ss-trf-miss"><b>🔤 아직 영어로 남은 글 ${nMiss}개</b><small class="ss-hint">AI가 나중에 새로 쓴 글이에요. ${engineST() ? '실리 기본 번역으로 (토큰 0)' : '번역 모델로 (AI 호출 · 자동 번역은 토큰을 아끼려고 꺼져 있어요)'} 한 번에 번역해요.</small><button class="ss-btn pri ss-trf-go"><i class="fa-solid fa-language"></i> 남은 글 번역하기</button></div>` : ''}
-        <div class="ss-inline"><input class="ss-in ss-trf-q" placeholder="찾기 — 영어나 한국어 (예: Law, 트라팔가)"><label class="ss-tog sm"><input type="checkbox" class="ss-switch ss-trf-pin"><span>📌 고정만</span></label></div>
+        <div class="ss-inline"><input class="ss-in ss-trf-q" placeholder="찾기 — 영어나 한국어 (예: Leon, 레온)"><label class="ss-tog sm"><input type="checkbox" class="ss-switch ss-trf-pin"><span>📌 고정만</span></label></div>
         <small class="ss-hint ss-trf-n"></small>
         <div class="ss-trf-list"></div>
         <p class="ss-hint">왼쪽은 저장된 영어, 칸에 적은 한국어가 화면에 보여요. 이름을 고치면 그 이름이 든 다른 문장 번역도 같이 바뀌고, 새 글을 번역할 때도 그 이름으로 넣어요. 칸을 비우면 고정이 풀리고 자동 번역으로 돌아가요.</p>`;
@@ -236,7 +236,7 @@ export async function openTrFix(only = null) {
             if (k === en || edits.has(k) || typeof v !== 'string') continue;
             let nv = v;
             if (old && (k.includes(en) || old.length >= 4) && nv.includes(old)) nv = nv.split(old).join(ko); // 옛 한국어 이름 (원문에 이름이 없어도 4글자 이상이면)
-            if (nv.includes(en)) nv = nv.replace(wordRe(en), (m0, pre) => pre + ko); // 번역문 안에 영어 그대로 남은 이름 (「Trafalgar Law 외과 과장」)
+            if (nv.includes(en)) nv = nv.replace(wordRe(en), (m0, pre) => pre + ko); // 번역문 안에 영어 그대로 남은 이름 (「Leon 외과 과장」)
             if (nv !== v) d[k] = nv;
         } // 이 이름이 든 다른 문장도
     }
