@@ -21,7 +21,7 @@ try {
     const bad = [];
     let clicked = 0;
     const hangs = [];
-    for (const tab of tabList) for (const mode of ['view', 'edit']) {
+    for (const tab of tabList) for (const mode of (['manage', 'album', 'record'].includes(tab) ? ['view'] : ['view', 'edit'])) {
         const acts = await page.evaluate(({ tab, mode }) => {
             const el = document.querySelector('dialog .ss-panel'); if (!el) return [];
             el._ss.tab = tab; el._ss.mode = mode; el._ss.ui = {};

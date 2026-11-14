@@ -1680,7 +1680,7 @@ export function tagKeysFor(meta) {
     if (on('sns')) K.push('sns (작성자 | 글 | 사진 묘사 | #태그 — a character posts on social media; rarely, when it fits)');
     if (on('music')) K.push(`bgm (곡 제목 - 가수 | 분위기 — ONLY when the scene's mood clearly shifts; a REAL existing song that fits${musicTaste() ? `, taste: ${musicTaste()}` : ''}; never quote lyrics)`);
     if (on('custom')) K.push('custom (탭 | 항목 ±N  or  탭 | 항목 = 글 — the user\'s own tracked values below)');
-    return K;
+    return keysI(K); // 화면만 번역이면 자리표시도 영어로 (v2.7.14: 예전엔 한 경로에서만 바꿔서 본편 주입 · 분석 호출에 한국어가 섞여 감)
 }
 
 const musicTaste = () => { try { return app.current?.state?.data?.music?.taste || settings().musicTaste || ''; } catch { return settings().musicTaste || ''; } };
@@ -1859,7 +1859,7 @@ function outRule(text) {
     return `${text} ${LANG_RULE(lang)}`;
 }
 // 키 설명의 한국어 자리표시를 영어로 (화면만 번역일 때만 · 키 이름과 문법은 그대로)
-const KEY_WORDS = [['진행 내용', 'progress'], ['게이지이름', 'gauge'], ['관계 이름', 'relation name'], ['새 공간', 'new space'], ['이어진곳', 'linked places'], ['업적 이름', 'achievement'], ['판정 이름', 'check'], ['풀리는 조건', 'cure'], ['요즘 신경 쓰는 것', 'current concern'], ['끌리는 것', 'likes'], ['싫어하는 것', 'dislikes'], ['화면 밖에서 한 일', 'what they did off-screen'], ['사진 묘사', 'photo description'], ['곡 제목', 'song title'], ['한 줄 소개', 'one-line intro'], ['새/수락/완료/실패', 'new/active/done/failed'], ['관련 인물', 'people involved'], ['헤드라인', 'headline'], ['#태그', '#tags'], ['3월 14일', '3/14'], ['관계', 'relation'], ['효과1', 'effect1'], ['효과2', 'effect2'], ['체력', 'HP'], ['능력치', 'attribute'], ['이름', 'name'], ['효과', 'effect'], ['설명', 'description'], ['상점', 'shop'], ['상품', 'goods'], ['가격', 'price'], ['가구', 'furniture'], ['방', 'room'], ['장소', 'place'], ['날짜', 'date'], ['제목', 'title'], ['내용', 'text'], ['난이도', 'DC'], ['일수', 'days'], ['작성자', 'author'], ['가수', 'artist'], ['분위기', 'mood'], ['탭', 'tab'], ['항목', 'field'], ['글', 'text'], ['없음', 'none']];
+const KEY_WORDS = [['3월 14일', '3/14'], ['이름 2', 'name 2'], ['이름 1', 'name 1'], ['곡 제목 - 가수', 'song title - artist'], ['탭 | 항목 = 글', 'tab | field = text'], ['진행 내용', 'progress'], ['게이지이름', 'gauge'], ['관계 이름', 'relation name'], ['새 공간', 'new space'], ['이어진곳', 'linked places'], ['업적 이름', 'achievement'], ['판정 이름', 'check'], ['풀리는 조건', 'cure'], ['요즘 신경 쓰는 것', 'current concern'], ['끌리는 것', 'likes'], ['싫어하는 것', 'dislikes'], ['화면 밖에서 한 일', 'what they did off-screen'], ['사진 묘사', 'photo description'], ['곡 제목', 'song title'], ['한 줄 소개', 'one-line intro'], ['새/수락/완료/실패', 'new/active/done/failed'], ['관련 인물', 'people involved'], ['헤드라인', 'headline'], ['#태그', '#tags'], ['3월 14일', '3/14'], ['관계', 'relation'], ['효과1', 'effect1'], ['효과2', 'effect2'], ['체력', 'HP'], ['능력치', 'attribute'], ['이름', 'name'], ['효과', 'effect'], ['설명', 'description'], ['상점', 'shop'], ['상품', 'goods'], ['가격', 'price'], ['가구', 'furniture'], ['방', 'room'], ['장소', 'place'], ['날짜', 'date'], ['제목', 'title'], ['내용', 'text'], ['난이도', 'DC'], ['일수', 'days'], ['작성자', 'author'], ['가수', 'artist'], ['분위기', 'mood'], ['탭', 'tab'], ['항목', 'field'], ['글', 'text'], ['없음', 'none']];
 const keysI = (list) => (viewTr() ? list.map(k => KEY_WORDS.reduce((x, [ko, en]) => x.split(ko).join(en), k)) : list);
 function buildUltra(r, opt = {}) {
     const s = r.state, d = s.data, meta = getMeta(), set = settings();
@@ -1977,7 +1977,7 @@ export function buildInjection(r, opt = {}) {
 }
 // 설렘 한 스푼: 단계마다 할 수 있는 「설레는 한 순간」과 넘으면 안 되는 선 (친구인데 연인처럼 굴지 않게)
 function sparkFor(x, k, Lv, lovers) {
-    if (x.noLove) return { moment: 'a loyal-friend gesture — remembering something small {{user}} said, a treat or small gift "because I saw it and thought of you", having {{user}}\'s back in front of others', limit: 'This is friendship only: no romantic or flirty undertone.' };
+    if (x.noLove || Lv < 0) return { moment: 'a loyal-friend gesture — remembering something small {{user}} said, a treat or small gift "because I saw it and thought of you", having {{user}}\'s back in front of others', limit: 'This is friendship only: no romantic or flirty undertone.' };
     if (lovers) return { moment: 'a spontaneous affectionate gesture, a small surprise plan or meaningful gift, or honestly saying what they love about {{user}}', limit: 'They are lovers, so warmth is welcome — still in their own voice and personality.' };
     const gap = Lv >= 0 ? Lv - k : 3; // 연인 단계까지 몇 단계 남았나
     if (k <= 0) return { moment: 'an unexpected small kindness, noticing something about {{user}} others missed, or quietly helping without being asked', limit: 'They barely know each other: no flirting, no claims of closeness.' };
@@ -2030,13 +2030,13 @@ function romanceBlock(r) {
     // 같은 턴엔 같은 결과 (스와이프해도 같은 주사위) · 바로 앞 몇 턴에 걸렸으면 쉬어서 연달아 안 나와요
     if (set.romSpark || set.storyPush) {
         const ck = `${ctx().getCurrentChatId?.() ?? MODULE}`, turn = s.turn ?? 0;
-        // 턴을 cool×2 칸씩 묶어 한 묶음에 많아야 한 번 · 걸리는 자리는 묶음 앞쪽 cool칸 중 하나 → 두 번 사이는 늘 cool턴 넘게 쉼
-        // (한 턴 확률 p% ≈ 묶음 확률 p×묶음 길이 · 묶음마다 정해져서 스와이프 · 다시 계산해도 같다)
+        // 턴마다 정말 p% 주사위 · 걸리면 그 뒤 cool턴은 쉼 (앞 40턴을 처음부터 다시 굴려 봐서 정함 → 스와이프 · 다시 계산해도 같음)
+        // (v2.7.14: 예전엔 6~8턴 묶음에 한 번이라 100%여도 실제로는 12~17%였음)
         const hit = (tag, pct, cool) => {
-            const p = clamp(num(pct, 12), 0, 100) / 100, W = cool * 2, w = Math.floor(turn / W);
-            const r = seeded(`${ck}:${tag}:${w}`);
-            const go = r() < Math.min(1, p * W), at = Math.floor(r() * cool);
-            return go && turn - w * W === at;
+            const p = clamp(num(pct, 12), 0, 100);
+            let last = -Infinity;
+            for (let t = Math.max(0, turn - (turn % 50) - 50); t <= turn; t++) if (t - last > cool && seeded(`${ck}:${tag}:${t}`)() * 100 < p) last = t;
+            return last === turn;
         };
         if (set.romSpark && modOn('rel', meta) && d.rel && hit('spark', set.romSparkPct, 3)) {
             const rl = d.rel, st = rl.stages?.length ? rl.stages : DEFAULT_STAGES, top = st.length - 1, Lv = loveIndex(st);

@@ -116,10 +116,13 @@ try {
         const c = SillyTavern.getContext(); let n = 0; const orig = c.saveMetadata; c.saveMetadata = async () => { n++; };
         const { saveMeta } = await import('/ext/src/core.js');
         saveMeta(); saveMeta(); saveMeta();
-        await new Promise(r => setTimeout(r, 450));
-        c.saveMetadata = orig; return n;
+        await new Promise(r => setTimeout(r, 300)); const early = n;
+        document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 50)); const flushed = n;
+        await new Promise(r => setTimeout(r, 1200));
+        c.saveMetadata = orig; return early === 0 && flushed === 1 && n === 1 ? 0 : `${early}/${flushed}/${n}`;
     });
-    check(sv === 1, `quick saves are batched into one within 0.3s (${sv})`);
+    check(sv === 0, `quick saves wait (batched) (${sv})`);
     const toasts = await S(async () => {
         const seen = []; const o = toastr.info; toastr.info = (t) => { seen.push(String(t)); };
         await window.__addUser('mvu?'); await window.__addAI('ok\n<UpdateVariable>\n_.set(\'gold\', 1, 2);\n</UpdateVariable>');

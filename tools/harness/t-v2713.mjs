@@ -18,8 +18,8 @@ try {
         return { out, same: again === out[0], off, stage: st.data.rel.user.find(x => x.name === 'Leon')?.stage };
     });
     const sparks = r.out.filter(x => /heart-fluttering/.test(x)).length, pushes = r.out.filter(x => /new development/.test(x)).length;
-    check(sparks >= 1 && sparks <= 3, `spark happens but rests between (${sparks}/8 turns at 100%)`);
-    check(pushes >= 1 && pushes <= 2, `story push happens but rests between (${pushes}/8)`);
+    check(sparks === 2, `spark at 100%: every 4th turn (rest 3) (${sparks}/8)`);
+    check(pushes >= 1 && pushes <= 2, `story push at 100%: every 5th turn (rest 4) (${pushes}/8)`);
     const one = r.out.find(x => /heart-fluttering/.test(x)) ?? '';
     check(/Leon/.test(one) && /(NOT|not close yet|barely|no romantic|friendship)/i.test(one), 'spark names the person and keeps the stage limit', one.slice(0, 300));
     if (process.env.SHOW) console.log(one);

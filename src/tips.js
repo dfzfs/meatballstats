@@ -32,6 +32,7 @@ export function maybeTip() {
         const turn = app.current.state.turn ?? 0;
         const T = (meta.tips ??= { seen: {}, last: 0, start: turn });
         if (turn - (T.start ?? 0) < 6) return; // 막 만든 채팅엔 바로 권하지 않기
+        if (!set.mig2714) { if (Number(set.tipGap) === 20) set.tipGap = 40; set.mig2714 = true; saveSettings(); } // 예전 기본값 그대로 쓰던 분도 새 간격으로 (v2.7.14)
         const gap = Math.max(5, parseInt(set.tipGap, 10) || 40), since = turn - (T.last ?? 0);
         if (since < gap) return; // 몇 턴에 한 번만
         const never = set.tipNever ?? {};
