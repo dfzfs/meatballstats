@@ -1,6 +1,6 @@
 // 상태 엔진: <meatball> 변화량 → 상태 재계산 · 직접 편집 기록 · 프롬프트 주입
 import {
-    app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, DIFFS, GLOBAL_OFF, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
+    letterMode, app, ctx, settings, getMeta, saveMeta, modOn, MOD_IDS, MOD, EMPTY, DIFFS, GLOBAL_OFF, NORM, normalize, clone, clamp, num, norm, findBy, parseNum, splitBar,
     signed, fmtNum, short, dayIndex, addDays, dateStr, eventsOn, parseDate, nowTick, tickUnit, stamp, esc, TITLE, INJECT_KEY, INJECT_KEY2, INJECT_KEY3, trLook, trBack, viewTr, weekday,
     PROMPT_IN_CHAT, ROLE_SYSTEM, MODULE, uid, diffOf, LOG, loveIndex, CONTACT_MODES, touchContact, tidy, THREAD_MAX, msgText, nextTime, dateShort, DEFAULT_STAGES, arr, playOf, swapUser, ssWarn, relAxes, romanceStart, INJ, isHidden, modOnRaw } from './core.js';
 import { P } from './prompts.js';
@@ -1059,7 +1059,7 @@ export function applyOp(s, rawKey, rawVal, info) {
             const who = findBy(ct.contacts, nm)?.name ?? nm.trim();
             if (!findBy(ct.contacts, who)) ct.contacts.push({ name: who, handle: '', status: '', courier: '' });
             const t = nowTick(s, info.meta);
-            const letter = ct.mode === 'letter';
+            const letter = letterMode(ct);
             const cour = letter ? (findBy(ct.couriers, findBy(ct.contacts, who)?.courier)?.name ?? ct.couriers[0]?.name ?? '') : '';
             (ct.threads[who] ??= []).push({ id: `${info.seed}:m${ct.threads[who].length}`, from: 'them', text, date: stamp(s), at: t, arrive: t, courier: cour, express: false, rush: false, pending: false, fee: 0, edited: false, ping: true });
             if (ct.threads[who].length > THREAD_MAX) ct.threads[who] = ct.threads[who].slice(-THREAD_MAX);
@@ -1631,7 +1631,7 @@ export function dueLetters(s, meta = getMeta()) {
 }
 export function inTransit(s, meta = getMeta()) {
     const ct = s?.data?.contact;
-    if (!ct || ct.mode !== 'letter') return [];
+    if (!ct || !letterMode(ct)) return [];
     const now = nowTick(s, meta);
     const out = [];
     for (const [who, th] of Object.entries(ct.threads)) for (const m of th) if ((m.arrive ?? -Infinity) > now) out.push({ who, m, left: m.arrive - now });
@@ -1914,7 +1914,7 @@ function buildUltra(r, opt = {}) {
     }
     if (on('contact')) {
         const ct = d.contact;
-        if (ct.mode === 'letter') L.push('✉편지 세계: 도착 전엔 상대가 내용을 모름');
+        if (letterMode(ct)) L.push('✉편지 세계: 도착 전엔 상대가 내용을 모름');
         const tr = inTransit(s, meta).filter(x => x.m.from === 'me');
         if (tr.length) L.push(`✉배송중:${tr.map(x => `${x.who}(${x.left}${tickUnit(s, meta)})`).join(',')}`);
         for (const x of contactPicks(s, meta, set, inScene).slice(0, 2)) {
@@ -2018,17 +2018,8 @@ function romanceBlock(r) {
         }
     }
     const nFacts = L.length; // 위까지가 관계 사실 · 욕구 (머리말은 이게 있을 때만)
-    if (set.romIntent) L.push(P('inj.rom.intent'));
-    if (set.romInit) { // 먼저 움직이기: 답 1번마다 주사위 (같은 턴엔 같은 결과 → 프롬프트 창과 실제가 같다)
-        const rng = seeded(`${ctx().getCurrentChatId?.() ?? MODULE}:init:${s.turn}:${(ctx().chat ?? []).length}`);
-        if (rng() * 100 < clamp(num(set.romInitPct, 25), 0, 100)) {
-            const cand = (modOn('rel', meta) && d.rel ? d.rel.user.filter(y => inScene(y.name)).map(y => y.name) : []);
-            L.push(P('inj.rom.init', { who: cand.length ? cand[Math.floor(rng() * cand.length)] : 'one of the characters present' }));
-        }
-    }
-    // ✨ 설렘 한 스푼 · 🎬 사건 한 스푼 (v2.7.13): 가끔 그 단계에 맞는 설렘 한 순간 · 이야기가 움직일 일 하나
-    // 같은 턴엔 같은 결과 (스와이프해도 같은 주사위) · 바로 앞 몇 턴에 걸렸으면 쉬어서 연달아 안 나와요
-    if (set.romSpark || set.storyPush) {
+    // v2.7.16: 미트볼은 상태창 — 수치 · 단계와 상관없는 연출 주입(의도 먼저 · 먼저 움직이기 · 내 주입문 · 사건 한 스푼)은 뺐어요
+    if (set.romSpark) {
         const ck = `${ctx().getCurrentChatId?.() ?? MODULE}`, turn = s.turn ?? 0;
         // 턴마다 정말 p% 주사위 · 걸리면 그 뒤 cool턴은 쉼 (앞 40턴을 처음부터 다시 굴려 봐서 정함 → 스와이프 · 다시 계산해도 같음)
         // (v2.7.14: 예전엔 6~8턴 묶음에 한 번이라 100%여도 실제로는 12~17%였음)
@@ -2051,12 +2042,9 @@ function romanceBlock(r) {
                 L.push(P('inj.rom.spark', { who: x.name, stage: st[k]?.name ?? '', moment, limit }));
             }
         }
-        if (set.storyPush && hit('push', set.storyPushPct, 4)) L.push(P('inj.story.push'));
     }
     const hasFacts = nFacts > 0;
     const out = L.length ? [...(hasFacts ? [P('inj.rom.header')] : []), ...L] : []; // 장면에 사람이 없으면 「아래가 사실」 머리말은 빼기
-    const mine = String(set.romInject ?? '').trim();
-    if (mine) out.push(mine);
     return out.join('\n');
 }
 function buildInjection1(r, opt = {}) {
@@ -2175,7 +2163,7 @@ function buildInjection0(r, opt = {}) {
     }
     if (on('contact')) {
         const ct = d.contact;
-        if (ct.mode === 'letter') L.push(P('inj.letter', { app: ct.app }));
+        if (letterMode(ct)) L.push(P('inj.letter', { app: ct.app }));
         const tr = inTransit(s, meta).filter(x => x.m.from === 'me');
         if (tr.length) L.push(`Letters on the way (NOT yet received — the recipients don't know their contents yet): ${tr.map(x => `to ${x.who} (${x.left}${tickUnit(s, meta)} left)`).join(', ')}`);
         for (const x of contactPicks(s, meta, set, inScene)) {

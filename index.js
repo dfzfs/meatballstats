@@ -190,6 +190,11 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.16', title: '상태창답게 정리 — 관계 · 연락', items: [
+        ['🧹 관계는 수치 · 단계로만', '의도 먼저 · 내 추가 주입문 · 먼저 움직이기 · 사건 한 스푼을 뺐어요. 내 주입문에 글이 있었다면 작가 노트로 옮겨 주세요.'],
+        ['🔤 번역 그대로 오던 것', '섞인 글을 구글이 그대로 돌려주던 것을 고쳤어요. 반쯤 번역된 옛 글도 다시 번역하고, 끝까지 안 바뀌면 물어본 뒤 번역 모델로 (AI 1회).'],
+        ['📱 연락 간단하게', '편지 세계도 메신저처럼 바로 주고받고 꾸밈 기능은 숨겼어요. 확장 설정에서 끄면 예전 그대로.'],
+    ] },
     { v: '2.7.15', title: '스트리밍 칩 깜빡임 · 관계 인물 따라다님', items: [
         ['🎬 칩 깜빡임', '답이 써지는 동안엔 칩을 안 붙이고, 다 쓴 뒤 한 번만 붙여요.'],
         ['🚶 따라다님', '관계 목록에 있다고 매 장면 나타나지 않게 AI에게 알려요.'],
@@ -348,7 +353,14 @@ async function showWhatsNew(all = false, latestOnly = false) {
 }
 // 내역 지문: 같은 버전이라도 내역이 바뀌면 다시 알린다
 const noteKey = () => { const s = JSON.stringify(CHANGELOG[0] ?? ''); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return `${VERSION}#${(h >>> 0).toString(36)}`; };
+function noticeRemoved() {
+    const s = settings();
+    if (s.removedNote2716 || !String(s.romInject ?? '').trim()) return;
+    s.removedNote2716 = true; saveSettings();
+    toastr.warning('미트볼은 이제 상태창 기능만 AI에게 보내요. 「⑦ 내 추가 주입문」에 적어 두신 글은 더는 안 가요 — 필요하면 실리태번 작가 노트(Author\'s Note)로 옮겨 주세요. (적어 둔 글은 확장 설정 백업에 그대로 남아 있어요)', TITLE, { timeOut: 0, extendedTimeOut: 0, closeButton: true });
+}
 function whatsNewOnLoad(fresh) {
+    try { noticeRemoved(); } catch { /* */ }
     const s = settings();
     const key = noteKey();
     // 버전이 바뀔 때만 한 번 (같은 버전에서 「바뀐 점」 글만 고쳐졌을 땐 다시 안 띄움 — 너무 자주 뜬다는 의견)
@@ -658,6 +670,7 @@ function renderSettings() {
             <label>팝업이 보이는 시간 (초)<input type="number" min="2" max="20" class="text_pole" data-s="toastSec" value="${s.toastSec}"></label>
             <label class="checkbox_label"><input type="checkbox" data-s="daySummary" ${s.daySummary ? 'checked' : ''}> 하루가 지나면 「하루 정리」 카드</label>
             <label class="checkbox_label"><input type="checkbox" data-s="featureTips" ${s.featureTips !== false ? 'checked' : ''}> 💡 팁 · 주의 알림 — 안 쓰는 기능 추천 · 「이것도 아세요?」 · 설정 주의를 가끔 한 번씩 <small>(「알아요」 누르면 다시 안 나옴 · AI 0회)</small></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="contactSimple" ${s.contactSimple !== false ? 'checked' : ''}> 📱 연락 간단하게 — 편지 세계도 메신저처럼 바로 주고받아요 (배달 · 도착 시간 · 급행 · 동봉 · 반응 · 고정 없음). 끄면 예전 자세한 편지</label>
             <label class="checkbox_label"><input type="checkbox" data-s="actionTips" ${s.actionTips !== false ? 'checked' : ''}> 　└ 칸에서 뭔가 할 때 「이것도 아세요?」 <small>(접속당 1번 · 3시간에 한 번 · 하루 2번까지)</small></label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="tipreset"><i class="fa-solid fa-rotate-left"></i> 넘긴 추천 · 팁 다시 보기</button></div>
             <b class="ss-set-h">추천 음악</b>
@@ -677,22 +690,16 @@ function renderSettings() {
             <div class="ss-set-inline"><label>애정(호감) 최대 +<input type="number" min="1" max="50" class="text_pole" data-s="romCapAff" value="${s.romCapAff}"></label><label>우정(신뢰) 최대 +<input type="number" min="1" max="50" class="text_pole" data-s="romCapTrust" value="${s.romCapTrust}"></label></div>
             <label class="checkbox_label"><input type="checkbox" data-s="romFatigue" ${s.romFatigue ? 'checked' : ''}> ③ 연달아 꼬시면 덜 오르게 — 같은 사람 애정(호감)이 3턴 연속 오르면 60%, 4턴부터 34%만 <small>(토큰 0)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="romFacts" ${s.romFacts ? 'checked' : ''}> ④ 관계를 사실로 알려 주기 — 「하지 마」 대신 「지금은 친구고, 이 단계에선 이렇게 군다 · 선을 넘으려 하면 차가워지지 말고 자기 식으로 피한다」 <small>(장면 인물마다 주입 조금 · 켜면 위 「단계 넘는 행동 막기」 문구는 대신 빠져요)</small></label>
-            <details class="ss-set-more"><summary>더 보기 — ⑤ 인물의 욕구 · ⑥ 의도 먼저 · ⑦ 내 주입문 · ⑧ 먼저 움직이기 · 주입 깊이</summary>
+            <details class="ss-set-more"><summary>더 보기 — ⑤ 인물의 욕구 · 주입 깊이</summary>
             <label class="checkbox_label"><input type="checkbox" data-s="romDrive" ${s.romDrive ? 'checked' : ''}> ⑤ 인물의 욕구 — 끌리는 것 · 싫어하는 것 · 요즘 신경 쓰는 것을 알려 주고, AI가 바뀌면 고쳐 적어요 <small>(관계 편집에서 직접 적을 수도 · 주입 조금)</small></label>
-            <label class="checkbox_label"><input type="checkbox" data-s="romIntent" ${s.romIntent ? 'checked' : ''}> ⑥ 의도 먼저 — 「쓰기 전에 캐릭터가 원하는 것 · 걸리는 것 · 할 행동부터 정하라」 한 줄 <small>(주입 조금)</small></label>
-            <label>⑦ 내 추가 주입문 <small>(아무 프롬프트·프리셋이든 같이 들어가요 · 비우면 안 보냄 · 영어 추천)</small><textarea class="text_pole" rows="3" data-s="romInject" placeholder="예: {{char}} has a life outside {{user}} and does not always agree.">${esc(s.romInject ?? '')}</textarea></label>
-            <label class="checkbox_label"><input type="checkbox" data-s="romInit" ${s.romInit ? 'checked' : ''}> ⑧ 먼저 움직이기 — 가끔 그 장면의 인물이 유저를 기다리지 않고 스스로 일을 벌여요 (주도권 주사위) <small>(걸린 턴에만 주입 한 줄)</small></label>
-            <label>먼저 움직일 확률 % (AI 답 1번마다)<input type="number" min="0" max="100" class="text_pole" data-s="romInitPct" value="${s.romInitPct}"></label>
             <label>로맨스 보정 주입 깊이 (0 = 맨 끝 · 모델이 잘 안 지키면 0~1로)<input type="number" min="0" max="20" class="text_pole" data-s="romDepth" value="${s.romDepth}"></label>
-            <small>④⑤⑥⑧ 문구는 「프롬프트 · 토큰」 창에서 고칠 수 있어요. ⑤는 관계 탭의 「욕구 AI로 채우기」로 한 번에 채울 수 있어요.</small>
+            <small>④⑤ 문구는 「프롬프트 · 토큰」 창에서 고칠 수 있어요. ⑤는 관계 탭의 「욕구 AI로 채우기」로 한 번에 채울 수 있어요.</small>
             </details>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="romrec" title="① 연인은 고백으로만 · ② 한 번에 확 못 오르게 · ④ 관계를 사실로"><i class="fa-solid fa-heart"></i> 추천 세트 켜기 (①②④)</button><button class="menu_button" data-s-act="romoff"><i class="fa-solid fa-power-off"></i> 로맨스 보정 모두 끄기</button></div>
-            <b class="ss-set-h">✨ 설렘 · 사건 한 스푼 <small>(기본 꺼짐 · 걸린 턴에만 주입 한 줄)</small></b>
-            <small>상태창이 너무 정적일 때. 가끔 인물이 <b>지금 관계 단계에 맞게</b> 먼저 설레는 행동을 하고, 가끔 세상 쪽에서 새 일이 생겨요. 친구 사이면 「너라서 그렇지」 같은 말이나 작은 선물까지 — 고백 · 연인 행동은 안 해요.</small>
+            <b class="ss-set-h">✨ 설렘 한 스푼 <small>(기본 꺼짐 · 걸린 턴에만 주입 한 줄)</small></b>
+            <small>관계가 너무 정적일 때. 가끔 인물이 <b>지금 관계 단계에 맞게</b> 먼저 설레는 행동을 해요. 친구 사이면 「너라서 그렇지」 같은 말이나 작은 선물까지 — 고백 · 연인 행동은 안 해요.</small>
             <label class="checkbox_label"><input type="checkbox" data-s="romSpark" ${s.romSpark ? 'checked' : ''}> ✨ 설렘 한 스푼 — 장면 속 인물이 지금 단계에 맞는 설레는 한 순간을 스스로 <small>(애정 꺼 둔 사람은 우정 표현만)</small></label>
             <label>설렘 확률 % (AI 답 1번마다 · 걸린 뒤 3턴은 쉬어서 최대 4턴에 한 번)<input type="number" min="0" max="100" class="text_pole" data-s="romSparkPct" value="${s.romSparkPct}"></label>
-            <label class="checkbox_label"><input type="checkbox" data-s="storyPush" ${s.storyPush ? 'checked' : ''}> 🎬 사건 한 스푼 — 이야기가 제자리일 때 세상 쪽에서 새 일 하나 (방문객 · 소식 · 기회 · 작은 문제)</label>
-            <label>사건 확률 % (AI 답 1번마다 · 걸린 뒤 4턴은 쉬어서 최대 5턴에 한 번)<input type="number" min="0" max="100" class="text_pole" data-s="storyPushPct" value="${s.storyPushPct}"></label>
             <small>문구는 「프롬프트 · 토큰」 창에서 고칠 수 있어요. 걸린 턴은 그 창의 「지금 보내는 글」에서 볼 수 있어요.</small>
             <b class="ss-set-h">데이터 · 화면</b>
             <label class="checkbox_label"><input type="checkbox" data-s="updateNotice" ${s.updateNotice !== false ? 'checked' : ''}> 📣 업데이트하면 「바뀐 점」을 한 번 알려 주기</label>
@@ -753,7 +760,7 @@ function renderSettings() {
         if (a === 'romrec' || a === 'romoff') {
             const set = settings(), on = a === 'romrec';
             if (on) { set.romBond = true; set.romCap = true; set.romFacts = true; }
-            else for (const k of ['romBond', 'romCap', 'romFatigue', 'romFacts', 'romDrive', 'romIntent', 'romInit']) set[k] = false;
+            else for (const k of ['romBond', 'romCap', 'romFatigue', 'romFacts', 'romDrive', 'romSpark']) set[k] = false;
             saveSettings();
             el.querySelectorAll('[data-s^="rom"]').forEach(i => { if (i.type === 'checkbox') i.checked = !!set[i.dataset.s]; });
             refreshNow();

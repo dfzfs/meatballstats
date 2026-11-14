@@ -36,18 +36,21 @@ export function rulePairs() {
 }
 // 번역기에 보내기 전에 「원문 = 번역」 · 고정한 이름을 미리 바꿔 넣기 — 영어 쪽은 낱말 통째로만 (「Law」가 「Lawyer」 안에서 바뀌지 않게)
 const wordRe = (w) => new RegExp(`(^|[^A-Za-z])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z])`, 'g');
+// 번역 결과에 남은 고정 이름 영어 → 한국어
+const postSub = (text) => { let t = String(text); for (const [a, b] of rulePairs()) t = t.replace(wordRe(a), (m0, pre) => pre + b); return t; };
 const preSub = (text, rev = false) => { let t = String(text); for (const [a, b] of rulePairs()) t = rev ? t.split(b).join(a) : t.replace(wordRe(a), (m0, pre) => pre + b); return t; };
 
 // ───── 실리 기본 번역 (Chat Translation 확장의 translate()) ─────
-const engineST = () => settings().trEngine === 'st';
+let forceLLM = false; // 실리 번역기가 못 바꾼 글을 번역 모델로 한 번 (v2.7.16)
+const engineST = () => !forceLLM && settings().trEngine === 'st';
 let stMod = null;
-async function stTranslate(text, rev = false) {
+async function stTranslate(text, rev = false, raw = false) {
     // 실리가 이미 올려 둔 translate()를 먼저 쓰고 (새 버전), 없으면 모듈을 직접 불러온다
     let fn = typeof globalThis.translate === 'function' ? globalThis.translate : null;
     if (!fn) { stMod ??= await import('/scripts/extensions/translate/index.js'); fn = stMod?.translate; }
     if (typeof fn !== 'function') throw new Error('실리 번역 확장을 찾지 못했어요');
     const es = ctx().extensionSettings?.translate ?? {};
-    const out = await fn(preSub(text, rev), rev ? 'en' : String(settings().trCode || 'ko').trim(), es.provider || 'google');
+    const out = await fn(raw ? String(text) : preSub(text, rev), rev ? 'en' : String(settings().trCode || 'ko').trim(), es.provider || 'google');
     if (typeof out !== 'string') throw new Error('실리 번역이 실패했어요 (확장 메뉴 › Chat Translation에서 번역기를 확인해 주세요)');
     return out;
 }
@@ -65,6 +68,11 @@ async function stMany(list, rev = false) {
         const back = (s, x) => (/\r?\n/.test(s) ? x.replace(/\s*\/\s*/g, '\n') : x); // 줄바꿈을 「 / 」로 보냈던 글은 되돌린다 (v2.7.3)
         if (lines && lines.length === b.length) b.forEach((s, i) => out.set(s, back(s, lines[i])));
         else await Promise.all(b.map(async (s) => { try { out.set(s, (await stTranslate(s, rev)).trim()); } catch (e) { ssWarn(LOG, 'st one', e); } }));
+        // v2.7.16: 고정 이름을 한국어로 미리 넣으면 글이 「한국어+영어」로 섞여서, 구글이 원문을 한국어로 보고 그대로 돌려줄 때가 있었다
+        // → 그대로 돌아온 글은 이름을 안 넣고 다시 보낸 뒤, 결과에 고정 이름을 맞춰 넣는다
+        if (!rev) await Promise.all(b.filter(s => { const o = out.get(s); return o !== undefined && (o === preSub(s).trim() || o === s.trim()); }).map(async (s) => {
+            try { const r = (await stTranslate(s, false, true)).trim(); if (r && r !== s.trim()) out.set(s, postSub(r)); } catch (e) { ssWarn(LOG, 'st raw', e); }
+        }));
     };
     // v2.7.2: 묶음을 3개씩 동시에 (예전엔 하나씩 차례로라 느렸음)
     const q = [...batches];
@@ -441,6 +449,8 @@ export async function translateSheet(btn) {
 }
 // 화면에 영어로 남은 글 (사전에 없는 것)
 let missMemo = { s: null, v: -1, out: [] };
+const halfDone = (en, ko) => { const v = String(ko ?? '').trim(); return v !== en.trim() && v === preSub(en).trim(); }; // 이름만 한국어로 바뀐 채 저장된 옛 번역 (번역기가 섞인 글을 그대로 돌려줬던 것)
+const lockOf = (k) => getMeta()?.trLock?.[k];
 // 번역기가 영어를 그대로 돌려준 글 (이번 접속) — 다시 보내지 않고, 왜 그런지 한 번 알려 준다 (v2.7.14)
 const stuck = new Set();
 let stuckWarned = false;
@@ -460,7 +470,13 @@ export function missingTr() {
     if (missMemo.s === s && missMemo.v === trVer) return missMemo.out; // 상태 · 사전이 그대로면 다시 안 훑음 (화면 그릴 때마다 불려서)
     const d = trDict() ?? {}, meta = getMeta(), out = new Set();
     for (const o of [s.core, ...MOD_IDS.filter(id => modOn(id, meta) && s.data[id]).map(id => s.data[id])]) {
-        for (const x of leaves(o)) { const k = x.trim(); if (k && k.length <= 600 && !/[가-힣]/.test(k) && !Object.hasOwn(d, k) && !stuck.has(k)) out.add(k); }
+        for (const x of leaves(o)) {
+            const k = x.trim();
+            if (!k || k.length > 600 || /[가-힣]/.test(k) || stuck.has(k)) continue;
+            // 예전에 「이름만 한국어로 바꾼 영어 문장」이 번역으로 저장된 것(Open romantic 애정 and …)도 아직 번역 안 된 걸로 본다
+            if (Object.hasOwn(d, k) && !(lockOf(k) === undefined && halfDone(k, d[k]))) continue;
+            out.add(k);
+        }
     }
     missMemo = { s, v: trVer, out: [...out] };
     return missMemo.out;
@@ -471,6 +487,7 @@ export async function translateMissing(btn) {
     if (!need.length) { toastr.success('번역 안 된 글이 없어요. 그래도 이상한 번역이 보이면 「번역 고치기」로 직접 고칠 수 있어요.', TITLE); return; }
     const calls = engineST() ? '실리 기본 번역 · 토큰 0' : `번역 모델 약 ${Math.ceil(need.length / 60)}회`;
     if (!(await SillyTavern.getContext().Popup.show.confirm(TITLE, `아직 영어로 남은 글 ${need.length}개를 번역해요 (${esc(calls)}).<br><small>이미 번역된 글 · 직접 고친 글은 그대로예요. 다시 누르면 멈춰요.</small>`))) return;
+    { const m = getMeta(true); for (const k of need) if (m?.tr && Object.hasOwn(m.tr, k) && !lockOf(k)) delete m.tr[k]; } // 반쯤 된 옛 번역은 지우고 다시
     running = true; stop = false;
     const old = btn?.innerHTML;
     let done = 0;
@@ -483,7 +500,20 @@ export async function translateMissing(btn) {
         }
         addPairs(rulePairs());
     } finally { running = false; if (btn) btn.innerHTML = old; }
-    const nStuck = noteStuck(need);
+    let nStuck = noteStuck(need);
+    // 실리 번역기가 못 바꾼 글(별명 · 칭호 같은 것)은 번역 모델로 한 번 더 — 묻고 나서만 (AI 1회 · v2.7.16)
+    if (nStuck && engineST() && settings().trLlmFallback !== false) {
+        const left0 = need.filter(k => !Object.hasOwn(trDict() ?? {}, k));
+        if (await SillyTavern.getContext().Popup.show.confirm(TITLE, `실리 번역기가 ${left0.length}개 글을 영어 그대로 돌려줬어요.<br><small>${left0.slice(0, 5).map(esc).join('<br>')}${left0.length > 5 ? '<br>…' : ''}</small><br><br>번역 모델(메인 연결 · <b>AI 1회</b>)로 번역할까요?`)) {
+            forceLLM = true;
+            try {
+                const src = { list: left0 };
+                const out = await trJSON(src);
+                if (out !== src && Array.isArray(out?.list) && out.list.length === left0.length) { addPairs(pairsOf(src, out)); for (const k of left0) if (Object.hasOwn(trDict() ?? {}, k)) stuck.delete(k); }
+            } catch (e) { toastr.error(`번역 모델이 실패했어요: ${esc(e.message)}`, TITLE); } finally { forceLLM = false; }
+            nStuck = left0.filter(k => !Object.hasOwn(trDict() ?? {}, k)).length;
+        }
+    }
     if (nStuck) done = Math.max(0, done - nStuck);
     missMemo.s = null;
     app.refreshNow?.(); translateView();
@@ -529,7 +559,8 @@ async function fillNew() {
     for (const o of [s.core, ...MOD_IDS.filter(id => modOn(id, meta) && s.data[id]).map(id => s.data[id])]) {
         for (const x of leaves(o)) {
             const k = x.trim();
-            if (!k || k.length > 600 || /[가-힣]/.test(k) || Object.hasOwn(d, k) || tried.has(k)) continue;
+            if (!k || k.length > 600 || /[가-힣]/.test(k) || tried.has(k) || stuck.has(k)) continue;
+            if (Object.hasOwn(d, k)) { if (lockOf(k) !== undefined || !halfDone(k, d[k])) continue; delete d[k]; } // 반쯤 된 옛 번역은 저절로 다시 (누를 필요 없이)
             need.push(k); tried.add(k);
             if (need.length >= 60) break;
         }

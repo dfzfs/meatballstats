@@ -15,7 +15,7 @@ import { CONTACT_ACTIONS } from './contact.js';
 import { FEED_ACTIONS, FEED_CHANGES } from './feeds.js';
 import { MONEY_ACTIONS } from './money.js';
 import { FATE_ACTIONS } from './fate.js';
-import { EDIT, viewTr } from './core.js';
+import { EDIT, viewTr, letterMode } from './core.js';
 import { translateSheet, missingTr } from './translate.js';
 import { GEN_MODES, HYBRID_TPL, skeleton, skeletonCore, skeletonHint } from './skeleton.js';
 import { REC_MODS, defaultModOn } from './core.js';
@@ -276,7 +276,7 @@ function bindPanel(el) {
     });
     el.addEventListener('change', (e) => { const t = e.target; if (t.dataset.chg) CHANGES[t.dataset.chg]?.(el, t, app.current?.state); });
     el.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey && e.target.classList.contains('ss-cin') && !app.current?.state.data.contact?.mode?.includes('letter') && !e.isComposing) { e.preventDefault(); el.querySelector('[data-act="csend"]')?.click(); }
+        if (e.key === 'Enter' && !e.shiftKey && e.target.classList.contains('ss-cin') && !letterMode(app.current?.state.data.contact) && !e.isComposing) { e.preventDefault(); el.querySelector('[data-act="csend"]')?.click(); }
     });
 }
 export function rerenderPanels(force = false) {
