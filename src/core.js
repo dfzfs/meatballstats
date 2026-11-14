@@ -1,5 +1,7 @@
 // 미트볼 상태창 (Meatball Stats) — 공통: 상수 · 유틸 · 설정 · 데이터 모양
 import { toEnglish, usedPairs } from './skeleton_en.js'; // 영어 저장일 때 기본 관계 단계도 영어로 (skeleton_en은 아무것도 안 불러서 순환 없음)
+import { clamp, clone, num, str, arr, norm, fmtNum, uid, short, DEFAULT_MONTHS, DEFAULT_WEEK, DEFAULT_TIMES, dayIndex } from './util.js';
+export { clamp, clone, esc, num, str, arr, norm, fmtNum, signed, uid, short, splitBar, rand, randInt, parseNum, DEFAULT_MONTHS, DEFAULT_WEEK, DEFAULT_TIMES, yearDays, dayIndex, addDays, weekday, dateStr, dateShort, eventsOn, parseDate, nextTime, upcoming, stamp } from './util.js'; // 순수 도구는 util.js로 — 다른 파일은 예전처럼 core.js에서 받아도 된다
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
@@ -14,6 +16,56 @@ export const ROLE_SYSTEM = 0;
 export const MASCOTS = ['idle', 'happy', 'think', 'surprise', 'sad', 'sleep', 'party'];
 export const mascotUrl = (n) => new URL(`../img/mascot_${MASCOTS.includes(n) ? n : 'idle'}.webp`, import.meta.url).href;
 // 모듈끼리 서로 부르는 함수·현재 상태를 담는 곳 (순환 import 방지)
+// ── app에 거는 것 전부 (새로 걸면 여기에도 적는다 · 거는 파일이 아직 안 불렸을 수 있으니 부를 땐 app.x?.() 로) ──
+//   addTrPairs       거는 곳: translate.js           부르는 곳: core.js, skeleton.js
+//   askBond          거는 곳: index.js               부르는 곳: (같은 파일)
+//   chipOutWas       거는 곳: index.js               부르는 곳: (같은 파일)
+//   colMenu          거는 곳: views.js               부르는 곳: (같은 파일)
+//   confirmPopup     거는 곳: shell.js               부르는 곳: safe.js
+//   copyDump         거는 곳: report.js              부르는 곳: index.js, shell.js, views.js
+//   current          거는 곳: index.js               부르는 곳: ai.js, contact.js, engine.js, extra.js, feeds.js, help.js, kit.js, money.js, notify.js, parts.js, pip.js, report.js, safe.js, shell.js, tips.js, translate.js, views.js
+//   decorate         거는 곳: index.js               부르는 곳: ai.js, extra.js, pip.js, translate.js
+//   enableTip        거는 곳: tips.js                부르는 곳: notify.js
+//   ensureUI         거는 곳: shell.js               부르는 곳: (같은 파일)
+//   generatingAt     거는 곳: index.js               부르는 곳: (같은 파일)
+//   hudExp           거는 곳: shell.js, views.js     부르는 곳: (같은 파일)
+//   installRegex     거는 곳: index.js               부르는 곳: safe.js
+//   knowHint         거는 곳: tips.js                부르는 곳: notify.js
+//   lastGenSkipped   거는 곳: index.js               부르는 곳: (같은 파일)
+//   lastSkipReason   거는 곳: index.js               부르는 곳: (같은 파일)
+//   measureLoad      거는 곳: index.js               부르는 곳: shell.js
+//   neverTip         거는 곳: tips.js                부르는 곳: notify.js
+//   notify           거는 곳: notify.js              부르는 곳: contact.js, engine.js, tips.js
+//   notifyLatest     거는 곳: index.js               부르는 곳: ai.js
+//   openHelp         거는 곳: help.js                부르는 곳: index.js, shell.js
+//   openInbox        거는 곳: notify.js              부르는 곳: index.js, shell.js
+//   openReport       거는 곳: report.js              부르는 곳: (같은 파일)
+//   openSearch       거는 곳: extra.js               부르는 곳: index.js, shell.js
+//   openSheet        거는 곳: shell.js               부르는 곳: extra.js, notify.js, tips.js
+//   openTrFix        거는 곳: translate.js           부르는 곳: shell.js
+//   pipDiag          거는 곳: pip.js                 부르는 곳: help.js
+//   pipState         거는 곳: ai.js                  부르는 곳: pip.js
+//   playTemp         거는 곳: shell.js               부르는 곳: core.js
+//   popup            거는 곳: shell.js               부르는 곳: contact.js, extra.js, money.js, notify.js, translate.js
+//   redecorate       거는 곳: index.js               부르는 곳: ai.js, pip.js, translate.js
+//   refreshNow       거는 곳: index.js               부르는 곳: ai.js, engine.js, extra.js, pip.js, safe.js, shell.js, tips.js, translate.js, views.js
+//   renderHud        거는 곳: shell.js               부르는 곳: notify.js, translate.js
+//   renderPanel      거는 곳: shell.js               부르는 곳: contact.js, dice.js, extra.js, fate.js, feeds.js, money.js, parts.js, views.js
+//   rerenderPanels   거는 곳: shell.js               부르는 곳: extra.js, notify.js, parts.js, safe.js, translate.js, views.js
+//   sellPrice        거는 곳: views.js               부르는 곳: money.js
+//   showWhatsNew     거는 곳: index.js               부르는 곳: notify.js
+//   sideExp          거는 곳: shell.js, views.js     부르는 곳: (같은 파일)
+//   stkMenu          거는 곳: views.js               부르는 곳: (같은 파일)
+//   stkSel           거는 곳: views.js               부르는 곳: (같은 파일)
+//   stopActionTips   거는 곳: tips.js                부르는 곳: notify.js
+//   tileAdd          거는 곳: views.js               부르는 곳: (같은 파일)
+//   tileEdit         거는 곳: views.js               부르는 곳: shell.js
+//   tileSel          거는 곳: views.js               부르는 곳: (같은 파일)
+//   togglePause      거는 곳: shell.js               부르는 곳: (같은 파일)
+//   toggleStar       거는 곳: extra.js               부르는 곳: (같은 파일)
+//   undoLast         거는 곳: index.js               부르는 곳: views.js
+//   userName         거는 곳: shell.js               부르는 곳: contact.js
+//   writeEnding      거는 곳: extra.js               부르는 곳: notify.js
 export const app = { current: null };
 
 export const DEFAULTS = Object.freeze({
@@ -343,31 +395,11 @@ function recErr(level, args) {
 }
 export function ssErr(...a) { recErr('error', a); console.error(...a); }
 export function ssWarn(...a) { recErr('warn', a); console.warn(...a); }
-export const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
-export const clone = (o) => (o === undefined ? undefined : structuredClone(o));
-export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-export const num = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
-export const str = (v, d = '') => (v === null || v === undefined ? d : String(v));
-export const arr = (v) => (Array.isArray(v) ? v : []);
-export const norm = (x) => String(x ?? '').replace(/\s+/g, '').toLowerCase();
-// 포맷터를 한 번만 만든다 (toLocaleString은 부를 때마다 새로 만들어서 긴 채팅에서 느렸음)
-const NUM_FMT = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
-export const fmtNum = (n) => NUM_FMT.format(Number(n));
-export const signed = (n) => (n > 0 ? `+${fmtNum(n)}` : n < 0 ? `−${fmtNum(Math.abs(n))}` : '±0');
-export const uid = () => Math.random().toString(36).slice(2, 9);
-export const short = (t, n) => { t = String(t ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
-export const splitBar = (val) => String(val ?? '').split('|').map(x => x.trim());
 export function h(html) {
     const t = document.createElement('template');
     t.innerHTML = String(html).trim();
     return t.content.firstElementChild;
 }
-export function rand(n) { // 1..n
-    const buf = new Uint32Array(1);
-    crypto.getRandomValues(buf);
-    return (buf[0] % n) + 1;
-}
-export const randInt = (a, b) => (b <= a ? a : a + rand(b - a + 1) - 1);
 export function findBy(list, name, field = 'name') {
     const n = norm(name);
     if (!n || !Array.isArray(list)) return null;
@@ -400,15 +432,6 @@ function trFind(list, name, field) {
     if (!en) return null;
     const n = norm(en);
     return list.find(x => norm(x?.[field]) === n) ?? null;
-}
-export function parseNum(raw) {
-    const t = String(raw ?? '').trim().replace(/[−–—]/g, '-').replace(/[,\s]/g, '');
-    const m = t.match(/^([=+-]?)(\d+(?:\.\d+)?)(억|만|천|k|m)?/i);
-    if (!m) return null;
-    let v = parseFloat(m[2]);
-    const u = (m[3] || '').toLowerCase();
-    if (u === '억') v *= 1e8; else if (u === '만') v *= 1e4; else if (u === '천' || u === 'k') v *= 1e3; else if (u === 'm') v *= 1e6;
-    return { mode: m[1] === '=' ? 'set' : m[1] ? 'add' : 'bare', v: m[1] === '-' ? -v : v };
 }
 export const sub = (t) => { try { return ctx().substituteParams(String(t ?? '')); } catch { return String(t ?? ''); } };
 // 풀사칭(디렉터)에서는 유저가 이야기 밖에 있으니, 상태창의 「나」 = 주인공
@@ -581,9 +604,6 @@ export const ready = () => !!getMeta()?.base;
 export const diffOf = (meta = getMeta()) => DIFFS[meta?.difficulty] ? meta.difficulty : 'normal';
 
 // ───── 데이터 모양 ─────
-export const DEFAULT_MONTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31].map((d, i) => ({ name: `${i + 1}월`, days: d }));
-export const DEFAULT_WEEK = ['월', '화', '수', '목', '금', '토', '일'];
-export const DEFAULT_TIMES = ['새벽', '아침', '낮', '저녁', '밤', '심야'];
 
 export const EMPTY = {
     core: () => ({ title: '', genre: '', summary: '', tone: '', userRole: '', rules: '', canon: '' }),
@@ -971,56 +991,8 @@ export const EDIT = {
     ],
 };
 
-// ───── 달력 계산 ─────
-export function yearDays(cal) { return cal.months.reduce((a, m) => a + m.days, 0); }
-export function dayIndex(cal, y = cal.y, m = cal.m, d = cal.d) {
-    let n = (y - 1) * yearDays(cal);
-    for (let i = 0; i < m - 1; i++) n += cal.months[i].days;
-    return n + d - 1;
-}
-export function addDays(cal, k) {
-    let { y, m, d } = cal;
-    k = Math.round(k);
-    while (k > 0) {
-        const md = cal.months[m - 1].days;
-        if (d + k <= md) { d += k; k = 0; } else { k -= md - d + 1; d = 1; m++; if (m > cal.months.length) { m = 1; y++; } }
-    }
-    while (k < 0) {
-        if (d + k >= 1) { d += k; k = 0; } else { k += d; m--; if (m < 1) { m = cal.months.length; y--; } d = cal.months[m - 1].days; }
-    }
-    Object.assign(cal, { y, m, d });
-}
-export function weekday(cal, y, m, d) { const w = cal.week.length || 7; return cal.week[((dayIndex(cal, y, m, d) % w) + w) % w] ?? ''; }
-export function dateStr(cal, y = cal.y, m = cal.m, d = cal.d) {
-    const mn = cal.months[m - 1]?.name ?? `${m}월`;
-    const EN_M = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-    const isNumMonth = /^\d+월$/.test(mn) || (cal.months.length === 12 && String(mn).trim().toLowerCase().startsWith(EN_M[m - 1] ?? '\u0000')); // 「Mar」「March」도 → 「3월」 한 번만
-    return `${cal.era ? cal.era + ' ' : ''}${y}년 ${isNumMonth ? mn : `${mn}(${m}월)`} ${d}일 (${weekday(cal, y, m, d)})`;
-}
-export function dateShort(cal) { return `${cal.m}/${cal.d}(${weekday(cal, cal.y, cal.m, cal.d)})`; }
-export function eventsOn(cal, y, m, d) { return cal.events.filter(e => e.m === m && e.d === d && (e.repeat === 'yearly' || e.y === null || e.y === y)); }
-export function parseDate(cal, v) {
-    const t = String(v ?? '');
-    let mm = t.match(/(\d+)\s*년\s*(\d+)\s*월\s*(\d+)\s*일?/) || t.match(/^(\d+)[-./](\d+)[-./](\d+)/);
-    if (mm) return { y: +mm[1], m: +mm[2], d: +mm[3] };
-    mm = t.match(/(\d+)\s*월\s*(\d+)\s*일?/) || t.match(/^(\d+)\s*[/.-]\s*(\d+)/);
-    if (mm) return { y: null, m: +mm[1], d: +mm[2] };
-    const name = cal.months.findIndex(x => t.includes(x.name));
-    const dn = t.match(/(\d+)\s*일/) || (name >= 0 ? t.replace(cal.months[name].name, ' ').match(/\b(\d{1,2})\b/) : null); // 「April 14」 같은 영어 날짜도
-    if (name >= 0 && dn) return { y: null, m: name + 1, d: +dn[1] };
-    return null;
-}
-export function nextTime(c) { const i = c.times.indexOf(c.time); return c.times[(i + 1) % c.times.length] ?? c.times[0]; }
-export function upcoming(c, days = 30) {
-    const out = [];
-    const t = { ...c };
-    for (let k = 0; k <= days; k++) { if (k) addDays(t, 1); for (const e of eventsOn(c, t.y, t.m, t.d)) out.push([k, e]); }
-    return out.slice(0, 8);
-}
-
 // ───── 시간 (편지 배달용) ─────
 // 달력이 켜져 있으면 "일", 아니면 AI 응답 수("턴")로 잰다
 export function useDays(s, meta = getMeta()) { return !!(s?.data?.calendar && modOn('calendar', meta)); }
 export function nowTick(s, meta = getMeta()) { return useDays(s, meta) ? dayIndex(s.data.calendar) : (s?.turn ?? 0); }
 export function tickUnit(s, meta = getMeta()) { return useDays(s, meta) ? '일' : '턴'; }
-export function stamp(s) { return s?.data?.calendar ? dateStr(s.data.calendar) : ''; }

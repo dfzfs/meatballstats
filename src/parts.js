@@ -2,7 +2,7 @@
 // 숨기기: 화면에서. 🤖 표시 항목은 AI에게 보내는 글에서도 빠져요 (v2.7.21 · core.js AI_PARTS). 데이터는 그대로라 다시 켜면 돌아와요.
 // 저장: settings().partsOff = { 탭: [키, …] } — 모든 채팅 공통 (관계 탭의 relShow… 와 같은 방식)
 import { app, settings, saveSettings, esc, isAiPart, aiOff, partTouched, getMeta, saveMeta, MOD, isHidden } from './core.js';
-import { MINI } from './views.js';
+import { MINI } from './tiles.js';
 
 // [키, 이름, 설명, 선택자] — 선택자는 그 탭 화면(.ss-body) 안에서 찾음. 「칸」(sec 제목)은 따로 안 적어도 자동으로 잡혀요.
 const S = ':scope > ';

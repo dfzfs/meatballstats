@@ -621,634 +621,700 @@ export function applyOp(s, rawKey, rawVal, info) {
     if (!val && !key.startsWith('_')) return;
     const L = (t) => info.labels.push(t);
     const T = (s.tally ??= { earn: 0, spend: 0, places: [], rolls: 0, good: 0, crit: 0, fumble: 0, sent: 0, got: 0, quests: 0, curses: 0 });
-    switch (key) {
-        case '_alert': if (val) info.alerts.push(val); return;
-        case 'bgm': {
-            const mu = ensure(s, 'music');
-            const [head, mood, why] = splitBar(val);
-            const hm = head.match(/^(.+?)\s+(?:-|–|—|by|\/)\s+(.+)$/i);
-            const title = (hm ? hm[1] : head).replace(/^["“'「『]|["”'」』]$/g, '').trim();
-            const artist = hm ? hm[2].replace(/^["“'「『]|["”'」』]$/g, '').trim() : '';
-            if (!title || norm(title) === norm(mu.now?.title) || /^(없음|none|-)$/i.test(title)) return;
-            // 가벼운 모델이 매 턴 곡을 바꾸지 않게: 본편 답에서는 3턴에 한 번까지 (버튼으로 고른 건 바로)
-            const fromAI = !String(info.seed).includes(':adj:');
-            if (fromAI && mu.turn !== undefined && s.turn - mu.turn < 3) return;
-            if (fromAI) mu.turn = s.turn;
-            mu.now = { title, artist, mood: mood ?? '', why: why ?? '', date: stamp(s) };
-            mu.log.push(mu.now);
-            if (mu.log.length > 30) mu.log.shift();
-            L(`♪ ${short(title, 16)}`);
-            info.alerts.push({ kind: 'music', title, artist, text: mood ?? '' });
-            return;
-        }
-        case 'sns': {
-            const sn = ensure(s, 'sns');
-            const [author, text, pic, tags] = splitBar(val);
-            if (!author || !(text || pic)) return;
-            if (!String(info.seed).includes(':adj:')) { if (sn.turn !== undefined && s.turn - sn.turn < 2) return; sn.turn = s.turn; } // 본편 답에서는 2턴에 한 번까지
-            sn.posts.push({ id: `${info.seed}:s${sn.posts.length}`, author, text: text ?? '', pic: pic ?? '', tags: tags ?? '', likes: Math.floor(seeded(`${info.seed}:sl${sn.posts.length}`)() * 60) + 3, date: stamp(s), mine: false, liked: false, replies: [] });
-            L(`#️⃣ ${author}`);
-            if (findBy(s.data.rel?.user ?? [], author)) info.alerts.push({ kind: 'sns', who: author, text: text || pic });
-            return;
-        }
-        case 'custom': {
-            const cu = ensure(s, 'custom');
-            let [tn, rest] = splitBar(val);
-            if (rest === undefined) { rest = tn; tn = ''; }
-            const m = rest.match(/^\s*\+?\s*(.+?)\s*(?:=\s*(.+)|([+\-−]\s*[\d.,]+))\s*$/);
-            if (!m) return;
-            const fname = m[1].trim();
-            let tab = tn ? findBy(cu.tabs, tn) : cu.tabs.find(t => findBy(t.fields, fname, 'k'));
-            if (!tab) { if (!tn) return; tab = { name: tn.trim(), icon: '📌', note: '', inject: true, fields: [] }; cu.tabs.push(tab); }
-            let f = findBy(tab.fields, fname, 'k');
-            const isNum = m[3] !== undefined || /^[+\-−]?[\d.,]+$/.test(String(m[2] ?? '').trim());
-            if (!f) { f = { k: fname, type: isNum ? 'num' : 'text', v: isNum ? 0 : '', max: 100, desc: '' }; tab.fields.push(f); }
-            if (f.type === 'text') { const v = String(m[2] ?? m[3] ?? '').trim(); if (v !== f.v) { f.v = v; L(`${tab.icon} ${f.k}: ${short(v, 14)}`); } return; }
-            const p = parseNum(m[3] !== undefined ? m[3].replace(/\s+/g, '') : `=${m[2]}`);
-            if (!p) return;
-            const b = f.v;
-            f.v = p.mode === 'add' ? b + p.v : p.v;
-            if (f.type === 'bar') f.v = clamp(f.v, 0, f.max);
-            if (f.v !== b) L(`${tab.icon} ${f.k} ${signed(f.v - b)}`);
-            return;
-        }
-        case 'life': {
-            if (!settings().offscreen) return;
-            const rl = ensure(s, 'rel');
-            const [who, text] = splitBar(val);
-            if (!who || !text) return;
-            rl.life.push({ who, text, date: stamp(s) });
-            if (rl.life.length > 20) rl.life.shift();
-            L(`🌙 ${who}`);
-            info.alerts.push({ kind: 'life', who, text });
-            return;
-        }
-        case 'mind': { // 💭 속마음 · 이모티콘 · 카모지 (이름 | 내용) — 마지막 것만 둠
-            const rl = s.data.rel; if (!rl) return;
-            const [nm, ...rest] = splitBar(val); const text = rest.join(' | ').trim();
-            const r = findBy(rl.user, nm); if (!r || !text) return;
-            r.mind = { text: cleanMind(text), turn: s.turn };
-            if (!r.mind.text) delete r.mind;
-            return;
-        }
-        case 'jealous': {
-            const rl = ensure(s, 'rel');
-            const m = val.match(/^(.+?)\s*([=+\-−]\s*[\d.]+)\s*$/); if (!m) return;
-            const r = findBy(rl.user, m[1]); if (!r) return;
-            const p = parseNum(m[2].replace(/\s+/g, '')); if (!p) return;
-            const b = r.jealous; r.jealous = clamp(Math.round(p.mode === 'add' ? b + p.v : p.v), 0, 100);
-            if (r.jealous !== b) L(`💢 ${r.name} ${signed(r.jealous - b)}`);
-            return;
-        }
-        case 'confess': { // 로맨스 보정: AI는 「고백이 오갔다」고 알리기만, 확정은 유저가
-            if (!settings().romBond) return;
-            const rl = ensure(s, 'rel');
-            const [nm] = splitBar(val);
-            const r = findBy(rl.user, nm.replace(/^[+]\s*/, ''));
-            if (!r || r.bond || r.noLove) return;
-            if (r.bondAsk && s.turn - (r.bondAskAt ?? 0) < 10) return; // 「아직」을 고른 뒤 10턴 안엔 다시 안 물어봄
-            r.bondAsk = true; r.bondAskAt = s.turn;
-            L(`💌 ${r.name}: 고백?`);
-            info.alerts.push({ kind: 'confess', who: r.name }); // index.js가 「연인으로 확정할까요?」 창을 띄운다
-            return;
-        }
-        case '_nolove': case '_love': { // 💗 애정 꺼 두기 / 다시 켜기 (관계 탭 버튼)
-            const rl = ensure(s, 'rel');
-            const r = findBy(rl.user, val); if (!r) return;
-            if (key === '_nolove') r.noLove = true; else delete r.noLove;
-            (s.nolove ??= {})[norm(r.name)] = !!r.noLove; // 관계 칸을 통째로 저장해도 유지
-            r.stage = -1; updateStage(s, r, info, true);
-            return;
-        }
-        case '_bond': case '_unbond': {
-            const rl = ensure(s, 'rel');
-            const r = findBy(rl.user, val); if (!r) return;
-            r.bond = key === '_bond'; r.bondAsk = false;
-            (s.bonds ??= {})[norm(r.name)] = r.bond; // 연인 확정은 따로 기억 → 나중에 관계 칸을 통째로 저장해도 안 풀림
-            if (r.bond) updateStage(s, r, info);
-            else { r.stage = -1; updateStage(s, r, info, true); }
-            return;
-        }
-        case 'concern': case 'taste': {
-            if (!settings().romDrive) return;
-            const rl = ensure(s, 'rel');
-            const [nm, a, b] = splitBar(val);
-            const r = findBy(rl.user, nm); if (!r) return;
-            if (key === 'concern') { const v = String(a ?? '').trim(); if (v === r.concern) return; r.concern = /^(없음|none|-)$/i.test(v) ? '' : v; L(`💭 ${r.name}`); }
-            else { if (a) r.likes = a; if (b) r.dislikes = b; }
-            return;
-        }
-        case '_peekday': { s.peek = { day: today(s) ?? s.turn, n: ((s.peek?.day === (today(s) ?? s.turn)) ? s.peek.n : 0) + 1 }; return; }
-        case 'curse': {
-            const [n0, eff, days, cure, kind] = splitBar(val);
-            const nm = n0.replace(/^[+\-−]\s*/, '').trim();
-            if (!nm) return;
-            const f = ensure(s, 'fate');
-            if (/^[-−]/.test(n0) || /^(해제|없음|풀림)$/.test(eff ?? '')) {
-                const ex = findBy(f.curses, nm);
-                if (ex) { f.curses.splice(f.curses.indexOf(ex), 1); L(`해제: ${ex.name}`); }
-                return;
-            }
-            addCurse(s, { name: nm, kind: /축복|bless/i.test(`${kind ?? ''}${rawKey}`) ? 'bless' : 'curse', effects: String(eff ?? '').split(/\s*[,，]\s*/).filter(Boolean), days: parseInt(days, 10) > 0 ? parseInt(days, 10) : null, cure: cure ?? '' }, info);
-            return;
-        }
-        case '_effect': applyLines(s, val, info); return;
-        case 'weather': { const cal = ensure(s, 'calendar'); if (val !== cal.weather) { cal.weather = val; L(`날씨: ${val}`); } return; }
-        case '_travel': {
-            // 지도에서 이동: 위치 + 칸 수만큼 시간대가 흐름(하루를 넘기면 날짜도) + 요금
-            const mp = s.data.map; if (!mp) return;
-            const p = findBy(mp.places, val); if (!p) return;
-            if (norm(p.name) === norm(mp.here)) return; // 이미 여기
-            const hops = hopsBetween(mp, mp.here, p.name);
-            applyOp(s, 'loc', p.name, info);
-            const cal = s.data.calendar;
-            if (cal && hops > 0 && info.mods?.calendar !== false) {
-                let i = Math.max(0, cal.times.indexOf(cal.time)), days = 0;
-                for (let k = 0; k < hops; k++) { i++; if (i >= cal.times.length) { i = 0; days++; } }
-                if (days) applyOp(s, 'date', `+${days}`, info);
-                applyOp(s, 'time', cal.times[i], info);
-            }
-            if (p.fare && s.data.wallet) applyOp(s, 'cash', `-${p.fare}`, info);
-            return;
-        }
-        case '_trash': case '_sellused': {
-            const hm = s.data.home; if (!hm) return;
-            const [nm, price] = splitBar(val);
-            const k = hm.storage.findIndex(x => norm(x) === norm(nm)); if (k < 0) return;
-            const item = hm.storage.splice(k, 1)[0];
-            if (key === '_trash') { hm.trash.push({ name: item, date: stamp(s) }); if (hm.trash.length > 20) hm.trash.shift(); L(`🗑 ${item}`); }
-            else { const p = Math.max(0, Math.round(num(price, 0))); if (p) applyOp(s, 'cash', `+${p}`, info); L(`♻ ${item} 중고 판매`); }
-            return;
-        }
-        case '_purge': { // 🗑 완전 삭제: 「버렸다」 기록을 바꿔 쓴 것 — 창고에서 조용히 빼기만 (쓰레기통·기록·라벨 없음)
-            const hm = s.data.home; if (!hm) return;
-            const k = hm.storage.findIndex(x => norm(x) === norm(val));
-            if (k >= 0) hm.storage.splice(k, 1);
-            return;
-        }
-        case '_restore': {
-            const hm = s.data.home; if (!hm) return;
-            const k = hm.trash.findIndex(x => norm(x.name) === norm(val)); if (k < 0) return;
-            hm.storage.push(hm.trash.splice(k, 1)[0].name); L(`↩ ${val}`);
-            return;
-        }
-        case '_draw': {
-            // 뽑은 카드 자체를 기록에 담는다 (나중에 덱을 고쳐도 지난 결과가 바뀌지 않게). 옛 기록(번호)도 읽는다.
-            let card = null;
-            try { card = val.startsWith('{') ? JSON.parse(val) : s.data.fate?.deck[Number(val)]; } catch { /* broken */ }
-            if (card?.title) drawCard(s, card, info);
-            return;
-        }
-        case '_loan': {
-            const w = ensure(s, 'wallet');
-            const [kind0, amt0, item] = splitBar(val);
-            const kind = LOAN_KIND[kind0] ? kind0 : 'bank';
-            const amount = Math.max(0, Math.round(num(amt0, 0)));
-            if (!amount) return;
-            const K = LOAN_KIND[kind];
-            const t = today(s);
-            if (kind === 'pawn' && item) { const ex = findBy(w.items, item); if (!ex) return; ex.qty -= 1; if (ex.qty <= 0) w.items.splice(w.items.indexOf(ex), 1); }
-            w.loans.push({ id: `${info.seed}:loan${w.loans.length}`, kind, lender: K.name, principal: amount, owed: Math.round(amount * (1 + K.rate / 100)), due: t === null ? null : t + K.days, item: item ?? '', status: 'open' });
-            w.cash += amount;
-            L(`💰 ${K.name} +${fmtNum(amount)}`);
-            return;
-        }
-        case '_repay': {
-            const w = s.data.wallet; if (!w) return;
-            const l = w.loans.find(x => x.id === val && (x.status === 'open' || x.status === 'late'));
-            if (!l || w.cash < l.owed) return;
-            w.cash -= l.owed; l.status = 'paid';
-            if (l.kind === 'pawn' && l.item) { const ex = findBy(w.items, l.item); if (ex) ex.qty++; else w.items.push({ name: l.item, qty: 1, desc: '', effect: '' }); }
-            L(`💸 ${l.lender} 빚 청산 −${fmtNum(l.owed)}`);
-            liftDebtCurse(s, info);
-            return;
-        }
-        case 'stat': {
-            // v2.7.19: 「Stamina +30, Stress -5」처럼 쉼표로 여러 개 — 예전엔 통째로 「Stamina +30, Stress」 게이지 -5로 읽어서 Stamina가 깎였음
-            if (MULTI_RE.test(val)) { for (const part of val.split(MULTI_RE)) if (part.trim()) applyOp(s, 'stat', part.trim(), info); return; }
-            const st = ensure(s, 'stats');
-            const m = val.match(/^(.+?)\s*(max|최대)?\s*([=+\-−][\d.,]+|\d[\d.,]*)\s*$/i);
-            if (!m) return;
-            let bar = findBy(st.bars, m[1]);
-            if (!bar) { bar = { name: m[1].trim(), cur: 100, max: 100, color: '', desc: '' }; st.bars.push(bar); }
-            let p = parseNum(m[3]);
-            if (!p) return;
-            if (!m[2]) p = bareFix(p, bar.cur, info);
-            if (m[2]) { const b = bar.max; bar.max = Math.max(1, p.mode === 'add' ? bar.max + p.v : p.v); bar.cur = Math.min(bar.cur, bar.max); L(`${bar.name} 최대 ${signed(bar.max - b)}`); return; }
-            const before = bar.cur;
-            bar.cur = clamp(p.mode === 'add' ? bar.cur + p.v : p.v, 0, bar.max);
-            if (bar.cur !== before) L(`${bar.name} ${signed(bar.cur - before)}`);
-            if (before > 0 && bar.cur <= 0) info.alerts.push(`${bar.name}이(가) 0이 되었다`);
-            return;
-        }
-        case 'attr': {
-            if (MULTI_RE.test(val)) { for (const part of val.split(MULTI_RE)) if (part.trim()) applyOp(s, 'attr', part.trim(), info); return; }
-            const st = ensure(s, 'stats');
-            const m = val.match(/^(.+?)\s*([=+\-−][\d.]+|\d[\d.]*)\s*$/);
-            if (!m) return;
-            let a = findBy(st.attrs, m[1]);
-            if (!a) { a = { name: m[1].trim(), val: 0, desc: '' }; st.attrs.push(a); }
-            const p = bareFix(parseNum(m[2]), a.val, info); if (!p) return;
-            const b = a.val; a.val = Math.round(p.mode === 'add' ? a.val + p.v : p.v);
-            if (a.val !== b) L(`${a.name} ${signed(a.val - b)}`);
-            return;
-        }
-        case 'cond': {
-            // 「+Poisoned, +Tired」 → 하나씩 (v2.7.19 · 예전엔 「Poisoned, +Tired」 상태 하나가 생겼음)
-            if (!val.includes('|') && /,\s*[+\-−]/.test(val)) { for (const part of val.split(/\s*,\s*(?=[+\-−])/)) if (part.trim()) applyOp(s, 'cond', part.trim(), info); return; }
-            const st = ensure(s, 'stats');
-            const [n0, desc] = splitBar(val);
-            const rm = /^[-−]/.test(n0);
-            const name = n0.replace(/^[+\-−]\s*/, '');
-            if (!name) return;
-            const ex = findBy(st.conds, name);
-            if (rm || /^(해제|없음)$/.test(desc ?? '')) { if (ex) { st.conds.splice(st.conds.indexOf(ex), 1); L(`해제: ${ex.name}`); } return; }
-            if (ex) { if (desc) ex.desc = desc; return; }
-            st.conds.push({ name, desc: desc ?? '' }); L(`상태: ${name}`);
-            return;
-        }
-        case 'cash': {
-            const w = ensure(s, 'wallet');
-            const p = bareFix(parseNum(val), w.cash, info); if (!p) return;
-            const b = w.cash; w.cash = Math.max(0, p.mode === 'add' ? w.cash + p.v : p.v);
-            if (w.cash > b) T.earn += w.cash - b; else T.spend += b - w.cash;
-            if (w.cash !== b) L(`${w.currency} ${signed(w.cash - b)}`);
-            return;
-        }
-        case 'item': {
-            const w = ensure(s, 'wallet');
-            const parts = val.includes('|') ? [val] : val.split(/\s*[,，/]\s*/);
-            for (const part of parts) {
-                const [head, desc] = splitBar(part);
-                // 수량은 띄어 쓰거나 x를 붙인 1~3자리 숫자만 (「AK-47」 「S24」처럼 이름 끝 숫자를 수량으로 읽지 않게)
-                const m = head.match(/^([+\-−]?)\s*(.+?)(?:(?:\s+[x×*]?|\s*[x×*])\s*(\d{1,3})\s*(?:개|장|병|권|통)?)?$/);
-                if (!m) continue;
-                const rm = m[1] === '-' || m[1] === '−';
-                const name = m[2].trim(); const q = Math.max(1, parseInt(m[3] || '1', 10));
-                if (!name) continue;
-                const ex = findBy(w.items, name);
-                if (rm) {
-                    if (!ex) continue;
-                    ex.qty -= q; if (ex.qty <= 0) w.items.splice(w.items.indexOf(ex), 1);
-                    L(`−${ex.name}${q > 1 ? `×${q}` : ''}`);
-                } else {
-                    if (ex) { ex.qty += q; if (desc) ex.desc = desc; } else w.items.push({ name, qty: q, desc: desc ?? '' });
-                    L(`+${name}${q > 1 ? `×${q}` : ''}`);
-                }
-            }
-            return;
-        }
-        case 'stock': {
-            const sh = ensure(s, 'shop');
-            const [sn, iname, price, desc] = splitBar(val);
-            if (!sn || !iname) return;
-            let shop = findBy(sh.shops, sn);
-            if (!shop) { shop = { name: sn, desc: '', place: '', items: [] }; sh.shops.push(shop); }
-            const rm = /^[-−]/.test(iname); const nm = iname.replace(/^[+\-−]\s*/, '');
-            const ex = findBy(shop.items, nm);
-            if (rm) { if (ex) { shop.items.splice(shop.items.indexOf(ex), 1); L(`🏪 ${shop.name} −${ex.name}`); } return; }
-            const pr = parseNum(price)?.v;
-            if (ex) { if (pr !== undefined) ex.price = Math.abs(pr); if (desc) ex.desc = desc; }
-            else shop.items.push({ name: nm, price: Math.abs(pr ?? 0), desc: desc ?? '', kind: /가구|장식|deco/i.test(desc ?? '') ? 'deco' : 'item', stock: -1 });
-            L(`🏪 ${shop.name}: ${nm}`);
-            return;
-        }
-        case 'decor': {
-            const hm = ensure(s, 'home');
-            const [n0, roomName] = splitBar(val);
-            const rm = /^[-−]/.test(n0); const nm = n0.replace(/^[+\-−]\s*/, '');
-            if (!nm) return;
-            if (rm) {
-                for (const r of hm.rooms) { const k = r.decor.findIndex(x => norm(x) === norm(nm)); if (k >= 0) { r.decor.splice(k, 1); break; } }
-                const k = hm.storage.findIndex(x => norm(x) === norm(nm)); if (k >= 0) hm.storage.splice(k, 1);
-                L(`🏠 −${nm}`); return;
-            }
-            const room = roomName ? findBy(hm.rooms, roomName) : null;
-            const si = hm.storage.findIndex(x => norm(x) === norm(nm));
-            if (room) {
-                if (si >= 0) hm.storage.splice(si, 1);
-                else for (const r of hm.rooms) { const k = r.decor.findIndex(x => norm(x) === norm(nm)); if (k >= 0) { r.decor.splice(k, 1); break; } }
-                room.decor.push(nm); L(`🏠 ${room.name}에 ${nm}`);
-            } else { hm.storage.push(nm); L(`🏠 창고 +${nm}`); }
-            return;
-        }
-        case '_tostore': { // 🎒 소지품 → 📦 창고 (1개)
-            if (!s.data.wallet || !s.data.home) return;
-            const it = s.data.wallet.items.find(x => norm(x.name) === norm(val)); if (!it) return;
-            applyOp(s, 'item', `-${it.name} 1|`, info);
-            s.data.home.storage.push(it.name);
-            return;
-        }
-        case '_tobag': { // 📦 창고 → 🎒 소지품 (1개)
-            if (!s.data.wallet || !s.data.home) return;
-            const hm = s.data.home, k = hm.storage.findIndex(x => norm(x) === norm(val)); if (k < 0) return;
-            const nm = hm.storage.splice(k, 1)[0];
-            applyOp(s, 'item', `+${nm} 1|`, info);
-            return;
-        }
-        case '_unplace': {
-            const hm = ensure(s, 'home');
-            for (const r of hm.rooms) { const k = r.decor.findIndex(x => norm(x) === norm(val)); if (k >= 0) { r.decor.splice(k, 1); hm.storage.push(val); return; } }
-            return;
-        }
-        case 'room': {
-            const hm = ensure(s, 'home');
-            const [n0, desc] = splitBar(val);
-            const nm = n0.replace(/^[+]\s*/, '');
-            const ex = findBy(hm.rooms, nm);
-            if (ex) { if (desc) ex.desc = desc; } else { hm.rooms.push({ name: nm, desc: desc ?? '', decor: [] }); L(`🏠 새 공간: ${nm}`); }
-            return;
-        }
-        case 'loc': {
-            const mp = ensure(s, 'map');
-            const [nm, desc] = splitBar(val);
-            if (!nm) return;
-            let p = findBy(mp.places, nm);
-            if (!p) {
-                const from = findBy(mp.places, mp.here);
-                p = { name: nm, desc: desc ?? '', kind: '', x: NaN, y: NaN, links: from ? [from.name] : [], known: true };
-                if (from && !from.links.some(l => norm(l) === norm(nm))) from.links.push(nm);
-                mp.places.push(p);
-            }
-            p.known = true;
-            if (!T.places.some(x => norm(x) === norm(p.name))) T.places.push(p.name);
-            if (norm(mp.here) !== norm(p.name)) { mp.here = p.name; L(`📍 ${p.name}`); }
-            return;
-        }
-        case 'place': {
-            const mp = ensure(s, 'map');
-            const [nm, desc, links] = splitBar(val);
-            if (!nm) return;
-            let p = findBy(mp.places, nm);
-            const lk = String(links ?? '').split(/\s*[,，]\s*/).filter(Boolean);
-            if (!p) { p = { name: nm, desc: desc ?? '', kind: '', x: NaN, y: NaN, links: lk, known: true }; mp.places.push(p); L(`🗺️ 새 장소: ${nm}`); }
-            else { if (desc) p.desc = desc; if (!p.known) L(`🗺️ 발견: ${p.name}`); p.known = true; for (const l of lk) if (!p.links.some(x => norm(x) === norm(l))) p.links.push(l); }
-            for (const l of lk) { const q = findBy(mp.places, l); if (q && !q.links.some(x => norm(x) === norm(p.name))) q.links.push(p.name); }
-            return;
-        }
-        case 'aff': case 'trust': {
-            // 「Leon +2, Mira +3」 → 한 명씩 (v2.7.19 · 예전엔 둘 다 안 올랐음) — 「| 메모」 뒤의 쉼표는 안 나눔
-            { const head = val.split('|')[0]; if (MULTI_RE.test(head) && /\d/.test(head.split(MULTI_RE)[0])) { const parts = head.split(MULTI_RE); const tail = val.slice(head.length); parts.forEach((p0, i) => p0.trim() && applyOp(s, key, p0.trim() + (i === parts.length - 1 ? tail : ''), info)); return; } }
-            const rl = ensure(s, 'rel');
-            const m = val.match(/^(.+?)\s*([=+\-−]\s*[\d.]+|\d[\d.]*)\s*(?:\|\s*(.*))?$/);
-            if (!m) return;
-            const nm = personName(s, m[1]);
-            if (!nm) return;
-            let r = findBy(rl.user, nm);
-            if (!r) { r = { name: nm, label: '', aff: 0, trust: 0, memo: '', stage: -1, jealous: 0, met: s.data.calendar ? dateShort(s.data.calendar) : '' }; rl.user.push(r); }
-            const p = bareFix(parseNum(m[2].replace(/\s+/g, '')), r[key], info); if (!p) return;
-            if (key === 'aff' && p.mode === 'add' && p.v > 0) p.v = p.v * affMul(s); // 저주·축복의 호감 % 효과
-            const b = r[key];
-            let nv = clamp(Math.round(p.mode === 'add' ? b + p.v : p.v), -100, 100);
-            if (nv > b && info.ai && romLive(s)) nv = b + romGain(s, info, r.name, key, nv - b); // 로맨스 보정: 상한
-            if (key === 'aff' && r.noLove && nv > b) { if (info.ai) L(`🚫♥ ${r.name} (애정 꺼 둠)`); nv = b; } // 💗 애정 꺼 둔 사람: 안 오름 (내려가는 건 그대로)
-            r[key] = nv;
-            if (m[3]) r.memo = m[3];
-            if (r[key] !== b) L(`${key === 'aff' ? '♥' : '🤝'} ${r.name} ${signed(r[key] - b)}`);
-            if (key === 'aff' && r[key] > b) jealousyFrom(s, r.name, r[key] - b, info);
-            updateStage(s, r, info);
-            return;
-        }
-        case 'rel': {
-            const rl = ensure(s, 'rel');
-            let nm, label, memo;
-            if (val.includes('=')) { [nm, label] = val.split('=').map(x => x.trim()); [label, memo] = splitBar(label); }
-            else [nm, label, memo] = splitBar(val);
-            nm = personName(s, nm);
-            if (!nm) return;
-            let r = findBy(rl.user, nm);
-            if (!r) { r = { name: nm, label: '', aff: 0, trust: 0, memo: '', stage: -1, jealous: 0, met: s.data.calendar ? dateShort(s.data.calendar) : '' }; rl.user.push(r); updateStage(s, r, info, true); }
-            if (label && label !== r.label) { r.label = label; L(`💞 ${r.name} = ${label}`); }
-            if (memo) r.memo = memo;
-            return;
-        }
-        case 'pair': {
-            const rl = ensure(s, 'rel');
-            const m = val.match(/^(.+?)\s*(?:&|와|과|,|↔|-)\s*(.+?)\s*[=|]\s*(.+)$/);
-            if (!m) return;
-            const [label, memo] = splitBar(m[3]);
-            const ex = rl.pairs.find(p => (norm(p.a) === norm(m[1]) && norm(p.b) === norm(m[2])) || (norm(p.a) === norm(m[2]) && norm(p.b) === norm(m[1])));
-            if (ex) { ex.label = label; if (memo) ex.memo = memo; } else rl.pairs.push({ a: m[1].trim(), b: m[2].trim(), label, memo: memo ?? '' });
-            L(`💞 ${m[1].trim()}↔${m[2].trim()}: ${label}`);
-            return;
-        }
-        case 'date': {
-            const cal = ensure(s, 'calendar');
-            // 「days: 2」처럼 부호 없이 와도 「며칠 지남」으로 (예전엔 그달 2일로 날아갔음)
-            const daysKey = /^(days|날짜이동)$/i.test(String(rawKey).trim());
-            const p = /^[+\-−]\s*\d/.test(val) ? parseNum(val.replace(/일.*$/, '')) : daysKey && /^\d{1,3}\s*(일|days?)?$/i.test(val) ? parseNum(`+${parseInt(val, 10)}`) : null;
-            const before = dayIndex(cal);
-            if (p) addDays(cal, p.v);
-            else {
-                const dt = parseDate(cal, val); if (!dt) return;
-                cal.y = dt.y ?? cal.y;
-                if (dt.y === null && (dt.m < cal.m || (dt.m === cal.m && dt.d < cal.d))) cal.y++;
-                cal.m = clamp(dt.m, 1, cal.months.length); cal.d = clamp(dt.d, 1, cal.months[cal.m - 1].days);
-            }
-            const diff = dayIndex(cal) - before;
-            if (diff > 0) dayTick(s, info, before, dayIndex(cal));
-            if (diff) {
-                L(`📅 ${diff > 0 ? `+${diff}일` : `${diff}일`}`);
-                const ev = eventsOn(cal, cal.y, cal.m, cal.d);
-                if (ev.length) info.alerts.push(`오늘의 일정: ${ev.map(e => e.title).join(', ')}`);
-            }
-            return;
-        }
-        case 'time': {
-            const cal = ensure(s, 'calendar');
-            if (val !== cal.time) { cal.time = val; L(`🕐 ${val}`); }
-            return;
-        }
-        case 'event': {
-            const cal = ensure(s, 'calendar');
-            const [when, title, desc] = splitBar(val);
-            const dt = parseDate(cal, when);
-            if (!dt || !title) return;
-            const rm = /^[-−]/.test(title); const tt = title.replace(/^[+\-−]\s*/, '');
-            const k = cal.events.findIndex(e => norm(e.title) === norm(tt));
-            if (rm) { if (k >= 0) cal.events.splice(k, 1); return; }
-            const e = { y: dt.y ?? (dt.m < cal.m || (dt.m === cal.m && dt.d < cal.d) ? cal.y + 1 : cal.y), m: dt.m, d: dt.d, title: tt, desc: desc ?? '', repeat: 'once' };
-            if (k >= 0) cal.events[k] = { ...cal.events[k], ...e }; else cal.events.push(e);
-            L(`📅 일정: ${tt}`);
-            return;
-        }
-        case 'ach': {
-            const ac = ensure(s, 'ach');
-            const [nm, desc] = splitBar(val);
-            const rm = /^[-−]/.test(nm); const n = nm.replace(/^[+\-−]\s*/, '');
-            let a = findBy(ac.list, n);
-            if (rm) { if (a) a.done = false; return; }
-            if (!a) { a = { name: n, desc: desc ?? '', done: false, hidden: false, at: '' }; ac.list.push(a); }
-            if (!a.done) {
-                a.done = true; a.at = stamp(s);
-                L(`🏆 ${a.name}`); info.alerts.push(`업적 달성 — ${a.name}`);
-            }
-            return;
-        }
-        case 'memo': {
-            const mm = ensure(s, 'memo');
-            mm.list.push({ id: `${info.seed}:${mm.list.length}`, text: val, by: 'ai', inject: true, pin: false });
-            if (mm.list.length > 40) { const k = mm.list.findIndex(x => x.by === 'ai' && !x.pin); if (k >= 0) mm.list.splice(k, 1); }
-            L('📝 메모');
-            return;
-        }
-        case 'msg': {
-            const [nm, ...rest] = splitBar(val);
-            const text = rest.join(' | ');
-            if (!nm || !text) return;
-            // v2.7.21: 속마음(이모티콘 · 카모지)을 msg 키로 적은 답 — 글자 없이 그림 · 기호뿐이고 관계에 있는 사람이면 속마음으로 (연락 대화방에 「(￣ヘ￣)」가 쌓이지 않게)
-            const mm = settings().mindMode;
-            if ((mm === 'emoji' || mm === 'kaomoji') && !/[A-Za-z0-9가-힣]/.test(text) && findBy(s.data.rel?.user ?? [], nm)) { applyOp(s, 'mind', val, info); return; }
-            const ct = ensure(s, 'contact');
-            const who = findBy(ct.contacts, nm)?.name ?? nm.trim();
-            if (!findBy(ct.contacts, who)) ct.contacts.push({ name: who, handle: '', status: '', courier: '' });
-            const t = nowTick(s, info.meta);
-            const letter = letterMode(ct);
-            const cour = letter ? (findBy(ct.couriers, findBy(ct.contacts, who)?.courier)?.name ?? ct.couriers[0]?.name ?? '') : '';
-            (ct.threads[who] ??= []).push({ id: `${info.seed}:m${ct.threads[who].length}`, from: 'them', text, date: stamp(s), at: t, arrive: t, courier: cour, express: false, rush: false, pending: false, fee: 0, edited: false, ping: true });
-            if (ct.threads[who].length > THREAD_MAX) ct.threads[who] = ct.threads[who].slice(-THREAD_MAX);
-            ct.unread[who] = (ct.unread[who] ?? 0) + 1;
-            touchContact(ct, who);
-            T.got++;
-            L(`${letter ? '✉️ 편지' : '💬'} ${who}`);
-            info.alerts.push({ kind: 'msg', who, text, letter });
-            return;
-        }
-        case '_read': {
-            const ct = s.data.contact; if (ct) delete ct.unread[val];
-            return;
-        }
-        case '_nread': { // 📰 기사 읽음 (v2.7.19): 예전엔 기사 하나 열 때마다 뉴스 목록 전체(1KB+)를 편집 기록에 복사했음
-            const it = s.data.news?.items?.find(x => x.id === val); if (it) it.read = true;
-            return;
-        }
-        case 'npc': {
-            const pf = ensure(s, 'profile');
-            const [nm0, summary] = splitBar(val);
-            const nm = personName(s, nm0);
-            if (!nm) return;
-            const ex = findBy(pf.list, nm);
-            if (ex) { if (summary && !ex.summary) ex.summary = summary; return; }
-            pf.list.push({ name: nm.trim(), role: 'npc', summary: summary ?? '', fields: [] });
-            L(`👤 ${nm.trim()}`);
-            return;
-        }
-        case 'roll': {
-            const [label, dc] = splitBar(val);
-            info.roll = { label: label.trim(), dc: num(parseNum(dc)?.v, 0) };
-            L(`🎲 판정 요청: ${label.trim()}`);
-            return;
-        }
-        case '_roll': {
-            const dc = ensure(s, 'dice');
-            try { const r = JSON.parse(val); dc.log.push(r); T.rolls++; if (r.cls === 'ok' || r.cls === 'crit') T.good++; if (r.cls === 'crit') T.crit++; if (r.cls === 'fumble') T.fumble++; } catch { /* ignore */ }
-            if (dc.log.length > 30) dc.log = dc.log.slice(-30);
-            return;
-        }
-        case 'quest': {
-            const qs = ensure(s, 'quest');
-            const [title, st0, desc] = splitBar(val);
-            if (!title) return;
-            const st = QSTATUS[norm(st0)] ?? (st0 ? null : 'open');
-            let q = findBy(qs.list, title, 'title');
-            // v2.7.3: 내가 지운 퀘스트 · 끝난(완료·실패·포기) 퀘스트 · 보관함으로 간 퀘스트는 AI가 다시 살리지 못해요
-            //   (예전: 포기한 퀘스트를 AI가 「진행」이라고 다시 적으면 진행 중으로 돌아오고, 지운 퀘스트는 「받을 수 있음」으로 되살아났어요)
-            if (info.ai) {
-                const key = norm(title);
-                if ((qs.gone ?? []).some(g => norm(g) === key)) return;
-                if (q && (q.status === 'done' || q.status === 'failed')) return;
-                if (!q && (qs.archive ?? []).some(a => norm(a.title) === key)) return;
-            }
-            if (!q) {
-                if (info.ai && !st) { // 처음 보는 퀘스트의 「진행 내용」만 온 것 → 진행 중인 퀘스트로 (예전엔 진행 글이 설명이 된 「받을 수 있음」이 생겼어요)
-                    q = { id: `${info.seed}:q${qs.list.length}`, title: title.trim(), giver: '', desc: '', place: '', deadline: '', reward: '', cash: 0, items: [], status: 'active', steps: [{ text: st0, done: true }], paid: false, since: today(s) ?? undefined };
-                    qs.list.push(q); L(`📜 ${QNAME.active}: ${q.title}`);
-                    return;
-                }
-                q = { id: `${info.seed}:q${qs.list.length}`, title: title.trim(), giver: '', desc: desc ?? (st ? '' : st0 ?? ''), place: '', deadline: '', reward: '', cash: 0, items: [], status: st ?? 'open', steps: [], paid: false };
-                if (today(s) !== null) q.since = today(s);
-                qs.list.push(q);
-                L(`📜 ${QNAME[q.status]}: ${q.title}`);
-                if (q.status === 'open' || q.status === 'active') info.alerts.push(`퀘스트 — ${q.title}`);
-            } else if (st && st !== q.status) {
-                q.status = st; L(`📜 ${q.title}: ${QNAME[st]}`);
-            } else if (!st && st0) {
-                if (q.steps.some(x => norm(x.text) === norm(st0) && x.done)) return; // 같은 진행을 매 턴 다시 적어도 한 번만
-                // v2.7.5: AI가 적는 「진행 내용」은 이미 한 일 → 해 둔 단계로. 할 일 목록에 같은(비슷한) 단계가 있으면 그걸 체크해요
-                const k = norm(st0);
-                const todo = q.steps.find(x => !x.done && (norm(x.text) === k || (k.length >= 4 && (norm(x.text).includes(k) || k.includes(norm(x.text))))));
-                if (todo) { todo.done = true; L(`📜 ${q.title}: ✔ ${short(todo.text, 20)}`); }
-                else { q.steps.push({ text: st0, done: true }); L(`📜 ${q.title}: ${short(st0, 20)}`); }
-                if (q.status === 'open') q.status = 'active'; // 받지도 않은 의뢰를 진행했다면 수락한 것
-            }
-            if (desc && st) q.desc ||= desc;
-            if (q.status === 'done' && !q.paid) {
-                // 본편 AI가 끝낸 퀘스트도 보상 판정 (설정 · 같은 답은 늘 같은 결과가 나오게 답마다 정해진 주사위)
-                if (info.ai && settings().questJudgeAI) { const r = questRoll(s, q, `${info.seed}:${q.title}`); q.judge = r.cls; L(`🎲 ${q.title}: ${JUDGE_NAME[r.cls]}`); if (r.cls === 'fumble') { q.status = 'failed'; return; } payQuest(s, q, info, JUDGE_MUL[r.cls]); }
-                else payQuest(s, q, info);
-            }
-            return;
-        }
-        case '_leave': { // 🕊 이야기에서 빠진 사람 (관계 카드 단추 · v2.7.5): 이름|dead · left · back
-            const rl = s.data.rel; if (!rl) return;
-            const [nm, how] = splitBar(val);
-            const r = findBy(rl.user, nm); if (!r) return;
-            if (how === 'back') delete r.out; else r.out = how === 'dead' ? 'dead' : 'left';
-            return;
-        }
-        case '_questpay': { // id · id|판정(crit·ok·fail·fumble)
-            const [id, cls] = splitBar(val);
-            const q = s.data.quest?.list.find(x => x.id === id);
-            if (!q) return;
-            if (cls && JUDGE_MUL[cls] !== undefined) {
-                q.judge = cls;
-                if (cls === 'fumble') { q.status = 'failed'; return; } // 대실패: 보상 없이 실패
-                q.status = 'done'; if (!q.paid) payQuest(s, q, info, JUDGE_MUL[cls]);
-            } else { q.status = 'done'; if (!q.paid) payQuest(s, q, info); }
-            return;
-        }
-        case 'news': {
-            const nw = ensure(s, 'news');
-            const [title, body, tag] = splitBar(val);
-            if (!title) return;
-            nw.items.push({ id: `${info.seed}:n${nw.items.length}`, title, body: body ?? '', tag: tag ?? '', date: stamp(s), read: false });
-            L(`📰 ${short(title, 18)}`);
-            return;
-        }
-        case 'rumor': {
-            const gs = ensure(s, 'gossip');
-            const [title, body, about] = splitBar(val);
-            if (!title) return;
-            gs.issues.push({ id: `${info.seed}:g${gs.issues.length}`, title, body: body ?? '', about: String(about ?? '').split(/\s*[,，]\s*/).filter(Boolean), heat: 2, date: stamp(s), read: false });
-            L(`🍷 소문: ${short(title, 16)}`);
-            return;
-        }
-        case 'post': {
-            const bd = ensure(s, 'board');
-            const [author, title, body] = splitBar(val);
-            if (!title) return;
-            bd.posts.push({ id: `${info.seed}:p${bd.posts.length}`, author: author || '익명', title, body: body ?? '', date: stamp(s), mine: false, tag: '', replies: [] });
-            L(`📋 ${short(title, 18)}`);
-            return;
-        }
-        case '_memo': {
-            const mm = ensure(s, 'memo');
-            const [op, a, b] = splitBar(val);
-            if (op === 'add') mm.list.push({ id: `${info.seed}`, text: a, by: 'user', inject: true, pin: false });
-            const it = mm.list.find(x => x.id === a);
-            if (op === 'del' && it) mm.list.splice(mm.list.indexOf(it), 1);
-            if (op === 'tog' && it && (b === 'inject' || b === 'pin')) it[b] = !it[b];
-            return;
-        }
-        case '_achtog': {
-            const ac = ensure(s, 'ach');
-            const a = findBy(ac.list, val);
-            if (a) { a.done = !a.done; a.at = a.done ? stamp(s) : ''; }
-            return;
-        }
-        default: return;
-    }
+    if (Object.hasOwn(OPS, key)) OPS[key](s, val, info, L, T, key, rawKey);
 }
+// ───── 변화량 처리기: 예전엔 applyOp 한 함수의 switch 안에 다 들어 있었음 → 종류마다 함수 하나
+// 모두 (s 상태, val 값, info 이번 메시지 정보, L 칩 글 남기기, T 집계, key 정리한 키, rawKey 원래 키)를 받고, 돌려주는 값은 쓰지 않는다
+// 새 종류: KEYMAP · KEY_MOD에 키를 넣고 → 여기 함수를 쓰고 → 맨 아래 OPS 표에 올린다
+function opXAlert(s, val, info, L, T, key, rawKey) { if (val) info.alerts.push(val); return; }
+function opBgm(s, val, info, L, T, key, rawKey) {
+    const mu = ensure(s, 'music');
+    const [head, mood, why] = splitBar(val);
+    const hm = head.match(/^(.+?)\s+(?:-|–|—|by|\/)\s+(.+)$/i);
+    const title = (hm ? hm[1] : head).replace(/^["“'「『]|["”'」』]$/g, '').trim();
+    const artist = hm ? hm[2].replace(/^["“'「『]|["”'」』]$/g, '').trim() : '';
+    if (!title || norm(title) === norm(mu.now?.title) || /^(없음|none|-)$/i.test(title)) return;
+    // 가벼운 모델이 매 턴 곡을 바꾸지 않게: 본편 답에서는 3턴에 한 번까지 (버튼으로 고른 건 바로)
+    const fromAI = !String(info.seed).includes(':adj:');
+    if (fromAI && mu.turn !== undefined && s.turn - mu.turn < 3) return;
+    if (fromAI) mu.turn = s.turn;
+    mu.now = { title, artist, mood: mood ?? '', why: why ?? '', date: stamp(s) };
+    mu.log.push(mu.now);
+    if (mu.log.length > 30) mu.log.shift();
+    L(`♪ ${short(title, 16)}`);
+    info.alerts.push({ kind: 'music', title, artist, text: mood ?? '' });
+    return;
+}
+function opSns(s, val, info, L, T, key, rawKey) {
+    const sn = ensure(s, 'sns');
+    const [author, text, pic, tags] = splitBar(val);
+    if (!author || !(text || pic)) return;
+    if (!String(info.seed).includes(':adj:')) { if (sn.turn !== undefined && s.turn - sn.turn < 2) return; sn.turn = s.turn; } // 본편 답에서는 2턴에 한 번까지
+    sn.posts.push({ id: `${info.seed}:s${sn.posts.length}`, author, text: text ?? '', pic: pic ?? '', tags: tags ?? '', likes: Math.floor(seeded(`${info.seed}:sl${sn.posts.length}`)() * 60) + 3, date: stamp(s), mine: false, liked: false, replies: [] });
+    L(`#️⃣ ${author}`);
+    if (findBy(s.data.rel?.user ?? [], author)) info.alerts.push({ kind: 'sns', who: author, text: text || pic });
+    return;
+}
+function opCustom(s, val, info, L, T, key, rawKey) {
+    const cu = ensure(s, 'custom');
+    let [tn, rest] = splitBar(val);
+    if (rest === undefined) { rest = tn; tn = ''; }
+    const m = rest.match(/^\s*\+?\s*(.+?)\s*(?:=\s*(.+)|([+\-−]\s*[\d.,]+))\s*$/);
+    if (!m) return;
+    const fname = m[1].trim();
+    let tab = tn ? findBy(cu.tabs, tn) : cu.tabs.find(t => findBy(t.fields, fname, 'k'));
+    if (!tab) { if (!tn) return; tab = { name: tn.trim(), icon: '📌', note: '', inject: true, fields: [] }; cu.tabs.push(tab); }
+    let f = findBy(tab.fields, fname, 'k');
+    const isNum = m[3] !== undefined || /^[+\-−]?[\d.,]+$/.test(String(m[2] ?? '').trim());
+    if (!f) { f = { k: fname, type: isNum ? 'num' : 'text', v: isNum ? 0 : '', max: 100, desc: '' }; tab.fields.push(f); }
+    if (f.type === 'text') { const v = String(m[2] ?? m[3] ?? '').trim(); if (v !== f.v) { f.v = v; L(`${tab.icon} ${f.k}: ${short(v, 14)}`); } return; }
+    const p = parseNum(m[3] !== undefined ? m[3].replace(/\s+/g, '') : `=${m[2]}`);
+    if (!p) return;
+    const b = f.v;
+    f.v = p.mode === 'add' ? b + p.v : p.v;
+    if (f.type === 'bar') f.v = clamp(f.v, 0, f.max);
+    if (f.v !== b) L(`${tab.icon} ${f.k} ${signed(f.v - b)}`);
+    return;
+}
+function opLife(s, val, info, L, T, key, rawKey) {
+    if (!settings().offscreen) return;
+    const rl = ensure(s, 'rel');
+    const [who, text] = splitBar(val);
+    if (!who || !text) return;
+    rl.life.push({ who, text, date: stamp(s) });
+    if (rl.life.length > 20) rl.life.shift();
+    L(`🌙 ${who}`);
+    info.alerts.push({ kind: 'life', who, text });
+    return;
+}
+function opMind(s, val, info, L, T, key, rawKey) { // 💭 속마음 · 이모티콘 · 카모지 (이름 | 내용) — 마지막 것만 둠
+    const rl = s.data.rel; if (!rl) return;
+    const [nm, ...rest] = splitBar(val); const text = rest.join(' | ').trim();
+    const r = findBy(rl.user, nm); if (!r || !text) return;
+    r.mind = { text: cleanMind(text), turn: s.turn };
+    if (!r.mind.text) delete r.mind;
+    return;
+}
+function opJealous(s, val, info, L, T, key, rawKey) {
+    const rl = ensure(s, 'rel');
+    const m = val.match(/^(.+?)\s*([=+\-−]\s*[\d.]+)\s*$/); if (!m) return;
+    const r = findBy(rl.user, m[1]); if (!r) return;
+    const p = parseNum(m[2].replace(/\s+/g, '')); if (!p) return;
+    const b = r.jealous; r.jealous = clamp(Math.round(p.mode === 'add' ? b + p.v : p.v), 0, 100);
+    if (r.jealous !== b) L(`💢 ${r.name} ${signed(r.jealous - b)}`);
+    return;
+}
+function opConfess(s, val, info, L, T, key, rawKey) { // 로맨스 보정: AI는 「고백이 오갔다」고 알리기만, 확정은 유저가
+    if (!settings().romBond) return;
+    const rl = ensure(s, 'rel');
+    const [nm] = splitBar(val);
+    const r = findBy(rl.user, nm.replace(/^[+]\s*/, ''));
+    if (!r || r.bond || r.noLove) return;
+    if (r.bondAsk && s.turn - (r.bondAskAt ?? 0) < 10) return; // 「아직」을 고른 뒤 10턴 안엔 다시 안 물어봄
+    r.bondAsk = true; r.bondAskAt = s.turn;
+    L(`💌 ${r.name}: 고백?`);
+    info.alerts.push({ kind: 'confess', who: r.name }); // index.js가 「연인으로 확정할까요?」 창을 띄운다
+    return;
+}
+function opXNolove(s, val, info, L, T, key, rawKey) { // 💗 애정 꺼 두기 / 다시 켜기 (관계 탭 버튼)
+    const rl = ensure(s, 'rel');
+    const r = findBy(rl.user, val); if (!r) return;
+    if (key === '_nolove') r.noLove = true; else delete r.noLove;
+    (s.nolove ??= {})[norm(r.name)] = !!r.noLove; // 관계 칸을 통째로 저장해도 유지
+    r.stage = -1; updateStage(s, r, info, true);
+    return;
+}
+function opXBond(s, val, info, L, T, key, rawKey) {
+    const rl = ensure(s, 'rel');
+    const r = findBy(rl.user, val); if (!r) return;
+    r.bond = key === '_bond'; r.bondAsk = false;
+    (s.bonds ??= {})[norm(r.name)] = r.bond; // 연인 확정은 따로 기억 → 나중에 관계 칸을 통째로 저장해도 안 풀림
+    if (r.bond) updateStage(s, r, info);
+    else { r.stage = -1; updateStage(s, r, info, true); }
+    return;
+}
+function opConcern(s, val, info, L, T, key, rawKey) {
+    if (!settings().romDrive) return;
+    const rl = ensure(s, 'rel');
+    const [nm, a, b] = splitBar(val);
+    const r = findBy(rl.user, nm); if (!r) return;
+    if (key === 'concern') { const v = String(a ?? '').trim(); if (v === r.concern) return; r.concern = /^(없음|none|-)$/i.test(v) ? '' : v; L(`💭 ${r.name}`); }
+    else { if (a) r.likes = a; if (b) r.dislikes = b; }
+    return;
+}
+function opXPeekday(s, val, info, L, T, key, rawKey) { s.peek = { day: today(s) ?? s.turn, n: ((s.peek?.day === (today(s) ?? s.turn)) ? s.peek.n : 0) + 1 }; return; }
+function opCurse(s, val, info, L, T, key, rawKey) {
+    const [n0, eff, days, cure, kind] = splitBar(val);
+    const nm = n0.replace(/^[+\-−]\s*/, '').trim();
+    if (!nm) return;
+    const f = ensure(s, 'fate');
+    if (/^[-−]/.test(n0) || /^(해제|없음|풀림)$/.test(eff ?? '')) {
+        const ex = findBy(f.curses, nm);
+        if (ex) { f.curses.splice(f.curses.indexOf(ex), 1); L(`해제: ${ex.name}`); }
+        return;
+    }
+    addCurse(s, { name: nm, kind: /축복|bless/i.test(`${kind ?? ''}${rawKey}`) ? 'bless' : 'curse', effects: String(eff ?? '').split(/\s*[,，]\s*/).filter(Boolean), days: parseInt(days, 10) > 0 ? parseInt(days, 10) : null, cure: cure ?? '' }, info);
+    return;
+}
+function opXEffect(s, val, info, L, T, key, rawKey) { applyLines(s, val, info); return; }
+function opWeather(s, val, info, L, T, key, rawKey) { const cal = ensure(s, 'calendar'); if (val !== cal.weather) { cal.weather = val; L(`날씨: ${val}`); } return; }
+function opXTravel(s, val, info, L, T, key, rawKey) {
+    // 지도에서 이동: 위치 + 칸 수만큼 시간대가 흐름(하루를 넘기면 날짜도) + 요금
+    const mp = s.data.map; if (!mp) return;
+    const p = findBy(mp.places, val); if (!p) return;
+    if (norm(p.name) === norm(mp.here)) return; // 이미 여기
+    const hops = hopsBetween(mp, mp.here, p.name);
+    applyOp(s, 'loc', p.name, info);
+    const cal = s.data.calendar;
+    if (cal && hops > 0 && info.mods?.calendar !== false) {
+        let i = Math.max(0, cal.times.indexOf(cal.time)), days = 0;
+        for (let k = 0; k < hops; k++) { i++; if (i >= cal.times.length) { i = 0; days++; } }
+        if (days) applyOp(s, 'date', `+${days}`, info);
+        applyOp(s, 'time', cal.times[i], info);
+    }
+    if (p.fare && s.data.wallet) applyOp(s, 'cash', `-${p.fare}`, info);
+    return;
+}
+function opXTrash(s, val, info, L, T, key, rawKey) {
+    const hm = s.data.home; if (!hm) return;
+    const [nm, price] = splitBar(val);
+    const k = hm.storage.findIndex(x => norm(x) === norm(nm)); if (k < 0) return;
+    const item = hm.storage.splice(k, 1)[0];
+    if (key === '_trash') { hm.trash.push({ name: item, date: stamp(s) }); if (hm.trash.length > 20) hm.trash.shift(); L(`🗑 ${item}`); }
+    else { const p = Math.max(0, Math.round(num(price, 0))); if (p) applyOp(s, 'cash', `+${p}`, info); L(`♻ ${item} 중고 판매`); }
+    return;
+}
+function opXPurge(s, val, info, L, T, key, rawKey) { // 🗑 완전 삭제: 「버렸다」 기록을 바꿔 쓴 것 — 창고에서 조용히 빼기만 (쓰레기통·기록·라벨 없음)
+    const hm = s.data.home; if (!hm) return;
+    const k = hm.storage.findIndex(x => norm(x) === norm(val));
+    if (k >= 0) hm.storage.splice(k, 1);
+    return;
+}
+function opXRestore(s, val, info, L, T, key, rawKey) {
+    const hm = s.data.home; if (!hm) return;
+    const k = hm.trash.findIndex(x => norm(x.name) === norm(val)); if (k < 0) return;
+    hm.storage.push(hm.trash.splice(k, 1)[0].name); L(`↩ ${val}`);
+    return;
+}
+function opXDraw(s, val, info, L, T, key, rawKey) {
+    // 뽑은 카드 자체를 기록에 담는다 (나중에 덱을 고쳐도 지난 결과가 바뀌지 않게). 옛 기록(번호)도 읽는다.
+    let card = null;
+    try { card = val.startsWith('{') ? JSON.parse(val) : s.data.fate?.deck[Number(val)]; } catch { /* broken */ }
+    if (card?.title) drawCard(s, card, info);
+    return;
+}
+function opXLoan(s, val, info, L, T, key, rawKey) {
+    const w = ensure(s, 'wallet');
+    const [kind0, amt0, item] = splitBar(val);
+    const kind = LOAN_KIND[kind0] ? kind0 : 'bank';
+    const amount = Math.max(0, Math.round(num(amt0, 0)));
+    if (!amount) return;
+    const K = LOAN_KIND[kind];
+    const t = today(s);
+    if (kind === 'pawn' && item) { const ex = findBy(w.items, item); if (!ex) return; ex.qty -= 1; if (ex.qty <= 0) w.items.splice(w.items.indexOf(ex), 1); }
+    w.loans.push({ id: `${info.seed}:loan${w.loans.length}`, kind, lender: K.name, principal: amount, owed: Math.round(amount * (1 + K.rate / 100)), due: t === null ? null : t + K.days, item: item ?? '', status: 'open' });
+    w.cash += amount;
+    L(`💰 ${K.name} +${fmtNum(amount)}`);
+    return;
+}
+function opXRepay(s, val, info, L, T, key, rawKey) {
+    const w = s.data.wallet; if (!w) return;
+    const l = w.loans.find(x => x.id === val && (x.status === 'open' || x.status === 'late'));
+    if (!l || w.cash < l.owed) return;
+    w.cash -= l.owed; l.status = 'paid';
+    if (l.kind === 'pawn' && l.item) { const ex = findBy(w.items, l.item); if (ex) ex.qty++; else w.items.push({ name: l.item, qty: 1, desc: '', effect: '' }); }
+    L(`💸 ${l.lender} 빚 청산 −${fmtNum(l.owed)}`);
+    liftDebtCurse(s, info);
+    return;
+}
+function opStat(s, val, info, L, T, key, rawKey) {
+    // v2.7.19: 「Stamina +30, Stress -5」처럼 쉼표로 여러 개 — 예전엔 통째로 「Stamina +30, Stress」 게이지 -5로 읽어서 Stamina가 깎였음
+    if (MULTI_RE.test(val)) { for (const part of val.split(MULTI_RE)) if (part.trim()) applyOp(s, 'stat', part.trim(), info); return; }
+    const st = ensure(s, 'stats');
+    const m = val.match(/^(.+?)\s*(max|최대)?\s*([=+\-−][\d.,]+|\d[\d.,]*)\s*$/i);
+    if (!m) return;
+    let bar = findBy(st.bars, m[1]);
+    if (!bar) { bar = { name: m[1].trim(), cur: 100, max: 100, color: '', desc: '' }; st.bars.push(bar); }
+    let p = parseNum(m[3]);
+    if (!p) return;
+    if (!m[2]) p = bareFix(p, bar.cur, info);
+    if (m[2]) { const b = bar.max; bar.max = Math.max(1, p.mode === 'add' ? bar.max + p.v : p.v); bar.cur = Math.min(bar.cur, bar.max); L(`${bar.name} 최대 ${signed(bar.max - b)}`); return; }
+    const before = bar.cur;
+    bar.cur = clamp(p.mode === 'add' ? bar.cur + p.v : p.v, 0, bar.max);
+    if (bar.cur !== before) L(`${bar.name} ${signed(bar.cur - before)}`);
+    if (before > 0 && bar.cur <= 0) info.alerts.push(`${bar.name}이(가) 0이 되었다`);
+    return;
+}
+function opAttr(s, val, info, L, T, key, rawKey) {
+    if (MULTI_RE.test(val)) { for (const part of val.split(MULTI_RE)) if (part.trim()) applyOp(s, 'attr', part.trim(), info); return; }
+    const st = ensure(s, 'stats');
+    const m = val.match(/^(.+?)\s*([=+\-−][\d.]+|\d[\d.]*)\s*$/);
+    if (!m) return;
+    let a = findBy(st.attrs, m[1]);
+    if (!a) { a = { name: m[1].trim(), val: 0, desc: '' }; st.attrs.push(a); }
+    const p = bareFix(parseNum(m[2]), a.val, info); if (!p) return;
+    const b = a.val; a.val = Math.round(p.mode === 'add' ? a.val + p.v : p.v);
+    if (a.val !== b) L(`${a.name} ${signed(a.val - b)}`);
+    return;
+}
+function opCond(s, val, info, L, T, key, rawKey) {
+    // 「+Poisoned, +Tired」 → 하나씩 (v2.7.19 · 예전엔 「Poisoned, +Tired」 상태 하나가 생겼음)
+    if (!val.includes('|') && /,\s*[+\-−]/.test(val)) { for (const part of val.split(/\s*,\s*(?=[+\-−])/)) if (part.trim()) applyOp(s, 'cond', part.trim(), info); return; }
+    const st = ensure(s, 'stats');
+    const [n0, desc] = splitBar(val);
+    const rm = /^[-−]/.test(n0);
+    const name = n0.replace(/^[+\-−]\s*/, '');
+    if (!name) return;
+    const ex = findBy(st.conds, name);
+    if (rm || /^(해제|없음)$/.test(desc ?? '')) { if (ex) { st.conds.splice(st.conds.indexOf(ex), 1); L(`해제: ${ex.name}`); } return; }
+    if (ex) { if (desc) ex.desc = desc; return; }
+    st.conds.push({ name, desc: desc ?? '' }); L(`상태: ${name}`);
+    return;
+}
+function opCash(s, val, info, L, T, key, rawKey) {
+    const w = ensure(s, 'wallet');
+    const p = bareFix(parseNum(val), w.cash, info); if (!p) return;
+    const b = w.cash; w.cash = Math.max(0, p.mode === 'add' ? w.cash + p.v : p.v);
+    if (w.cash > b) T.earn += w.cash - b; else T.spend += b - w.cash;
+    if (w.cash !== b) L(`${w.currency} ${signed(w.cash - b)}`);
+    return;
+}
+function opItem(s, val, info, L, T, key, rawKey) {
+    const w = ensure(s, 'wallet');
+    const parts = val.includes('|') ? [val] : val.split(/\s*[,，/]\s*/);
+    for (const part of parts) {
+        const [head, desc] = splitBar(part);
+        // 수량은 띄어 쓰거나 x를 붙인 1~3자리 숫자만 (「AK-47」 「S24」처럼 이름 끝 숫자를 수량으로 읽지 않게)
+        const m = head.match(/^([+\-−]?)\s*(.+?)(?:(?:\s+[x×*]?|\s*[x×*])\s*(\d{1,3})\s*(?:개|장|병|권|통)?)?$/);
+        if (!m) continue;
+        const rm = m[1] === '-' || m[1] === '−';
+        const name = m[2].trim(); const q = Math.max(1, parseInt(m[3] || '1', 10));
+        if (!name) continue;
+        const ex = findBy(w.items, name);
+        if (rm) {
+            if (!ex) continue;
+            ex.qty -= q; if (ex.qty <= 0) w.items.splice(w.items.indexOf(ex), 1);
+            L(`−${ex.name}${q > 1 ? `×${q}` : ''}`);
+        } else {
+            if (ex) { ex.qty += q; if (desc) ex.desc = desc; } else w.items.push({ name, qty: q, desc: desc ?? '' });
+            L(`+${name}${q > 1 ? `×${q}` : ''}`);
+        }
+    }
+    return;
+}
+function opStock(s, val, info, L, T, key, rawKey) {
+    const sh = ensure(s, 'shop');
+    const [sn, iname, price, desc] = splitBar(val);
+    if (!sn || !iname) return;
+    let shop = findBy(sh.shops, sn);
+    if (!shop) { shop = { name: sn, desc: '', place: '', items: [] }; sh.shops.push(shop); }
+    const rm = /^[-−]/.test(iname); const nm = iname.replace(/^[+\-−]\s*/, '');
+    const ex = findBy(shop.items, nm);
+    if (rm) { if (ex) { shop.items.splice(shop.items.indexOf(ex), 1); L(`🏪 ${shop.name} −${ex.name}`); } return; }
+    const pr = parseNum(price)?.v;
+    if (ex) { if (pr !== undefined) ex.price = Math.abs(pr); if (desc) ex.desc = desc; }
+    else shop.items.push({ name: nm, price: Math.abs(pr ?? 0), desc: desc ?? '', kind: /가구|장식|deco/i.test(desc ?? '') ? 'deco' : 'item', stock: -1 });
+    L(`🏪 ${shop.name}: ${nm}`);
+    return;
+}
+function opDecor(s, val, info, L, T, key, rawKey) {
+    const hm = ensure(s, 'home');
+    const [n0, roomName] = splitBar(val);
+    const rm = /^[-−]/.test(n0); const nm = n0.replace(/^[+\-−]\s*/, '');
+    if (!nm) return;
+    if (rm) {
+        for (const r of hm.rooms) { const k = r.decor.findIndex(x => norm(x) === norm(nm)); if (k >= 0) { r.decor.splice(k, 1); break; } }
+        const k = hm.storage.findIndex(x => norm(x) === norm(nm)); if (k >= 0) hm.storage.splice(k, 1);
+        L(`🏠 −${nm}`); return;
+    }
+    const room = roomName ? findBy(hm.rooms, roomName) : null;
+    const si = hm.storage.findIndex(x => norm(x) === norm(nm));
+    if (room) {
+        if (si >= 0) hm.storage.splice(si, 1);
+        else for (const r of hm.rooms) { const k = r.decor.findIndex(x => norm(x) === norm(nm)); if (k >= 0) { r.decor.splice(k, 1); break; } }
+        room.decor.push(nm); L(`🏠 ${room.name}에 ${nm}`);
+    } else { hm.storage.push(nm); L(`🏠 창고 +${nm}`); }
+    return;
+}
+function opXTostore(s, val, info, L, T, key, rawKey) { // 🎒 소지품 → 📦 창고 (1개)
+    if (!s.data.wallet || !s.data.home) return;
+    const it = s.data.wallet.items.find(x => norm(x.name) === norm(val)); if (!it) return;
+    applyOp(s, 'item', `-${it.name} 1|`, info);
+    s.data.home.storage.push(it.name);
+    return;
+}
+function opXTobag(s, val, info, L, T, key, rawKey) { // 📦 창고 → 🎒 소지품 (1개)
+    if (!s.data.wallet || !s.data.home) return;
+    const hm = s.data.home, k = hm.storage.findIndex(x => norm(x) === norm(val)); if (k < 0) return;
+    const nm = hm.storage.splice(k, 1)[0];
+    applyOp(s, 'item', `+${nm} 1|`, info);
+    return;
+}
+function opXUnplace(s, val, info, L, T, key, rawKey) {
+    const hm = ensure(s, 'home');
+    for (const r of hm.rooms) { const k = r.decor.findIndex(x => norm(x) === norm(val)); if (k >= 0) { r.decor.splice(k, 1); hm.storage.push(val); return; } }
+    return;
+}
+function opRoom(s, val, info, L, T, key, rawKey) {
+    const hm = ensure(s, 'home');
+    const [n0, desc] = splitBar(val);
+    const nm = n0.replace(/^[+]\s*/, '');
+    const ex = findBy(hm.rooms, nm);
+    if (ex) { if (desc) ex.desc = desc; } else { hm.rooms.push({ name: nm, desc: desc ?? '', decor: [] }); L(`🏠 새 공간: ${nm}`); }
+    return;
+}
+function opLoc(s, val, info, L, T, key, rawKey) {
+    const mp = ensure(s, 'map');
+    const [nm, desc] = splitBar(val);
+    if (!nm) return;
+    let p = findBy(mp.places, nm);
+    if (!p) {
+        const from = findBy(mp.places, mp.here);
+        p = { name: nm, desc: desc ?? '', kind: '', x: NaN, y: NaN, links: from ? [from.name] : [], known: true };
+        if (from && !from.links.some(l => norm(l) === norm(nm))) from.links.push(nm);
+        mp.places.push(p);
+    }
+    p.known = true;
+    if (!T.places.some(x => norm(x) === norm(p.name))) T.places.push(p.name);
+    if (norm(mp.here) !== norm(p.name)) { mp.here = p.name; L(`📍 ${p.name}`); }
+    return;
+}
+function opPlace(s, val, info, L, T, key, rawKey) {
+    const mp = ensure(s, 'map');
+    const [nm, desc, links] = splitBar(val);
+    if (!nm) return;
+    let p = findBy(mp.places, nm);
+    const lk = String(links ?? '').split(/\s*[,，]\s*/).filter(Boolean);
+    if (!p) { p = { name: nm, desc: desc ?? '', kind: '', x: NaN, y: NaN, links: lk, known: true }; mp.places.push(p); L(`🗺️ 새 장소: ${nm}`); }
+    else { if (desc) p.desc = desc; if (!p.known) L(`🗺️ 발견: ${p.name}`); p.known = true; for (const l of lk) if (!p.links.some(x => norm(x) === norm(l))) p.links.push(l); }
+    for (const l of lk) { const q = findBy(mp.places, l); if (q && !q.links.some(x => norm(x) === norm(p.name))) q.links.push(p.name); }
+    return;
+}
+function opAff(s, val, info, L, T, key, rawKey) {
+    // 「Leon +2, Mira +3」 → 한 명씩 (v2.7.19 · 예전엔 둘 다 안 올랐음) — 「| 메모」 뒤의 쉼표는 안 나눔
+    { const head = val.split('|')[0]; if (MULTI_RE.test(head) && /\d/.test(head.split(MULTI_RE)[0])) { const parts = head.split(MULTI_RE); const tail = val.slice(head.length); parts.forEach((p0, i) => p0.trim() && applyOp(s, key, p0.trim() + (i === parts.length - 1 ? tail : ''), info)); return; } }
+    const rl = ensure(s, 'rel');
+    const m = val.match(/^(.+?)\s*([=+\-−]\s*[\d.]+|\d[\d.]*)\s*(?:\|\s*(.*))?$/);
+    if (!m) return;
+    const nm = personName(s, m[1]);
+    if (!nm) return;
+    let r = findBy(rl.user, nm);
+    if (!r) { r = { name: nm, label: '', aff: 0, trust: 0, memo: '', stage: -1, jealous: 0, met: s.data.calendar ? dateShort(s.data.calendar) : '' }; rl.user.push(r); }
+    const p = bareFix(parseNum(m[2].replace(/\s+/g, '')), r[key], info); if (!p) return;
+    if (key === 'aff' && p.mode === 'add' && p.v > 0) p.v = p.v * affMul(s); // 저주·축복의 호감 % 효과
+    const b = r[key];
+    let nv = clamp(Math.round(p.mode === 'add' ? b + p.v : p.v), -100, 100);
+    if (nv > b && info.ai && romLive(s)) nv = b + romGain(s, info, r.name, key, nv - b); // 로맨스 보정: 상한
+    if (key === 'aff' && r.noLove && nv > b) { if (info.ai) L(`🚫♥ ${r.name} (애정 꺼 둠)`); nv = b; } // 💗 애정 꺼 둔 사람: 안 오름 (내려가는 건 그대로)
+    r[key] = nv;
+    if (m[3]) r.memo = m[3];
+    if (r[key] !== b) L(`${key === 'aff' ? '♥' : '🤝'} ${r.name} ${signed(r[key] - b)}`);
+    if (key === 'aff' && r[key] > b) jealousyFrom(s, r.name, r[key] - b, info);
+    updateStage(s, r, info);
+    return;
+}
+function opRel(s, val, info, L, T, key, rawKey) {
+    const rl = ensure(s, 'rel');
+    let nm, label, memo;
+    if (val.includes('=')) { [nm, label] = val.split('=').map(x => x.trim()); [label, memo] = splitBar(label); }
+    else [nm, label, memo] = splitBar(val);
+    nm = personName(s, nm);
+    if (!nm) return;
+    let r = findBy(rl.user, nm);
+    if (!r) { r = { name: nm, label: '', aff: 0, trust: 0, memo: '', stage: -1, jealous: 0, met: s.data.calendar ? dateShort(s.data.calendar) : '' }; rl.user.push(r); updateStage(s, r, info, true); }
+    if (label && label !== r.label) { r.label = label; L(`💞 ${r.name} = ${label}`); }
+    if (memo) r.memo = memo;
+    return;
+}
+function opPair(s, val, info, L, T, key, rawKey) {
+    const rl = ensure(s, 'rel');
+    const m = val.match(/^(.+?)\s*(?:&|와|과|,|↔|-)\s*(.+?)\s*[=|]\s*(.+)$/);
+    if (!m) return;
+    const [label, memo] = splitBar(m[3]);
+    const ex = rl.pairs.find(p => (norm(p.a) === norm(m[1]) && norm(p.b) === norm(m[2])) || (norm(p.a) === norm(m[2]) && norm(p.b) === norm(m[1])));
+    if (ex) { ex.label = label; if (memo) ex.memo = memo; } else rl.pairs.push({ a: m[1].trim(), b: m[2].trim(), label, memo: memo ?? '' });
+    L(`💞 ${m[1].trim()}↔${m[2].trim()}: ${label}`);
+    return;
+}
+function opDate(s, val, info, L, T, key, rawKey) {
+    const cal = ensure(s, 'calendar');
+    // 「days: 2」처럼 부호 없이 와도 「며칠 지남」으로 (예전엔 그달 2일로 날아갔음)
+    const daysKey = /^(days|날짜이동)$/i.test(String(rawKey).trim());
+    const p = /^[+\-−]\s*\d/.test(val) ? parseNum(val.replace(/일.*$/, '')) : daysKey && /^\d{1,3}\s*(일|days?)?$/i.test(val) ? parseNum(`+${parseInt(val, 10)}`) : null;
+    const before = dayIndex(cal);
+    if (p) addDays(cal, p.v);
+    else {
+        const dt = parseDate(cal, val); if (!dt) return;
+        cal.y = dt.y ?? cal.y;
+        if (dt.y === null && (dt.m < cal.m || (dt.m === cal.m && dt.d < cal.d))) cal.y++;
+        cal.m = clamp(dt.m, 1, cal.months.length); cal.d = clamp(dt.d, 1, cal.months[cal.m - 1].days);
+    }
+    const diff = dayIndex(cal) - before;
+    if (diff > 0) dayTick(s, info, before, dayIndex(cal));
+    if (diff) {
+        L(`📅 ${diff > 0 ? `+${diff}일` : `${diff}일`}`);
+        const ev = eventsOn(cal, cal.y, cal.m, cal.d);
+        if (ev.length) info.alerts.push(`오늘의 일정: ${ev.map(e => e.title).join(', ')}`);
+    }
+    return;
+}
+function opTime(s, val, info, L, T, key, rawKey) {
+    const cal = ensure(s, 'calendar');
+    if (val !== cal.time) { cal.time = val; L(`🕐 ${val}`); }
+    return;
+}
+function opEvent(s, val, info, L, T, key, rawKey) {
+    const cal = ensure(s, 'calendar');
+    const [when, title, desc] = splitBar(val);
+    const dt = parseDate(cal, when);
+    if (!dt || !title) return;
+    const rm = /^[-−]/.test(title); const tt = title.replace(/^[+\-−]\s*/, '');
+    const k = cal.events.findIndex(e => norm(e.title) === norm(tt));
+    if (rm) { if (k >= 0) cal.events.splice(k, 1); return; }
+    const e = { y: dt.y ?? (dt.m < cal.m || (dt.m === cal.m && dt.d < cal.d) ? cal.y + 1 : cal.y), m: dt.m, d: dt.d, title: tt, desc: desc ?? '', repeat: 'once' };
+    if (k >= 0) cal.events[k] = { ...cal.events[k], ...e }; else cal.events.push(e);
+    L(`📅 일정: ${tt}`);
+    return;
+}
+function opAch(s, val, info, L, T, key, rawKey) {
+    const ac = ensure(s, 'ach');
+    const [nm, desc] = splitBar(val);
+    const rm = /^[-−]/.test(nm); const n = nm.replace(/^[+\-−]\s*/, '');
+    let a = findBy(ac.list, n);
+    if (rm) { if (a) a.done = false; return; }
+    if (!a) { a = { name: n, desc: desc ?? '', done: false, hidden: false, at: '' }; ac.list.push(a); }
+    if (!a.done) {
+        a.done = true; a.at = stamp(s);
+        L(`🏆 ${a.name}`); info.alerts.push(`업적 달성 — ${a.name}`);
+    }
+    return;
+}
+function opMemo(s, val, info, L, T, key, rawKey) {
+    const mm = ensure(s, 'memo');
+    mm.list.push({ id: `${info.seed}:${mm.list.length}`, text: val, by: 'ai', inject: true, pin: false });
+    if (mm.list.length > 40) { const k = mm.list.findIndex(x => x.by === 'ai' && !x.pin); if (k >= 0) mm.list.splice(k, 1); }
+    L('📝 메모');
+    return;
+}
+function opMsg(s, val, info, L, T, key, rawKey) {
+    const [nm, ...rest] = splitBar(val);
+    const text = rest.join(' | ');
+    if (!nm || !text) return;
+    // v2.7.21: 속마음(이모티콘 · 카모지)을 msg 키로 적은 답 — 글자 없이 그림 · 기호뿐이고 관계에 있는 사람이면 속마음으로 (연락 대화방에 「(￣ヘ￣)」가 쌓이지 않게)
+    const mm = settings().mindMode;
+    if ((mm === 'emoji' || mm === 'kaomoji') && !/[A-Za-z0-9가-힣]/.test(text) && findBy(s.data.rel?.user ?? [], nm)) { applyOp(s, 'mind', val, info); return; }
+    const ct = ensure(s, 'contact');
+    const who = findBy(ct.contacts, nm)?.name ?? nm.trim();
+    if (!findBy(ct.contacts, who)) ct.contacts.push({ name: who, handle: '', status: '', courier: '' });
+    const t = nowTick(s, info.meta);
+    const letter = letterMode(ct);
+    const cour = letter ? (findBy(ct.couriers, findBy(ct.contacts, who)?.courier)?.name ?? ct.couriers[0]?.name ?? '') : '';
+    (ct.threads[who] ??= []).push({ id: `${info.seed}:m${ct.threads[who].length}`, from: 'them', text, date: stamp(s), at: t, arrive: t, courier: cour, express: false, rush: false, pending: false, fee: 0, edited: false, ping: true });
+    if (ct.threads[who].length > THREAD_MAX) ct.threads[who] = ct.threads[who].slice(-THREAD_MAX);
+    ct.unread[who] = (ct.unread[who] ?? 0) + 1;
+    touchContact(ct, who);
+    T.got++;
+    L(`${letter ? '✉️ 편지' : '💬'} ${who}`);
+    info.alerts.push({ kind: 'msg', who, text, letter });
+    return;
+}
+function opXRead(s, val, info, L, T, key, rawKey) {
+    const ct = s.data.contact; if (ct) delete ct.unread[val];
+    return;
+}
+function opXNread(s, val, info, L, T, key, rawKey) { // 📰 기사 읽음 (v2.7.19): 예전엔 기사 하나 열 때마다 뉴스 목록 전체(1KB+)를 편집 기록에 복사했음
+    const it = s.data.news?.items?.find(x => x.id === val); if (it) it.read = true;
+    return;
+}
+function opNpc(s, val, info, L, T, key, rawKey) {
+    const pf = ensure(s, 'profile');
+    const [nm0, summary] = splitBar(val);
+    const nm = personName(s, nm0);
+    if (!nm) return;
+    const ex = findBy(pf.list, nm);
+    if (ex) { if (summary && !ex.summary) ex.summary = summary; return; }
+    pf.list.push({ name: nm.trim(), role: 'npc', summary: summary ?? '', fields: [] });
+    L(`👤 ${nm.trim()}`);
+    return;
+}
+function opRoll(s, val, info, L, T, key, rawKey) {
+    const [label, dc] = splitBar(val);
+    info.roll = { label: label.trim(), dc: num(parseNum(dc)?.v, 0) };
+    L(`🎲 판정 요청: ${label.trim()}`);
+    return;
+}
+function opXRoll(s, val, info, L, T, key, rawKey) {
+    const dc = ensure(s, 'dice');
+    try { const r = JSON.parse(val); dc.log.push(r); T.rolls++; if (r.cls === 'ok' || r.cls === 'crit') T.good++; if (r.cls === 'crit') T.crit++; if (r.cls === 'fumble') T.fumble++; } catch { /* ignore */ }
+    if (dc.log.length > 30) dc.log = dc.log.slice(-30);
+    return;
+}
+function opQuest(s, val, info, L, T, key, rawKey) {
+    const qs = ensure(s, 'quest');
+    const [title, st0, desc] = splitBar(val);
+    if (!title) return;
+    const st = QSTATUS[norm(st0)] ?? (st0 ? null : 'open');
+    let q = findBy(qs.list, title, 'title');
+    // v2.7.3: 내가 지운 퀘스트 · 끝난(완료·실패·포기) 퀘스트 · 보관함으로 간 퀘스트는 AI가 다시 살리지 못해요
+    //   (예전: 포기한 퀘스트를 AI가 「진행」이라고 다시 적으면 진행 중으로 돌아오고, 지운 퀘스트는 「받을 수 있음」으로 되살아났어요)
+    if (info.ai) {
+        const key = norm(title);
+        if ((qs.gone ?? []).some(g => norm(g) === key)) return;
+        if (q && (q.status === 'done' || q.status === 'failed')) return;
+        if (!q && (qs.archive ?? []).some(a => norm(a.title) === key)) return;
+    }
+    if (!q) {
+        if (info.ai && !st) { // 처음 보는 퀘스트의 「진행 내용」만 온 것 → 진행 중인 퀘스트로 (예전엔 진행 글이 설명이 된 「받을 수 있음」이 생겼어요)
+            q = { id: `${info.seed}:q${qs.list.length}`, title: title.trim(), giver: '', desc: '', place: '', deadline: '', reward: '', cash: 0, items: [], status: 'active', steps: [{ text: st0, done: true }], paid: false, since: today(s) ?? undefined };
+            qs.list.push(q); L(`📜 ${QNAME.active}: ${q.title}`);
+            return;
+        }
+        q = { id: `${info.seed}:q${qs.list.length}`, title: title.trim(), giver: '', desc: desc ?? (st ? '' : st0 ?? ''), place: '', deadline: '', reward: '', cash: 0, items: [], status: st ?? 'open', steps: [], paid: false };
+        if (today(s) !== null) q.since = today(s);
+        qs.list.push(q);
+        L(`📜 ${QNAME[q.status]}: ${q.title}`);
+        if (q.status === 'open' || q.status === 'active') info.alerts.push(`퀘스트 — ${q.title}`);
+    } else if (st && st !== q.status) {
+        q.status = st; L(`📜 ${q.title}: ${QNAME[st]}`);
+    } else if (!st && st0) {
+        if (q.steps.some(x => norm(x.text) === norm(st0) && x.done)) return; // 같은 진행을 매 턴 다시 적어도 한 번만
+        // v2.7.5: AI가 적는 「진행 내용」은 이미 한 일 → 해 둔 단계로. 할 일 목록에 같은(비슷한) 단계가 있으면 그걸 체크해요
+        const k = norm(st0);
+        const todo = q.steps.find(x => !x.done && (norm(x.text) === k || (k.length >= 4 && (norm(x.text).includes(k) || k.includes(norm(x.text))))));
+        if (todo) { todo.done = true; L(`📜 ${q.title}: ✔ ${short(todo.text, 20)}`); }
+        else { q.steps.push({ text: st0, done: true }); L(`📜 ${q.title}: ${short(st0, 20)}`); }
+        if (q.status === 'open') q.status = 'active'; // 받지도 않은 의뢰를 진행했다면 수락한 것
+    }
+    if (desc && st) q.desc ||= desc;
+    if (q.status === 'done' && !q.paid) {
+        // 본편 AI가 끝낸 퀘스트도 보상 판정 (설정 · 같은 답은 늘 같은 결과가 나오게 답마다 정해진 주사위)
+        if (info.ai && settings().questJudgeAI) { const r = questRoll(s, q, `${info.seed}:${q.title}`); q.judge = r.cls; L(`🎲 ${q.title}: ${JUDGE_NAME[r.cls]}`); if (r.cls === 'fumble') { q.status = 'failed'; return; } payQuest(s, q, info, JUDGE_MUL[r.cls]); }
+        else payQuest(s, q, info);
+    }
+    return;
+}
+function opXLeave(s, val, info, L, T, key, rawKey) { // 🕊 이야기에서 빠진 사람 (관계 카드 단추 · v2.7.5): 이름|dead · left · back
+    const rl = s.data.rel; if (!rl) return;
+    const [nm, how] = splitBar(val);
+    const r = findBy(rl.user, nm); if (!r) return;
+    if (how === 'back') delete r.out; else r.out = how === 'dead' ? 'dead' : 'left';
+    return;
+}
+function opXQuestpay(s, val, info, L, T, key, rawKey) { // id · id|판정(crit·ok·fail·fumble)
+    const [id, cls] = splitBar(val);
+    const q = s.data.quest?.list.find(x => x.id === id);
+    if (!q) return;
+    if (cls && JUDGE_MUL[cls] !== undefined) {
+        q.judge = cls;
+        if (cls === 'fumble') { q.status = 'failed'; return; } // 대실패: 보상 없이 실패
+        q.status = 'done'; if (!q.paid) payQuest(s, q, info, JUDGE_MUL[cls]);
+    } else { q.status = 'done'; if (!q.paid) payQuest(s, q, info); }
+    return;
+}
+function opNews(s, val, info, L, T, key, rawKey) {
+    const nw = ensure(s, 'news');
+    const [title, body, tag] = splitBar(val);
+    if (!title) return;
+    nw.items.push({ id: `${info.seed}:n${nw.items.length}`, title, body: body ?? '', tag: tag ?? '', date: stamp(s), read: false });
+    L(`📰 ${short(title, 18)}`);
+    return;
+}
+function opRumor(s, val, info, L, T, key, rawKey) {
+    const gs = ensure(s, 'gossip');
+    const [title, body, about] = splitBar(val);
+    if (!title) return;
+    gs.issues.push({ id: `${info.seed}:g${gs.issues.length}`, title, body: body ?? '', about: String(about ?? '').split(/\s*[,，]\s*/).filter(Boolean), heat: 2, date: stamp(s), read: false });
+    L(`🍷 소문: ${short(title, 16)}`);
+    return;
+}
+function opPost(s, val, info, L, T, key, rawKey) {
+    const bd = ensure(s, 'board');
+    const [author, title, body] = splitBar(val);
+    if (!title) return;
+    bd.posts.push({ id: `${info.seed}:p${bd.posts.length}`, author: author || '익명', title, body: body ?? '', date: stamp(s), mine: false, tag: '', replies: [] });
+    L(`📋 ${short(title, 18)}`);
+    return;
+}
+function opXMemo(s, val, info, L, T, key, rawKey) {
+    const mm = ensure(s, 'memo');
+    const [op, a, b] = splitBar(val);
+    if (op === 'add') mm.list.push({ id: `${info.seed}`, text: a, by: 'user', inject: true, pin: false });
+    const it = mm.list.find(x => x.id === a);
+    if (op === 'del' && it) mm.list.splice(mm.list.indexOf(it), 1);
+    if (op === 'tog' && it && (b === 'inject' || b === 'pin')) it[b] = !it[b];
+    return;
+}
+function opXAchtog(s, val, info, L, T, key, rawKey) {
+    const ac = ensure(s, 'ach');
+    const a = findBy(ac.list, val);
+    if (a) { a.done = !a.done; a.at = a.done ? stamp(s) : ''; }
+    return;
+}
+// 키 → 처리기
+const OPS = {
+    '_alert': opXAlert,
+    'bgm': opBgm,
+    'sns': opSns,
+    'custom': opCustom,
+    'life': opLife,
+    'mind': opMind,
+    'jealous': opJealous,
+    'confess': opConfess,
+    '_nolove': opXNolove,
+    '_love': opXNolove,
+    '_bond': opXBond,
+    '_unbond': opXBond,
+    'concern': opConcern,
+    'taste': opConcern,
+    '_peekday': opXPeekday,
+    'curse': opCurse,
+    '_effect': opXEffect,
+    'weather': opWeather,
+    '_travel': opXTravel,
+    '_trash': opXTrash,
+    '_sellused': opXTrash,
+    '_purge': opXPurge,
+    '_restore': opXRestore,
+    '_draw': opXDraw,
+    '_loan': opXLoan,
+    '_repay': opXRepay,
+    'stat': opStat,
+    'attr': opAttr,
+    'cond': opCond,
+    'cash': opCash,
+    'item': opItem,
+    'stock': opStock,
+    'decor': opDecor,
+    '_tostore': opXTostore,
+    '_tobag': opXTobag,
+    '_unplace': opXUnplace,
+    'room': opRoom,
+    'loc': opLoc,
+    'place': opPlace,
+    'aff': opAff,
+    'trust': opAff,
+    'rel': opRel,
+    'pair': opPair,
+    'date': opDate,
+    'time': opTime,
+    'event': opEvent,
+    'ach': opAch,
+    'memo': opMemo,
+    'msg': opMsg,
+    '_read': opXRead,
+    '_nread': opXNread,
+    'npc': opNpc,
+    'roll': opRoll,
+    '_roll': opXRoll,
+    'quest': opQuest,
+    '_leave': opXLeave,
+    '_questpay': opXQuestpay,
+    'news': opNews,
+    'rumor': opRumor,
+    'post': opPost,
+    '_memo': opXMemo,
+    '_achtog': opXAchtog,
+};
 // ⌛ 퀘스트 기한 (v2.7.5): 「3월 14일까지」 · 「3일 안에」 같은 기한을 달력 날짜로 바꿔 두고, 지나면 실패 · 마지막 날엔 알림
 // 기한 글을 못 읽으면(「이번 축제 전」 같은 것) 그냥 글로만 둬요. 달력이 꺼져 있으면 아무것도 안 해요.
 export function questDue(s, q) {
@@ -1470,6 +1536,15 @@ function keepFreshFeed(list, before, after, a, seed, chat) {
     return after.filter(it => !newer.has(idx(it))).concat(before.filter(it => newer.has(idx(it))));
 }
 
+// ───── 옛 채팅 한 번 손보기 ─────
+// 판이 바뀌며 저장 모양이 달라진 것을 채팅마다 한 번만 고친다 (표시는 meta.*Fix) — 계산(compute) 본문에 섞여 있던 것을 모음
+// 새 수리는 여기에 한 줄씩 보탠다
+function fixOldMeta(meta, chat) {
+    // 지운 메시지 뒤의 편집은 지울 때 당겨 둔다(clampAdjust) · 2.7.20 앞 채팅은 처음 한 번 당긴다
+    if (!meta.atFix) { clampAdjust(meta, chat.length); meta.atFix = true; }
+    // 2.7.21: 탭 고치기(✏️ 직접 편집 · 💬 AI로 수정 · 🔄 다시 생성)까지 답에 묶여서, 그 답을 리롤하면 고친 게 사라졌음 → 한 번 풀어 둠
+    if (!meta.editFix) { for (const a of meta.adjust ?? []) if (a?.an && a.set && /^(✏️|💬|🔄) /u.test(a.label ?? '')) { delete a.an; a.keep = true; } meta.editFix = true; }
+}
 const adjEvents = new Map();
 export function compute(limit, opts = {}) {
     const c = ctx();
@@ -1484,10 +1559,7 @@ export function compute(limit, opts = {}) {
     const n = Math.min(limit ?? chat.length, chat.length);
     const start = resolveStart(meta, chat);
     // 분기한 채팅의 뒷부분 편집은 채팅을 열 때 followBranch(safe.js)가 지운다 — 여기서 걸러 두기만 하면 채팅이 그 길이를 다시 넘을 때 되살아나서 거르지 않는다
-    // 지운 메시지 뒤의 편집은 지울 때 당겨 둔다(clampAdjust) · 2.7.20 앞 채팅은 처음 한 번 당긴다
-    if (!meta.atFix) { clampAdjust(meta, chat.length); meta.atFix = true; }
-    // 2.7.21: 탭 고치기(✏️ 직접 편집 · 💬 AI로 수정 · 🔄 다시 생성)까지 답에 묶여서, 그 답을 리롤하면 고친 게 사라졌음 → 한 번 풀어 둠
-    if (!meta.editFix) { for (const a of meta.adjust ?? []) if (a?.an && a.set && /^(✏️|💬|🔄) /u.test(a.label ?? '')) { delete a.an; a.keep = true; } meta.editFix = true; }
+    fixOldMeta(meta, chat);
     // 묶인 편집: 묶인 메시지가 지금 채팅에 그 스와이프로 있을 때만 · 자리는 그 메시지 바로 뒤
     moveContinued(meta, chat);
     const byKey = new Map(); chat.forEach((m, i) => { byKey.set(msgKey(m), i); rememberKey(m); });
