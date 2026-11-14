@@ -187,6 +187,10 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.11', title: '저장 놓침 막기 · 다른 상태창 알림', items: [
+        ['💾 저장', '버튼을 누르고 바로 채팅을 옮겨도 마지막 변경이 저장돼요. 탭을 닫거나 앱을 내릴 때도 바로 저장해요.'],
+        ['🔔 다른 상태창', 'MVU · RPG Companion 같은 다른 상태창이 같이 돌고 있으면 채팅마다 한 번만 알려 줘요.'],
+    ] },
     { v: '2.7.10', title: '꼼꼼 점검 — 스와이프 삭제 · 채팅 바뀜 · 안전', items: [
         ['🔀 스와이프 삭제', '앞 스와이프를 지우면 뒤 스와이프의 숫자가 조용히 바뀌던 것을 고쳤어요.'],
         ['💾 스와이프 왕복', '칩 분석 결과가 스와이프 칸에도 저장돼서, 넘겼다 돌아와도 다시 AI를 부르지 않아요.'],
@@ -923,6 +927,30 @@ function onSwipeDeleted(e) {
 function onEdited(id) { stashAt(id, { replace: true, rerender: false, save: true }); refresh(true); }
 const analyzed = new Set();
 let pingCounter = 0;
+// 다른 상태창 · 변수 확장이 같은 채팅에서 같이 돌고 있으면 한 번만 알려 준다 (v2.7.11)
+// — 둘 다 켜면 AI가 상태 태그를 두 번 써서 토큰이 늘고, 형식을 섞을 수 있다. 일부러 같이 쓰는 분도 있으니 끄라고 하진 않는다.
+function otherTrackers(m) {
+    const found = [];
+    const c = ctx();
+    const es = c.extensionSettings ?? {};
+    const off = new Set(es.disabledExtensions ?? []);
+    const rpg = 'third-party/rpg-companion-sillytavern';
+    if (es[rpg]?.enabled && !off.has(rpg)) found.push('RPG Companion');
+    const text = `${m?.mes ?? ''}`;
+    if (globalThis.Mvu || /<UpdateVariable>|_\.set\(\s*['"]/.test(text)) found.push('MVU(변수 업데이트)');
+    if (/<StatusPlaceHolderImpl\s*\/?>|<tracker>/i.test(text)) found.push('다른 상태창');
+    return found;
+}
+function checkOtherTrackers(m) {
+    try {
+        const meta = getMeta();
+        if (!meta || meta.otherWarned) return;
+        const found = otherTrackers(m);
+        if (!found.length) return;
+        meta.otherWarned = true; saveMeta();
+        toastr.info(`이 채팅에서 ${esc(found.join(' · '))}도 같이 돌고 있는 것 같아요. 둘 다 켜 두면 AI가 상태를 두 번 적느라 토큰이 늘 수 있어요. 일부러 같이 쓰시는 거라면 그대로 두셔도 돼요.`, TITLE, { timeOut: 12000, escapeHtml: false });
+    } catch (e) { ssWarn(LOG, 'others', e); }
+}
 function onCharRendered(id, type) {
     refreshNow({ soft: true });
     notifyLatest();
@@ -936,6 +964,7 @@ function onCharRendered(id, type) {
     try { const meta = getMeta(); if (autoBake(meta)) { saveMeta(); refreshNow(); } } catch (e) { ssWarn(LOG, 'bake', e); }
     // 💡 이야기에 맞는 순간 안 쓰는 기능 한 번 추천
     maybeTip();
+    checkOtherTrackers(m);
     maybeLaterWarn(); // 오래 쓰다 생기는 문제는 나중에 한 번
     // 자동 선톡
     if (set.autoPing && modOn('contact') && app.current?.state.data.contact?.contacts.length) {

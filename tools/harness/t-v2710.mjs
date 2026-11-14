@@ -111,5 +111,23 @@ try {
         return { n, same: before === after, kb0: Math.round(kb0 / 1024), kb1: Math.round(JSON.stringify(meta.adjust).length / 1024) };
     });
     check(sl.n >= 10 && sl.same && sl.kb1 < sl.kb0, `legacy full records slimmed without changing state (${JSON.stringify(sl)})`);
+    // ⑨ (v2.7.11) 저장은 0.3초 안에 · 다른 상태창(MVU)이 같이 돌면 한 번만 알림
+    const sv = await S(async () => {
+        const c = SillyTavern.getContext(); let n = 0; const orig = c.saveMetadata; c.saveMetadata = async () => { n++; };
+        const { saveMeta } = await import('/ext/src/core.js');
+        saveMeta(); saveMeta(); saveMeta();
+        await new Promise(r => setTimeout(r, 450));
+        c.saveMetadata = orig; return n;
+    });
+    check(sv === 1, `quick saves are batched into one within 0.3s (${sv})`);
+    const toasts = await S(async () => {
+        const seen = []; const o = toastr.info; toastr.info = (t) => { seen.push(String(t)); };
+        await window.__addUser('mvu?'); await window.__addAI('ok\n<UpdateVariable>\n_.set(\'gold\', 1, 2);\n</UpdateVariable>');
+        await new Promise(r => setTimeout(r, 150));
+        await window.__addUser('again'); await window.__addAI('ok\n<UpdateVariable>\n_.set(\'gold\', 2, 3);\n</UpdateVariable>');
+        await new Promise(r => setTimeout(r, 150));
+        toastr.info = o; return seen.filter(t => t.includes('MVU')).length;
+    });
+    check(toasts === 1, `other tracker warned once (${toasts})`);
     check(!(await S(() => window.__errors.length)), 'no listener errors');
 } finally { if (logs.length) console.log(logs.slice(0, 5).join('\n')); await close(); }
