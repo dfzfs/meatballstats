@@ -35,6 +35,17 @@ try {
     const b = await last('B');
     check(b.off && await cash() === c0 + 777, 'regenerating removes the action made after the old reply · earlier one stays');
 
+    // 내 메시지 바로 뒤의 행동: 같은 분에 지우고 다시 보내도 되살아나지 않음
+    await S((u) => window.__addUser(u), 'shop'); await sleep(100);
+    await buy(5, 'U');
+    const u1 = await last('U');
+    check(u1 && !u1.off && /^u:/.test(u1.an) && await S(() => !!window.__st.chat.at(-1).extra?.ss_at), `action after my message is tied to it with a ms stamp (${u1?.an})`);
+    await S(() => window.__reload()); await sleep(150);
+    check(!(await last('U')).off, 'still tied after reload');
+    await S(async () => { const st = window.__st, old = st.chat.pop(); window.__renderAll(); await SillyTavern.getContext().eventSource.emit('message_deleted', st.chat.length);
+        st.chat.push({ name: old.name, is_user: true, is_system: false, mes: 'shop', send_date: old.send_date, extra: {} }); window.__renderAll(); await SillyTavern.getContext().eventSource.emit('user_message_rendered', st.chat.length - 1); });
+    await sleep(150);
+    check((await last('U')).off, 'deleting my message and re-sending it in the same minute drops the action');
     // 옛 꼴 열쇠 (시험판): Date 글자 · ISO 글자 → 지금 메시지에 맞춰 새 꼴로
     const mig = await S(() => { const st = window.__st, adj = st.chatMetadata.statussim.adjust, a = adj.find(x => x.label === 'A'); const m = st.chat.find(x => !x.is_user); const d = new Date(m.swipe_info[0].gen_started);
         a.an = `a:${m.name}:${String(d)}|0`; window.__SS_TEST__.api.refreshNow(); const r1 = { off: !!a._off, an: a.an };

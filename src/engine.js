@@ -1387,7 +1387,16 @@ const timeKey = (t) => {
     return x;
 };
 const msgHead = (m) => `${m?.is_user ? 'u' : 'a'}:${m?.name ?? ''}:`;
-const msgTime = (m) => { const first = m?.swipe_info?.[0]; return first?.gen_started ?? (first ? null : m?.gen_started) ?? first?.send_date ?? m?.send_date ?? ''; };
+// 내 메시지엔 생성 시각이 없고 send_date는 분 단위 → 행동을 묶을 때 메시지에 밀리초 표(extra.ss_at)를 붙여 둠 (내 메시지는 스와이프가 없어 extra가 안 바뀜)
+const msgTime = (m) => { if (m?.is_user && m?.extra?.ss_at) return m.extra.ss_at; const first = m?.swipe_info?.[0]; return first?.gen_started ?? (first ? null : m?.gen_started) ?? first?.send_date ?? m?.send_date ?? ''; };
+function stampUser(meta, m) {
+    if (!m?.is_user || m.extra?.ss_at) return;
+    const old = msgKey(m);
+    if (!m.extra || typeof m.extra !== 'object') m.extra = {};
+    m.extra.ss_at = Math.floor(Date.now() * 1000 + Math.random() * 1000);
+    const now = msgKey(m);
+    for (const a of meta.adjust ?? []) if (a.an && a.an.slice(0, a.an.lastIndexOf('|')) === old) a.an = `${now}${a.an.slice(a.an.lastIndexOf('|'))}`; // 표 붙이기 전에 묶인 것도 따라옴
+}
 export function msgKey(m) { return msgHead(m) + timeKey(msgTime(m)); }
 // 이어쓰기: 실리가 그 답의 생성 시각을 새로 써서 열쇠가 바뀜 → 시작할 때 옛 열쇠를 적어 두고, 바뀌면 묶인 편집을 새 열쇠로 옮김
 let contNote = null;
@@ -1619,7 +1628,7 @@ export async function addAdjust(entry) {
     const a = { at: ctx().chat?.length ?? 0, t, ...entry };
     // v2.7.21: 이야기 속 행동(구매 · 이동 · 판정 · 연락 …)은 바로 앞 메시지의 그 스와이프에 묶는다
     // → 그 메시지를 지우거나 · 몇 개 전으로 지우거나 · 다시 생성 · 다른 스와이프로 넘기면 같이 사라지고, 그 스와이프로 돌아오면 살아남
-    if (!isMetaEdit(a)) { const last = ctx().chat?.at(-1); if (last) a.an = anchorOf(last); }
+    if (!isMetaEdit(a)) { const last = ctx().chat?.at(-1); if (last) { stampUser(meta, last); a.an = anchorOf(last); } }
     for (const e of meta.adjust) if (e.at > a.at) e.at = a.at; // 메시지를 지운 뒤의 편집: 앞 편집이 이 편집보다 늦게 계산되지 않게 (v2.7.20)
     // 같은 칸을 통째로 덮는 기록이 이야기 진행 없이 또 오면, 앞 기록의 칸 데이터는 쓸모가 없다 (라벨만 남김) → 채팅 파일 비대 방지
     // (새 것 + 바로 앞 2개는 남겨서 '되돌리기'를 두 번까지 정확히 할 수 있게)
