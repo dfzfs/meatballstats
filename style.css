@@ -794,6 +794,11 @@ dialog.popup.ss-dlg .popup-controls .menu_button.popup-button-ok { background: v
    설정 서랍의 모든 단추는 글 길이만큼 (서랍보다 길면 띄어쓰기에서만 줄바꿈) */
 .ss-settings .menu_button { width: max-content !important; max-width: 100% !important; min-width: 0 !important; flex: 0 1 auto !important; white-space: normal !important; word-break: keep-all !important; overflow-wrap: break-word; writing-mode: horizontal-tb !important; display: inline-flex !important; align-items: center; justify-content: center; gap: 6px; text-align: center; }
 .ss-settings .menu_button > i { flex: none; }
+/* 실리 .checkbox_label 은 flex → 「이름」 글과 <small>(설명)</small>이 따로 칸이 되어 서로 밀며 세로로 쪼개졌음.
+   체크 상자만 왼쪽에 띄우고, 이름 · 설명은 한 문단으로 이어서 흐르게 */
+.ss-settings label.checkbox_label:has(> input[type="checkbox"]:first-child) { display: block !important; position: relative; padding-left: 1.85em !important; width: auto !important; min-width: 0; white-space: normal !important; word-break: keep-all; overflow-wrap: break-word; text-align: left; }
+.ss-settings label.checkbox_label:has(> input[type="checkbox"]:first-child) > input[type="checkbox"]:first-child { position: absolute; left: 0; top: .2em; margin: 0 !important; }
+.ss-settings label.checkbox_label:has(> input[type="checkbox"]:first-child) > :not(input) { display: inline !important; width: auto !important; }
 
 /* ───────── 모바일 ───────── */
 @media (max-width: 700px) {
@@ -1469,3 +1474,10 @@ dialog.popup.ss-dlg.ss-full .popup-content { max-height: none; }
     #ss-hud .ss-tb-acts { margin-left: auto; gap: 4px; }
     #ss-hud .ss-tb-acts .ss-t { width: 30px; height: 28px; }
 }
+
+/* 배경 그림 자르기 창 (v2.7.21) */
+.ss-crop-box { position: relative; width: 100%; max-width: 640px; margin: 10px auto 6px; background: repeating-conic-gradient(#e9e4da 0 25%, #f7f4ee 0 50%) 0 0 / 16px 16px; border-radius: 10px; outline: 2px solid var(--ss-acc); outline-offset: 2px; touch-action: none; overflow: hidden; }
+.ss-crop-box canvas { display: block; cursor: grab; touch-action: none; }
+.ss-crop-box canvas:active { cursor: grabbing; }
+.ss-crop-ctl { display: flex; align-items: center; gap: 8px; max-width: 640px; margin: 0 auto; }
+.ss-crop-ctl input[type="range"] { flex: 1; min-width: 0; }

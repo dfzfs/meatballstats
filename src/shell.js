@@ -7,7 +7,7 @@ import { genModule, instructModule, genGroup, GEN_GROUPS } from './ai.js';
 import { PROMPT_DEFS, P, setPrompt, countTokens, estTokens, FEATURE_NAMES } from './prompts.js';
 import { popup, confirmPopup, askConfirm, busyBtn, editorHTML, bindEditor, diffHTML, ai1, gauge, seg, applyTheme, THEMES, THEME_KEYS, themeVars, avatar, emptyBox, sec, mascot } from './kit.js';
 import { applyParts, PARTS_ACTIONS } from './parts.js';
-import { VIEW, VIEW_ACTIONS, VIEW_CHANGES, GROUPS, TAB_MOD, TAB_INFO, PSEUDO, manageHTML, miniWidgets, MINI, MINI_REL_VALS, MINI_REL_SORT, miniRelOpt, freshDot, mindList, mindBub, tileBoard, tileAct, bindTileDrag, BG_FIT, bgFitOf, bgPosOf, fitTiles, BOARD_BG } from './views.js';
+import { VIEW, VIEW_ACTIONS, VIEW_CHANGES, GROUPS, TAB_MOD, TAB_INFO, PSEUDO, manageHTML, miniWidgets, MINI, MINI_REL_VALS, MINI_REL_SORT, miniRelOpt, freshDot, mindList, mindBub, tileBoard, tileAct, bindTileDrag, fitTiles, BOARD_BG } from './views.js';
 import { fullBackup, restoreFile, saveSlot, loadSlot, deleteSlot, attachToCard, detachFromCard, loadFromCard, cardPack, prepareCarry, startCarry, carryFor, diagnose } from './safe.js';
 import { applyPreset } from './extra.js';
 import { unreadNotes } from './notify.js';
@@ -441,7 +441,7 @@ function paintHost(el, attr) {
     const set = settings(), bs = set.boardStyle ?? {}, img = set.tileDeco?.[`${attr}Bg`];
     const pre = img ? null : BOARD_BG[set.boardPreset ?? 'daisy']; // 올린 그림이 없으면 기본 무늬 (v2.7.21)
     el.classList.add('ss-tbhost');
-    const v = { '--h-bg': bs.bg || pre?.bg || '', '--h-bd': bs.bd || pre?.bd || '', '--h-img': img ? `url("${img}")` : pre?.img || '', '--h-size': img ? BG_FIT[bgFitOf(set, attr)].size : pre?.size || '', '--h-pos': img ? bgPosOf(set, attr) : pre?.pos || '', '--h-rep': img ? BG_FIT[bgFitOf(set, attr)].rep : '' };
+    const v = { '--h-bg': bs.bg || pre?.bg || '', '--h-bd': bs.bd || pre?.bd || '', '--h-img': img ? `url("${img}")` : pre?.img || '', '--h-size': img ? 'cover' : pre?.size || '', '--h-pos': img ? 'center' : pre?.pos || '', '--h-rep': img ? 'no-repeat' : '' };
     for (const [k, x] of Object.entries(v)) { if (x) { if (el.style.getPropertyValue(k) !== x) el.style.setProperty(k, x); } else if (el.style.getPropertyValue(k)) el.style.removeProperty(k); }
     el.classList.toggle('has-img', !!img || !!pre?.img);
 }

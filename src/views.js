@@ -81,16 +81,6 @@ export const BOARD_BG = {
     mint: { name: '민트 줄무늬', bg: '#effaf4', bd: '#bfe3cf', img: `repeating-linear-gradient(135deg, rgba(178,224,200,.45) 0 6px, transparent 6px 14px)`, size: 'auto' },
     none: { name: '무늬 없음 (테마 색)' },
 };
-// 올린 배경 그림을 판에 어떻게 맞출지 · 어디에 둘지 (판마다 · 기본 = 채우기 · 가운데)
-export const BG_FIT = {
-    cover: { name: '채우기', size: 'cover', rep: 'no-repeat' },      // 판을 꽉 채움 (넘치는 쪽은 잘림)
-    contain: { name: '전체 보이기', size: 'contain', rep: 'no-repeat' }, // 그림이 다 보이게 (남는 곳은 판 배경색)
-    stretch: { name: '늘이기', size: '100% 100%', rep: 'no-repeat' },  // 비율 무시하고 판에 딱 맞게
-    tile: { name: '바둑판', size: 'auto', rep: 'repeat' },             // 원래 크기로 반복
-};
-export const BG_POS = { center: '가운데', top: '위', bottom: '아래', left: '왼쪽', right: '오른쪽' };
-export const bgFitOf = (set, attr) => (BG_FIT[set.tileDeco?.[`${attr}Fit`]] ? set.tileDeco[`${attr}Fit`] : 'cover');
-export const bgPosOf = (set, attr) => (BG_POS[set.tileDeco?.[`${attr}Pos`]] ? set.tileDeco[`${attr}Pos`] : 'center');
 export const STICKERS = ['idle', 'happy', 'think', 'surprise', 'sad', 'sleep', 'party'];
 export const STICKER_EMOJI = ['🌸', '⭐', '✨', '💖', '🍀', '🌙', '☁️', '🔥', '🍖', '☕', '🎀', '🐾', '🌊', '⚓', '🍓', '💤'];
 const stkSrc = (x) => (x.m ? mascotUrl(x.m) : x.src || '');
@@ -151,7 +141,7 @@ export function tileBoard(s, attr, extra = '', lead = '') {
             ${app.tileAdd ? `<div class="ss-t-menu">${hidden.length ? hidden.map(k => `<span class="ss-t" role="button" ${A(`addk:${k}`)}>${esc(TILES[k].name)}</span>`).join('') : '<small>더할 칸이 없어요</small>'}</div>` : ''}
             ${app.stkMenu ? `<div class="ss-t-menu stk">${STICKERS.map(m => `<img role="button" ${A(`stkadd:${m}`)} src="${mascotUrl(m)}" alt="${m}">`).join('')}${STICKER_EMOJI.map(e => `<span class="em" role="button" ${A(`stkemo:${e}`)}>${e}</span>`).join('')}<span class="ss-t" role="button" ${A('stkemo:?')} title="다른 이모지 직접 넣기">✎ 이모지</span><label class="ss-t up" title="내 그림 올리기 (작게 줄여서 저장)"><input type="file" accept="image/*" data-stkup="${attr}" hidden>그림 올리기</label>
                 ${app.stkSel ? `<span class="ss-t" role="button" ${A('stk:-')}>작게</span><span class="ss-t" role="button" ${A('stk:+')}>크게</span><span class="ss-t" role="button" ${A('stk:r')}>돌리기</span><span class="ss-t" role="button" ${A('stk:dup')}>복사</span><span class="ss-t" role="button" ${A('stk:del')}>지우기</span>` : '<small>끌어서 옮기고, 눌러서 고르면 크기 · 돌리기 · 지우기</small>'}</div>` : ''}
-            ${app.colMenu ? `<div class="ss-t-menu col">${Object.entries(BOARD_BG).map(([k, x]) => `<span class="ss-bgp${(set.boardPreset ?? 'daisy') === k ? ' on' : ''}" role="button" ${A(`bgp:${k}`)} title="${esc(x.name)}" style="background-color:${x.bg ?? 'var(--ss-bg)'};${x.img ? `background-image:${x.img.replace(/"/g, '&quot;')};background-size:${x.size}` : ''}"></span>`).join('')}${col('board:bg', bs.bg, '#f6f1e7', '판 배경')}${col('board:bd', bs.bd, '#e3d9c6', '판 테두리')}<label class="ss-t up" title="판 배경 그림 (작게 줄여서 저장)"><input type="file" accept="image/*" data-bgup="${attr}" hidden>배경 그림</label>${set.tileDeco?.[`${attr}Bg`] ? `<span class="ss-t" role="button" ${A('bgfit')} title="누를 때마다: 채우기 → 전체 보이기 → 늘이기 → 바둑판">맞춤: ${BG_FIT[bgFitOf(set, attr)].name}</span><span class="ss-t" role="button" ${A('bgpos')} title="누를 때마다: 가운데 → 위 → 아래 → 왼쪽 → 오른쪽">위치: ${BG_POS[bgPosOf(set, attr)]}</span><span class="ss-t" role="button" ${A('bgdel')}>배경 그림 빼기</span>` : ''}${sel ? `<b>${esc(TILES[sel]?.name ?? sel)}</b>${col(`tile:${sel}:bg`, ts.bg, '#efe7d8', '칸 배경')}${col(`tile:${sel}:bd`, ts.bd, '#e3d9c6', '칸 테두리')}${col(`tile:${sel}:ink`, ts.ink, '#2a2218', '글자')}<span class="ss-t" role="button" ${A(`colreset:${sel}`)}>이 칸 처음대로</span>` : '<small>칸을 누르면 그 칸의 색도 바꿔요</small>'}<span class="ss-t" role="button" ${A('colreset:board')}>판 처음대로</span></div>` : ''}
+            ${app.colMenu ? `<div class="ss-t-menu col">${Object.entries(BOARD_BG).map(([k, x]) => `<span class="ss-bgp${(set.boardPreset ?? 'daisy') === k ? ' on' : ''}" role="button" ${A(`bgp:${k}`)} title="${esc(x.name)}" style="background-color:${x.bg ?? 'var(--ss-bg)'};${x.img ? `background-image:${x.img.replace(/"/g, '&quot;')};background-size:${x.size}` : ''}"></span>`).join('')}${col('board:bg', bs.bg, '#f6f1e7', '판 배경')}${col('board:bd', bs.bd, '#e3d9c6', '판 테두리')}<label class="ss-t up" title="판 배경 그림 (작게 줄여서 저장)"><input type="file" accept="image/*" data-bgup="${attr}" hidden>${set.tileDeco?.[`${attr}Bg`] ? '배경 그림 바꾸기' : '배경 그림'}</label>${set.tileDeco?.[`${attr}Bg`] ? `<span class="ss-t" role="button" ${A('bgdel')}>배경 그림 빼기</span>` : ''}${sel ? `<b>${esc(TILES[sel]?.name ?? sel)}</b>${col(`tile:${sel}:bg`, ts.bg, '#efe7d8', '칸 배경')}${col(`tile:${sel}:bd`, ts.bd, '#e3d9c6', '칸 테두리')}${col(`tile:${sel}:ink`, ts.ink, '#2a2218', '글자')}<span class="ss-t" role="button" ${A(`colreset:${sel}`)}>이 칸 처음대로</span>` : '<small>칸을 누르면 그 칸의 색도 바꿔요</small>'}<span class="ss-t" role="button" ${A('colreset:board')}>판 처음대로</span></div>` : ''}
             </div>`;
     }
     const det = !edit && open && live.includes(open) && MINI[open] ? `<div class="ss-t-det">${MINI[open].html(s)}<span role="button" class="go" ${A(`go:${MINI[open].tab}`)}>자세히 ›</span></div>` : '';
@@ -186,6 +176,76 @@ async function shrinkImage(file, max = 128, q = 0.85) {
     let clear = false;
     try { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; for (let i = 3; i < d.length; i += 4 * 7) if (d[i] < 250) { clear = true; break; } } catch { /* */ }
     return clear ? out : cv.toDataURL('image/jpeg', q);
+}
+// 배경 그림 자르기 (v2.7.21): 판 모양 틀 안에서 끌어 옮기고 · 막대 · 휠 · 두 손가락으로 크기 → 잘라서 저장
+// 틀 비율 = 지금 그 판(HUD · 사이드 미니창)의 비율 → 판에 그대로 맞음 · 결과는 긴 변 640px
+function boardAspect(attr) {
+    const host = attr === 'hud' ? document.getElementById('ss-hud') : document.querySelector('#ss-side .ss-side-mini');
+    const r = host?.getBoundingClientRect();
+    return r && r.width > 20 && r.height > 20 ? clamp(r.width / r.height, 0.3, 8) : (attr === 'hud' ? 5 : 0.8);
+}
+async function cropImage(file, aspect) {
+    const bmp = await createImageBitmap(file);
+    const el = document.createElement('div');
+    el.className = 'ss-root ss-scope ss-crop';
+    el.innerHTML = `<div class="ss-wz-head"><i class="fa-solid fa-crop-simple"></i><div><b>배경 그림 자르기</b><small>그림을 끌어 옮기고, 아래 막대(휠 · 두 손가락)로 크기를 정해요. 틀 안이 판 배경이 돼요.</small></div></div>
+        <div class="ss-crop-box" style="aspect-ratio:${aspect}"><canvas></canvas></div>
+        <div class="ss-crop-ctl"><i class="fa-solid fa-image" style="font-size:.8em"></i><input type="range" min="100" max="500" step="1" value="100" aria-label="크기"><i class="fa-solid fa-image"></i><button type="button" class="ss-btn sm" data-crop-reset>처음대로</button></div>`;
+    const box = el.querySelector('.ss-crop-box'), cv = el.querySelector('canvas'), g = cv.getContext('2d'), range = el.querySelector('input[type=range]');
+    const st = { z: 1, cx: bmp.width / 2, cy: bmp.height / 2 }; // 틀 가운데에 오는 그림의 점 · 확대
+    let W = 0, H = 0;
+    const base = () => Math.max(W / bmp.width, H / bmp.height); // z = 1 → 틀을 꽉 채우는 크기
+    const fix = () => { const s = base() * st.z, hw = W / 2 / s, hh = H / 2 / s; st.cx = clamp(st.cx, hw, bmp.width - hw); st.cy = clamp(st.cy, hh, bmp.height - hh); };
+    const draw = () => {
+        const w = Math.round(box.clientWidth), h = Math.round(w / aspect); if (!w) return;
+        const dpr = window.devicePixelRatio || 1;
+        if (w !== W || h !== H) { W = w; H = h; cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.width = `${w}px`; cv.style.height = `${h}px`; }
+        fix();
+        const s = base() * st.z;
+        g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+        g.imageSmoothingQuality = 'high';
+        g.drawImage(bmp, W / 2 - st.cx * s, H / 2 - st.cy * s, bmp.width * s, bmp.height * s);
+    };
+    const zoomTo = (z, px = W / 2, py = H / 2) => { // 손가락 · 마우스 아래 점은 그대로 두고 확대
+        const s0 = base() * st.z; const ix = st.cx + (px - W / 2) / s0, iy = st.cy + (py - H / 2) / s0;
+        st.z = clamp(z, 1, 5); const s1 = base() * st.z; st.cx = ix - (px - W / 2) / s1; st.cy = iy - (py - H / 2) / s1;
+        range.value = String(Math.round(st.z * 100)); draw();
+    };
+    range.addEventListener('input', () => zoomTo(Number(range.value) / 100));
+    el.querySelector('[data-crop-reset]').addEventListener('click', () => { st.z = 1; st.cx = bmp.width / 2; st.cy = bmp.height / 2; range.value = '100'; draw(); });
+    const pts = new Map(); let pinch = null;
+    const local = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    cv.addEventListener('pointerdown', (e) => { e.preventDefault(); cv.setPointerCapture?.(e.pointerId); pts.set(e.pointerId, local(e)); pinch = null; });
+    cv.addEventListener('pointermove', (e) => {
+        if (!pts.has(e.pointerId)) return;
+        const p = local(e), old = pts.get(e.pointerId); pts.set(e.pointerId, p);
+        if (pts.size >= 2) { // 두 손가락
+            const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+            if (pinch) { const s = base() * st.z; st.cx -= (mx - pinch.mx) / s; st.cy -= (my - pinch.my) / s; zoomTo(pinch.z * d / pinch.d, mx, my); } else pinch = { d: d || 1, z: st.z, mx, my };
+            if (pinch) { pinch.mx = mx; pinch.my = my; }
+            return;
+        }
+        const s = base() * st.z; st.cx -= (p[0] - old[0]) / s; st.cy -= (p[1] - old[1]) / s; draw();
+    });
+    const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    cv.addEventListener('wheel', (e) => { e.preventDefault(); const [x, y] = local(e); zoomTo(st.z * (e.deltaY < 0 ? 1.1 : 1 / 1.1), x, y); }, { passive: false });
+    let ro = null;
+    setTimeout(() => { draw(); if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(() => draw()); ro.observe(box); } }, 30);
+    let ok = false;
+    try { ok = await confirmPopup(el, '이대로 쓰기', '취소'); } finally { ro?.disconnect(); }
+    if (!ok || !W) { bmp.close?.(); return null; }
+    // 틀 안 그대로 잘라 긴 변 640px로
+    const s = base() * st.z, sw = W / s, sh = H / s, sx = st.cx - sw / 2, sy = st.cy - sh / 2;
+    const outW = aspect >= 1 ? 640 : Math.round(640 * aspect), outH = Math.round(outW / aspect);
+    const out = document.createElement('canvas'); out.width = outW; out.height = outH;
+    const og = out.getContext('2d'); og.imageSmoothingQuality = 'high'; og.drawImage(bmp, sx, sy, sw, sh, 0, 0, outW, outH);
+    bmp.close?.();
+    for (const q of [0.82, 0.7, 0.55, 0.4]) { // 설정 파일이 커지지 않게 160KB 안으로
+        let u = out.toDataURL('image/webp', q); if (!u.startsWith('data:image/webp')) u = out.toDataURL('image/jpeg', q);
+        if (u.length <= 160000) return u;
+    }
+    return 'big';
 }
 const saveDeco = (attr, list) => { const set = settings(); set.tileDeco = { ...(set.tileDeco ?? {}), [attr]: list }; saveSettings(); };
 // 편집: 칸을 끌어 아무 줄 · 자리에 · ⤡ 끌어 크기 · 스티커 옮기기 · 칸 누르면 고르기 · 색 · 그림 올리기 (마우스 · 손가락 공통)
@@ -251,9 +311,11 @@ export function bindTileDrag(root, after) {
     root.addEventListener('change', async (e) => {
         const f = e.target.closest('[data-stkup], [data-bgup]'); if (!f || !f.files?.[0]) return;
         try {
-            if (f.dataset.bgup) { // 판 배경 그림: 긴 변 480px
-                const src2 = await shrinkImage(f.files[0], 480, 0.8);
-                if (src2.length > 160000) { toastr.warning('배경 그림이 너무 커요. 더 작은 그림을 골라 주세요.', TITLE); return; }
+            if (f.dataset.bgup) { // 판 배경 그림: 판 모양으로 자르기 창 → 긴 변 640px
+                const file = f.files[0]; f.value = ''; // 같은 그림을 다시 골라도 창이 뜨게
+                const src2 = await cropImage(file, boardAspect(f.dataset.bgup));
+                if (!src2) return;
+                if (src2 === 'big') { toastr.warning('배경 그림이 너무 커요. 더 단순한 그림이나 작은 그림을 골라 주세요.', TITLE); return; }
                 const set = settings(); set.tileDeco = { ...(set.tileDeco ?? {}), [`${f.dataset.bgup}Bg`]: src2 }; saveSettings(); after?.(); return;
             }
             const src2 = await shrinkImage(f.files[0]);
@@ -274,10 +336,6 @@ export function tileAct(a, rerender, attr = 'side') {
     if (a === 'colmenu') { app.colMenu = !app.colMenu; app.tileAdd = app.stkMenu = false; rerender(); return true; }
     if (a === 'relayout') { const t = { ...(set.tileLayout ?? {}) }; delete t[gridOf(attr).key]; set.tileLayout = t; saveSettings(); rerender(); return true; }
     if (a.startsWith('bgp:')) { const k = a.slice(4); if (BOARD_BG[k]) { set.boardPreset = k; set.boardStyle = {}; } saveSettings(); rerender(); return true; }
-    if (a === 'bgfit' || a === 'bgpos') { // 누를 때마다 다음 것으로
-        const fit = a === 'bgfit', keys = Object.keys(fit ? BG_FIT : BG_POS), cur = fit ? bgFitOf(set, attr) : bgPosOf(set, attr);
-        set.tileDeco = { ...(set.tileDeco ?? {}), [`${attr}${fit ? 'Fit' : 'Pos'}`]: keys[(keys.indexOf(cur) + 1) % keys.length] }; saveSettings(); rerender(); return true;
-    }
     if (a === 'bgdel') { const t = { ...(set.tileDeco ?? {}) }; delete t[`${attr}Bg`]; set.tileDeco = t; saveSettings(); rerender(); return true; }
     if (a.startsWith('del:')) { set.sideMini = (set.sideMini ?? []).filter(k => k !== a.slice(4)); saveSettings(); rerender(); return true; }
     if (a.startsWith('addk:')) { const k = a.slice(5); if (!(set.sideMini ?? []).includes(k)) set.sideMini = [...(set.sideMini ?? []), k]; app.tileAdd = false; saveSettings(); rerender(); return true; }
