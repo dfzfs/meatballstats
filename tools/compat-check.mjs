@@ -18,6 +18,8 @@ const read = (p) => fs.readFileSync(p, 'utf8');
 const ours = ['index.js', ...fs.readdirSync(path.join(ROOT, 'src')).filter(f => f.endsWith('.js')).map(f => `src/${f}`)];
 const SRC = Object.fromEntries(ours.map(f => [f, read(path.join(ROOT, f))]));
 const ALL = Object.values(SRC).join('\n');
+// 확장 설정 서랍은 src/settings_ui.js로 옮겼다 (옛 판은 index.js) — 둘을 함께 본다
+const SETSRC = `${SRC['index.js']}\n${SRC['src/settings_ui.js'] ?? ''}`;
 const CSS = read(path.join(ROOT, 'style.css'));
 let fails = 0, warns = 0;
 const ok = (c, msg, extra = '') => { if (c) console.log(`  ✔ ${msg}`); else { console.log(`  ✘ ${msg}${extra ? ` — ${extra}` : ''}`); fails++; } };
@@ -40,15 +42,15 @@ console.log('① 기능 다리 — 호출 스택 함수 이름 · 설정 키 · 
     for (const fn of fns) ok(new RegExp(`(?:async\\s+)?function\\s+${fn}\\s*\\(`).test(ALL), `함수 ${fn}() 있음`, '그 확장이 스택에서 이 이름으로 기능을 알아봐요 — 이름을 바꾸면 그 확장의 FN_SLOT도 같이 바꿔야 해요');
     const slots = [...t.slice(t.indexOf('export const SLOTS'), t.indexOf(']);', t.indexOf('export const SLOTS'))).matchAll(/\['(\w+)',\s*'[^']*',\s*'[^']*',\s*'(\w+)'\]/g)].map(m => m[2]);
     const core = SRC['src/core.js'];
-    for (const k of slots) { ok(new RegExp(`\\n\\s+${k}:`).test(core), `설정 키 ${k} (DEFAULTS)`); ok(SRC['index.js'].includes(`data-s="${k}"`), `설정 칸 data-s="${k}"`); }
+    for (const k of slots) { ok(new RegExp(`\\n\\s+${k}:`).test(core), `설정 키 ${k} (DEFAULTS)`); ok(SETSRC.includes(`data-s="${k}"`), `설정 칸 data-s="${k}"`); }
     const target = t.match(/export const TARGET = Object\.freeze\(\{([\s\S]*?)\}\);/)?.[1] ?? '';
     const val = (k) => target.match(new RegExp(`${k}:\\s*'([^']*)'`))?.[1];
     ok(core.includes(`export const MODULE = '${val('module')}'`), `확장 설정 이름 ${val('module')}`);
     ok(core.includes(`'${val('stateKey')}'`), `주입 칸 ${val('stateKey')}`);
     for (const k of ['statussim_people', 'statussim_romance']) if (target.includes(k)) ok(core.includes(`'${k}'`), `주입 칸 ${k}`);
     ok(ALL.includes(val('tag')), `태그 ${val('tag')}`);
-    ok(SRC['index.js'].includes(`id = '${val('root').replace('#', '')}'`), `설정 칸 ${val('root')}`);
-    ok(SRC['index.js'].includes(`class="${val('head').split('.').pop()}"`), `묶음 머리 ${val('head')}`);
+    ok(SETSRC.includes(`id = '${val('root').replace('#', '')}'`), `설정 칸 ${val('root')}`);
+    ok(SETSRC.includes(`class="${val('head').split('.').pop()}"`), `묶음 머리 ${val('head')}`);
     ok(/display_name"\s*:\s*"[^"]*(미트볼|Meatball)/i.test(read(path.join(ROOT, 'manifest.json'))), 'manifest 이름에 「미트볼/Meatball」 (그 확장이 설치 정보로 알아봐요)');
 }
 
@@ -59,7 +61,7 @@ const compat = await extImport('src/ext-compat.js');
     const set = compat.SETS?.find(s => s.root === '#ss-settings');
     ok(!!set, '그 확장 SETS에 미트볼 칸 있음');
     if (set) {
-        ok(SRC['index.js'].includes('inline-drawer-header') && SRC['index.js'].includes('<small>v${VERSION}</small>'), `판 번호 자리 ${set.version}`);
+        ok(SETSRC.includes('inline-drawer-header') && SETSRC.includes('<small>v${VERSION}</small>'), `판 번호 자리 ${set.version}`);
         const v = ourManifest.version;
         warn(set.verified.includes(v), `그 확장이 확인한 판에 ${v} 있음`, `그 확장 확인 판: ${set.verified.join(' · ')} → 그 확장 설정 칸 맨 아래 「지금 판은 ${v} — 일부가 어긋나 보일 수 있어요」 안내가 떠요. 그 확장 쪽에 새 판을 알려 주세요 (맞춤 자체는 그대로 걸려요)`);
         for (const sel of set.strips ?? []) ok(sel.split(/\s+/).every(c => ALL.includes(c.replace(/^\./, ''))), `탭 줄 ${sel}`);
@@ -74,7 +76,7 @@ const org = await extImport('src/ext-organize.js');
     ok(!!plan, '그 확장 PLANS에 미트볼 칸 있음');
     if (plan) {
         const keys = new Set([...plan.intro.map(x => x[0]), ...plan.folds.flatMap(f => f[1].map(k => String(k).split(':')[0])), ...Object.keys(plan.cost ?? {}), ...(plan.start?.[1] ?? []).map(x => x[1])]);
-        const has = (k) => new RegExp(`data-s(?:-act)?="${k}"`).test(SRC['index.js']);
+        const has = (k) => new RegExp(`data-s(?:-act)?="${k}"`).test(SETSRC);
         for (const k of keys) ok(has(k), `열쇠 ${k}`, '이 열쇠가 없으면 그 확장이 그 줄을 조용히 원래 모습으로 둬요 (깨지진 않지만 정리가 빠져요)');
     }
 }

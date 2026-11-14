@@ -1,4 +1,4 @@
-// 칸별 화면 · 대시보드 · 관리 · 미니 위젯
+// 칸별 화면 · 대시보드 · 관리 (미니 위젯 · 타일 판은 tiles.js)
 import {
     app, ctx, settings, saveSettings, getMeta, saveMeta, modOn, MODS, MOD, MOD_IDS, DIFFS, diffOf, esc, short, clamp, norm, findBy,
     fmtNum, clone, splitBar, parseNum, dateStr, dayIndex, eventsOn, nextTime, upcoming, userName, TITLE, VERSION, EMPTY, CONTACT_MODES, stamp, weekday, viewTr, GLOBAL_OFF,
