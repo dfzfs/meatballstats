@@ -81,6 +81,16 @@ export const BOARD_BG = {
     mint: { name: '민트 줄무늬', bg: '#effaf4', bd: '#bfe3cf', img: `repeating-linear-gradient(135deg, rgba(178,224,200,.45) 0 6px, transparent 6px 14px)`, size: 'auto' },
     none: { name: '무늬 없음 (테마 색)' },
 };
+// 올린 배경 그림을 판에 어떻게 맞출지 · 어디에 둘지 (판마다 · 기본 = 채우기 · 가운데)
+export const BG_FIT = {
+    cover: { name: '채우기', size: 'cover', rep: 'no-repeat' },      // 판을 꽉 채움 (넘치는 쪽은 잘림)
+    contain: { name: '전체 보이기', size: 'contain', rep: 'no-repeat' }, // 그림이 다 보이게 (남는 곳은 판 배경색)
+    stretch: { name: '늘이기', size: '100% 100%', rep: 'no-repeat' },  // 비율 무시하고 판에 딱 맞게
+    tile: { name: '바둑판', size: 'auto', rep: 'repeat' },             // 원래 크기로 반복
+};
+export const BG_POS = { center: '가운데', top: '위', bottom: '아래', left: '왼쪽', right: '오른쪽' };
+export const bgFitOf = (set, attr) => (BG_FIT[set.tileDeco?.[`${attr}Fit`]] ? set.tileDeco[`${attr}Fit`] : 'cover');
+export const bgPosOf = (set, attr) => (BG_POS[set.tileDeco?.[`${attr}Pos`]] ? set.tileDeco[`${attr}Pos`] : 'center');
 export const STICKERS = ['idle', 'happy', 'think', 'surprise', 'sad', 'sleep', 'party'];
 export const STICKER_EMOJI = ['🌸', '⭐', '✨', '💖', '🍀', '🌙', '☁️', '🔥', '🍖', '☕', '🎀', '🐾', '🌊', '⚓', '🍓', '💤'];
 const stkSrc = (x) => (x.m ? mascotUrl(x.m) : x.src || '');
@@ -141,7 +151,7 @@ export function tileBoard(s, attr, extra = '', lead = '') {
             ${app.tileAdd ? `<div class="ss-t-menu">${hidden.length ? hidden.map(k => `<span class="ss-t" role="button" ${A(`addk:${k}`)}>${esc(TILES[k].name)}</span>`).join('') : '<small>더할 칸이 없어요</small>'}</div>` : ''}
             ${app.stkMenu ? `<div class="ss-t-menu stk">${STICKERS.map(m => `<img role="button" ${A(`stkadd:${m}`)} src="${mascotUrl(m)}" alt="${m}">`).join('')}${STICKER_EMOJI.map(e => `<span class="em" role="button" ${A(`stkemo:${e}`)}>${e}</span>`).join('')}<span class="ss-t" role="button" ${A('stkemo:?')} title="다른 이모지 직접 넣기">✎ 이모지</span><label class="ss-t up" title="내 그림 올리기 (작게 줄여서 저장)"><input type="file" accept="image/*" data-stkup="${attr}" hidden>그림 올리기</label>
                 ${app.stkSel ? `<span class="ss-t" role="button" ${A('stk:-')}>작게</span><span class="ss-t" role="button" ${A('stk:+')}>크게</span><span class="ss-t" role="button" ${A('stk:r')}>돌리기</span><span class="ss-t" role="button" ${A('stk:dup')}>복사</span><span class="ss-t" role="button" ${A('stk:del')}>지우기</span>` : '<small>끌어서 옮기고, 눌러서 고르면 크기 · 돌리기 · 지우기</small>'}</div>` : ''}
-            ${app.colMenu ? `<div class="ss-t-menu col">${Object.entries(BOARD_BG).map(([k, x]) => `<span class="ss-bgp${(set.boardPreset ?? 'daisy') === k ? ' on' : ''}" role="button" ${A(`bgp:${k}`)} title="${esc(x.name)}" style="background-color:${x.bg ?? 'var(--ss-bg)'};${x.img ? `background-image:${x.img.replace(/"/g, '&quot;')};background-size:${x.size}` : ''}"></span>`).join('')}${col('board:bg', bs.bg, '#f6f1e7', '판 배경')}${col('board:bd', bs.bd, '#e3d9c6', '판 테두리')}<label class="ss-t up" title="판 배경 그림 (작게 줄여서 저장)"><input type="file" accept="image/*" data-bgup="${attr}" hidden>배경 그림</label>${set.tileDeco?.[`${attr}Bg`] ? `<span class="ss-t" role="button" ${A('bgdel')}>배경 그림 빼기</span>` : ''}${sel ? `<b>${esc(TILES[sel]?.name ?? sel)}</b>${col(`tile:${sel}:bg`, ts.bg, '#efe7d8', '칸 배경')}${col(`tile:${sel}:bd`, ts.bd, '#e3d9c6', '칸 테두리')}${col(`tile:${sel}:ink`, ts.ink, '#2a2218', '글자')}<span class="ss-t" role="button" ${A(`colreset:${sel}`)}>이 칸 처음대로</span>` : '<small>칸을 누르면 그 칸의 색도 바꿔요</small>'}<span class="ss-t" role="button" ${A('colreset:board')}>판 처음대로</span></div>` : ''}
+            ${app.colMenu ? `<div class="ss-t-menu col">${Object.entries(BOARD_BG).map(([k, x]) => `<span class="ss-bgp${(set.boardPreset ?? 'daisy') === k ? ' on' : ''}" role="button" ${A(`bgp:${k}`)} title="${esc(x.name)}" style="background-color:${x.bg ?? 'var(--ss-bg)'};${x.img ? `background-image:${x.img.replace(/"/g, '&quot;')};background-size:${x.size}` : ''}"></span>`).join('')}${col('board:bg', bs.bg, '#f6f1e7', '판 배경')}${col('board:bd', bs.bd, '#e3d9c6', '판 테두리')}<label class="ss-t up" title="판 배경 그림 (작게 줄여서 저장)"><input type="file" accept="image/*" data-bgup="${attr}" hidden>배경 그림</label>${set.tileDeco?.[`${attr}Bg`] ? `<span class="ss-t" role="button" ${A('bgfit')} title="누를 때마다: 채우기 → 전체 보이기 → 늘이기 → 바둑판">맞춤: ${BG_FIT[bgFitOf(set, attr)].name}</span><span class="ss-t" role="button" ${A('bgpos')} title="누를 때마다: 가운데 → 위 → 아래 → 왼쪽 → 오른쪽">위치: ${BG_POS[bgPosOf(set, attr)]}</span><span class="ss-t" role="button" ${A('bgdel')}>배경 그림 빼기</span>` : ''}${sel ? `<b>${esc(TILES[sel]?.name ?? sel)}</b>${col(`tile:${sel}:bg`, ts.bg, '#efe7d8', '칸 배경')}${col(`tile:${sel}:bd`, ts.bd, '#e3d9c6', '칸 테두리')}${col(`tile:${sel}:ink`, ts.ink, '#2a2218', '글자')}<span class="ss-t" role="button" ${A(`colreset:${sel}`)}>이 칸 처음대로</span>` : '<small>칸을 누르면 그 칸의 색도 바꿔요</small>'}<span class="ss-t" role="button" ${A('colreset:board')}>판 처음대로</span></div>` : ''}
             </div>`;
     }
     const det = !edit && open && live.includes(open) && MINI[open] ? `<div class="ss-t-det">${MINI[open].html(s)}<span role="button" class="go" ${A(`go:${MINI[open].tab}`)}>자세히 ›</span></div>` : '';
@@ -264,6 +274,10 @@ export function tileAct(a, rerender, attr = 'side') {
     if (a === 'colmenu') { app.colMenu = !app.colMenu; app.tileAdd = app.stkMenu = false; rerender(); return true; }
     if (a === 'relayout') { const t = { ...(set.tileLayout ?? {}) }; delete t[gridOf(attr).key]; set.tileLayout = t; saveSettings(); rerender(); return true; }
     if (a.startsWith('bgp:')) { const k = a.slice(4); if (BOARD_BG[k]) { set.boardPreset = k; set.boardStyle = {}; } saveSettings(); rerender(); return true; }
+    if (a === 'bgfit' || a === 'bgpos') { // 누를 때마다 다음 것으로
+        const fit = a === 'bgfit', keys = Object.keys(fit ? BG_FIT : BG_POS), cur = fit ? bgFitOf(set, attr) : bgPosOf(set, attr);
+        set.tileDeco = { ...(set.tileDeco ?? {}), [`${attr}${fit ? 'Fit' : 'Pos'}`]: keys[(keys.indexOf(cur) + 1) % keys.length] }; saveSettings(); rerender(); return true;
+    }
     if (a === 'bgdel') { const t = { ...(set.tileDeco ?? {}) }; delete t[`${attr}Bg`]; set.tileDeco = t; saveSettings(); rerender(); return true; }
     if (a.startsWith('del:')) { set.sideMini = (set.sideMini ?? []).filter(k => k !== a.slice(4)); saveSettings(); rerender(); return true; }
     if (a.startsWith('addk:')) { const k = a.slice(5); if (!(set.sideMini ?? []).includes(k)) set.sideMini = [...(set.sideMini ?? []), k]; app.tileAdd = false; saveSettings(); rerender(); return true; }
