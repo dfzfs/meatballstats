@@ -3,7 +3,7 @@ import { toEnglish, usedPairs } from './skeleton_en.js'; // 영어 저장일 때
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.7.13';
+export const VERSION = '2.7.14';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
 export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
@@ -453,8 +453,9 @@ function migrate(m) {
     } catch (e) { ssWarn(LOG, 'migrate', e); }
     m.v = DATA_V;
 }
-// 저장 (v2.7.11): 실리의 「모아서 저장」(1초)은 그 사이 채팅을 옮기면 취소돼서 마지막 변경이 날아갔다.
-// → 0.3초만 모았다 저장하고, 탭을 닫거나 앱을 내릴 때는 바로 저장한다.
+// 저장 (v2.7.14): 실리의 「모아서 저장」은 그 사이 채팅을 옮기면 취소돼서 마지막 변경이 날아갔다.
+// → 1초 모아서 한 번 (연타해도 저장은 한 번) + 미트볼 창 밖을 누르거나(채팅 목록 · 캐릭터 고르기 포함) 탭을 내리면 그 자리에서 바로.
+//   실리는 채팅을 옮기기 전에 진행 중인 저장이 끝나길 기다려서, 옮기는 클릭보다 먼저 저장이 시작되면 안전하다.
 let metaTimer = null, metaChat = '';
 const chatNow = () => { try { const c = ctx(); return `${c.groupId ?? ''}|${c.getCurrentChatId?.() ?? ''}`; } catch { return ''; } };
 export function flushMeta() {
@@ -468,9 +469,12 @@ export async function saveMeta(now = false) {
     if (now || !c.saveMetadata) { clearTimeout(metaTimer); metaTimer = null; return (c.saveMetadata ?? c.saveMetadataDebounced)?.(); }
     clearTimeout(metaTimer);
     metaChat = chatNow();
-    metaTimer = setTimeout(() => { metaTimer = null; if (metaChat === chatNow()) ctx().saveMetadata?.()?.catch?.(() => { /* 실리가 알려 줌 */ }); }, 300);
+    metaTimer = setTimeout(() => { metaTimer = null; if (metaChat === chatNow()) ctx().saveMetadata?.()?.catch?.(() => { /* 실리가 알려 줌 */ }); }, 1000);
 }
 try {
+    const outside = (e) => { if (metaTimer && !e.target?.closest?.('.ss-scope, dialog')) flushMeta(); };
+    document.addEventListener('pointerdown', outside, { capture: true, passive: true });
+    document.addEventListener('keydown', outside, { capture: true, passive: true });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushMeta(); });
     window.addEventListener('pagehide', () => flushMeta());
 } catch { /* */ }

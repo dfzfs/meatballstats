@@ -157,7 +157,7 @@ async function waitMainIdle(maxMs = 60000) {
         await new Promise(r => setTimeout(r, 150));
     }
 }
-const ANY_CHAT = new Set(['wizard', 'help', 'translate']); // 채팅과 상관없거나 (만들기 창은) 적용할 때 고르는 것
+const ANY_CHAT = new Set(['wizard', 'help']); // 번역 사전은 채팅마다라 번역도 버림 (v2.7.14) // 채팅과 상관없거나 (만들기 창은) 적용할 때 고르는 것
 const chatKey = () => { try { const c = ctx(); return `${c.groupId ?? ''}|${c.getCurrentChatId?.() ?? ''}`; } catch { return ''; } };
 // 똑같은 요청이 이미 가고 있으면 또 보내지 않는다 (버튼 연타로 두 번 과금 방지)
 const inflight = new Set();

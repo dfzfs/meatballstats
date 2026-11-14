@@ -7,3 +7,4 @@
   - `node tools/harness/run-all.mjs` — 모든 시나리오 (퀘스트 · 칩 점검 · 빨간 점 · 기능 끄기 · 버린 물건 · 번역 · 탭 전부 열기 · 스와이프)
   - `N=600 node tools/harness/t-perf.mjs` — 긴 채팅 부하 (`TR=1`이면 화면 번역 사전 2500개) · `EXT_DIR=<옛 판 폴더>`로 옛 판과 비교
   - `node tools/harness/bench-solo.mjs` — 「수치만 켠 미트볼」 vs 「수치만 있는 가상의 단독 확장(`mini-stats.js`)」 vs 「확장 없음」 (CPU 4배 느리게 · `RATE=`로 조절 · `bench.html`)
+  - `node tools/harness/t-fuzz.mjs` — 모든 탭 · 보기/편집의 버튼을 하나씩 눌러 보기 (약 3분 · run-all엔 안 들어감 · `JUNK=1`이면 AI가 이상한 답을 줄 때)

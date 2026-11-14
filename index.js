@@ -187,6 +187,12 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.14', title: '점검에서 나온 것 고침', items: [
+        ['🌐 한국어 섞임', '영어 저장인데 키 설명이 한국어로 AI에게 가던 것을 고쳤어요.'],
+        ['🔤 번역 그대로', '번역기가 영어를 그대로 돌려주면 다시 보내지 않고 한 번 알려 줘요. surgeon · sleeping 같은 한 낱말도 번역돼요.'],
+        ['💾 저장', '1초 모아서 한 번 · 미트볼 창 밖을 누르거나 탭을 내리면 바로 저장해요.'],
+        ['✨ 확률', '설렘 · 사건 확률이 정말 「답 1번마다」로 동작해요.'],
+    ] },
     { v: '2.7.13', title: '설렘 한 스푼 · 사건 한 스푼', items: [
         ['✨ 설렘 한 스푼', '가끔 장면 속 인물이 지금 관계 단계에 맞는 설레는 한 순간을 스스로 만들어요. 친구면 작은 선물 · 툭 나온 진심까지 — 고백 · 연인 행동은 안 해요.'],
         ['🎬 사건 한 스푼', '가끔 세상 쪽에서 새 일 하나 (방문객 · 소식 · 기회 · 작은 문제). 확장 설정 › ✨ 설렘 · 사건 한 스푼에서 켜요.'],
@@ -677,9 +683,9 @@ function renderSettings() {
             <b class="ss-set-h">✨ 설렘 · 사건 한 스푼 <small>(기본 꺼짐 · 걸린 턴에만 주입 한 줄)</small></b>
             <small>상태창이 너무 정적일 때. 가끔 인물이 <b>지금 관계 단계에 맞게</b> 먼저 설레는 행동을 하고, 가끔 세상 쪽에서 새 일이 생겨요. 친구 사이면 「너라서 그렇지」 같은 말이나 작은 선물까지 — 고백 · 연인 행동은 안 해요.</small>
             <label class="checkbox_label"><input type="checkbox" data-s="romSpark" ${s.romSpark ? 'checked' : ''}> ✨ 설렘 한 스푼 — 장면 속 인물이 지금 단계에 맞는 설레는 한 순간을 스스로 <small>(애정 꺼 둔 사람은 우정 표현만)</small></label>
-            <label>설렘 확률 % (AI 답 1번마다 · 걸린 뒤 3턴은 쉼)<input type="number" min="0" max="100" class="text_pole" data-s="romSparkPct" value="${s.romSparkPct}"></label>
+            <label>설렘 확률 % (AI 답 1번마다 · 걸린 뒤 3턴은 쉬어서 최대 4턴에 한 번)<input type="number" min="0" max="100" class="text_pole" data-s="romSparkPct" value="${s.romSparkPct}"></label>
             <label class="checkbox_label"><input type="checkbox" data-s="storyPush" ${s.storyPush ? 'checked' : ''}> 🎬 사건 한 스푼 — 이야기가 제자리일 때 세상 쪽에서 새 일 하나 (방문객 · 소식 · 기회 · 작은 문제)</label>
-            <label>사건 확률 % (AI 답 1번마다 · 걸린 뒤 4턴은 쉼)<input type="number" min="0" max="100" class="text_pole" data-s="storyPushPct" value="${s.storyPushPct}"></label>
+            <label>사건 확률 % (AI 답 1번마다 · 걸린 뒤 4턴은 쉬어서 최대 5턴에 한 번)<input type="number" min="0" max="100" class="text_pole" data-s="storyPushPct" value="${s.storyPushPct}"></label>
             <small>문구는 「프롬프트 · 토큰」 창에서 고칠 수 있어요. 걸린 턴은 그 창의 「지금 보내는 글」에서 볼 수 있어요.</small>
             <b class="ss-set-h">데이터 · 화면</b>
             <label class="checkbox_label"><input type="checkbox" data-s="updateNotice" ${s.updateNotice !== false ? 'checked' : ''}> 📣 업데이트하면 「바뀐 점」을 한 번 알려 주기</label>
@@ -954,7 +960,7 @@ function otherTrackers(m) {
     const rpg = 'third-party/rpg-companion-sillytavern';
     if (es[rpg]?.enabled && !off.has(rpg)) found.push('RPG Companion');
     const text = `${m?.mes ?? ''}`;
-    if (globalThis.Mvu || /<UpdateVariable>|_\.set\(\s*['"]/.test(text)) found.push('MVU(변수 업데이트)');
+    if (/<UpdateVariable>|_\.set\(\s*['"]/.test(text)) found.push('MVU(변수 업데이트)');
     if (/<StatusPlaceHolderImpl\s*\/?>|<tracker>/i.test(text)) found.push('다른 상태창');
     return found;
 }

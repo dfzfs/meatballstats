@@ -72,11 +72,13 @@ async function stMany(list, rev = false) {
     return out;
 }
 // 코드 값(상태·종류·id 같은 것)은 번역하면 안 된다
-const CODE_KEYS = new Set(['id', 'cls', 'repeat', 'icon', 'color', 'every', 'key', 'currencyCode', 'system', 'sys', 'judge', 'sort', 'show', 'pick', 'mesid', 'chatId', 'seed', 'url', 'link', 'src', 'img', 'avatar', 'handle']);
+const CODE_KEYS = new Set(['id', 'unit', 'genre', 'cls', 'repeat', 'icon', 'color', 'every', 'key', 'currencyCode', 'system', 'sys', 'judge', 'sort', 'show', 'pick', 'mesid', 'chatId', 'seed', 'url', 'link', 'src', 'img', 'avatar', 'handle']);
 // 이 칸들은 코드일 때도 글일 때도 있다 (v2.7.12): role = 'npc' 또는 「Life Saver & Clown」, status = 'active' 또는 「Buried in treaty paperwork」
 // → 띄어쓰기 없는 소문자 낱말일 때만 코드로 본다 (예전엔 늘 코드로 봐서 직업 · 상태 메시지가 영어로 남았음)
-const SOFT_KEYS = new Set(['kind', 'role', 'status', 'mode', 'type', 'by', 'from', 'unit', 'contact', 'play', 'genre']);
-const softCode = (v) => /^[a-z0-9_\-.]{1,24}$/.test(String(v).trim());
+// v2.7.14: 소문자 한 낱말이라도 미트볼이 쓰는 코드 값일 때만 코드 (surgeon · sleeping 같은 직업 · 상태는 번역)
+const SOFT_KEYS = new Set(['kind', 'role', 'status', 'mode', 'type', 'by', 'from', 'contact', 'play']);
+const SOFT_VALS = new Set(['dead', 'left', 'lost', 'never', 'custom', 'cream', 'ink', 'mint', 'rose', 'white', 'npc', 'main', 'user', 'active', 'open', 'done', 'failed']);
+const softCode = (v) => { const t = String(v).trim(); return codeLike(t) || SOFT_VALS.has(t) || /[_\d]/.test(t) && /^[a-z0-9_\-.]{1,24}$/.test(t); };
 // 이름 모를 칸에 든 값이 코드인지: 예전엔 「소문자 한 낱말」을 모두 코드로 봐서 bread · rope · lantern 같은 소지품 이름이 영어로 남았어요 (v2.7.3)
 // → 이제 밑줄 · 하이픈 · 숫자가 섞인 것과, 미트볼이 쓰는 정해진 코드 값만 코드로 봐요
 const CODE_VALS = new Set(['open', 'active', 'done', 'failed', 'user', 'main', 'npc', 'minimal', 'detailed', 'phone', 'instant', 'letter', 'curse', 'bless', 'luck', 'bad', 'event', 'yearly', 'once', 'day', 'week', 'month', 'num', 'bar', 'text', 'ai', 'me', 'them', 'deco', 'item', 'mes', 'peek', 'song', 'auto', 'pinned', 'summary', 'off', 'on', 'true', 'false', 'none', 'rp', 'multi', 'director', 'easy', 'normal', 'hard', 'crit', 'ok', 'fail', 'fumble', 'info', 'bank', 'loan', 'pawn', 'shark', 'paid', 'late', 'tag', 'kw', 'always', 'aff', 'trust', 'stage', 'jealous', 'up', 'down', 'neg', 'pos', 'hi', 'warn', 'free', 'st', 'llm', 'ko', 'en', 'enview']);
@@ -438,13 +440,30 @@ export async function translateSheet(btn) {
     toastr.success(`${k}칸 번역했어요${stop ? ' (멈춤)' : ''}.${viewTr() ? ' 데이터는 영어 그대로고, 화면에만 번역이 보여요.' : ''}`, TITLE);
 }
 // 화면에 영어로 남은 글 (사전에 없는 것)
+let missMemo = { s: null, v: -1, out: [] };
+// 번역기가 영어를 그대로 돌려준 글 (이번 접속) — 다시 보내지 않고, 왜 그런지 한 번 알려 준다 (v2.7.14)
+const stuck = new Set();
+let stuckWarned = false;
+function noteStuck(list) {
+    const d = trDict() ?? {};
+    const same = list.filter(k => !Object.hasOwn(d, k));
+    for (const k of same) stuck.add(k);
+    if (!same.length || stuckWarned) return same.length;
+    stuckWarned = true;
+    const es = ctx().extensionSettings?.translate ?? {};
+    const who = engineST() ? `실리 기본 번역 (번역기: ${es.provider || 'google'} · 언어 코드: ${settings().trCode || 'ko'})` : '번역 모델';
+    toastr.warning(`번역기가 ${same.length}개 글을 <b>영어 그대로</b> 돌려줬어요 — ${esc(who)}.<br>• 실리 기본 번역이면: 확장 메뉴 › Chat Translation에서 번역기가 동작하는지, 미트볼 설정 › 🌐 「번역 언어 코드」가 <b>ko</b>인지 확인해 주세요.<br>• 고유명사(별명 · 칭호)는 번역기가 일부러 안 바꾸기도 해요 → 🌐 「번역 고치기」에서 직접 적으면 고정돼요.`, TITLE, { timeOut: 20000, escapeHtml: false });
+    return same.length;
+}
 export function missingTr() {
     const s = app.current?.state; if (!s || !viewTr()) return [];
+    if (missMemo.s === s && missMemo.v === trVer) return missMemo.out; // 상태 · 사전이 그대로면 다시 안 훑음 (화면 그릴 때마다 불려서)
     const d = trDict() ?? {}, meta = getMeta(), out = new Set();
     for (const o of [s.core, ...MOD_IDS.filter(id => modOn(id, meta) && s.data[id]).map(id => s.data[id])]) {
-        for (const x of leaves(o)) { const k = x.trim(); if (k && k.length <= 600 && !/[가-힣]/.test(k) && !Object.hasOwn(d, k)) out.add(k); }
+        for (const x of leaves(o)) { const k = x.trim(); if (k && k.length <= 600 && !/[가-힣]/.test(k) && !Object.hasOwn(d, k) && !stuck.has(k)) out.add(k); }
     }
-    return [...out];
+    missMemo = { s, v: trVer, out: [...out] };
+    return missMemo.out;
 }
 // 🌐 버튼 (화면만 번역): 영어로 남은 글만 모아 번역한다 — 자동 번역을 꺼 둔 경우(번역 모델 · 토큰 아끼기)에 직접 누르는 용
 export async function translateMissing(btn) {
@@ -464,6 +483,9 @@ export async function translateMissing(btn) {
         }
         addPairs(rulePairs());
     } finally { running = false; if (btn) btn.innerHTML = old; }
+    const nStuck = noteStuck(need);
+    if (nStuck) done = Math.max(0, done - nStuck);
+    missMemo.s = null;
     app.refreshNow?.(); translateView();
     const left = missingTr().length;
     toastr[left ? 'info' : 'success'](`${done}개 번역했어요${stop ? ' (멈춤)' : ''}.${left ? ` 아직 ${left}개 남았어요 — 한 번 더 누르면 이어서 해요.` : ''}`, TITLE);
@@ -522,7 +544,9 @@ async function fillNew() {
         if (out !== src && Array.isArray(out?.list) && out.list.length === need.length) { addPairs(pairsOf(src, out)); addPairs(rulePairs()); translateView(); }
         // 번역이 안 돌아온 글은 다음에 다시 (예전엔 한 번 실패하면 이번 접속 내내 영어로 남았음)
         const d2 = trDict() ?? {};
-        for (const k of need) if (!Object.hasOwn(d2, k)) { tried.delete(k); failedOnce = true; }
+        // 번역기가 답은 했는데 영어 그대로면(짝 개수는 맞음) 실패가 아니라 「못 바꿈」 → 다시 안 보냄 · 한 번 알림
+        if (out !== src && Array.isArray(out?.list) && out.list.length === need.length) noteStuck(need);
+        else for (const k of need) if (!Object.hasOwn(d2, k)) { tried.delete(k); failedOnce = true; }
     } finally { filling = false; }
     // 60개씩 끊어서 → 남은 게 있으면 이어서 (예전엔 첫 60개만 번역하고 멈췄음) · 실패가 있었으면 잠깐 쉬었다가
     if (failedOnce && ++fillRetries > 3) failedOnce = false; // 번역기가 계속 실패하면 이번 접속에선 3번까지만 다시
