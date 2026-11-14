@@ -187,6 +187,10 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.13', title: '설렘 한 스푼 · 사건 한 스푼', items: [
+        ['✨ 설렘 한 스푼', '가끔 장면 속 인물이 지금 관계 단계에 맞는 설레는 한 순간을 스스로 만들어요. 친구면 작은 선물 · 툭 나온 진심까지 — 고백 · 연인 행동은 안 해요.'],
+        ['🎬 사건 한 스푼', '가끔 세상 쪽에서 새 일 하나 (방문객 · 소식 · 기회 · 작은 문제). 확장 설정 › ✨ 설렘 · 사건 한 스푼에서 켜요.'],
+    ] },
     { v: '2.7.12', title: '남은 영어 번역 · 팁 덜 자주 · 도우미 설명서 정리', items: [
         ['🔤 남은 영어 번역', '🌐 버튼에 영어로 남은 글 수가 보이고, 「남은 글 번역하기」로 그것만 번역해요. 직업 · 상태 메시지도 이제 번역돼요.'],
         ['💡 팁 덜 자주', '「이것도 아세요?」는 접속당 1번 · 3시간에 한 번 · 하루 2번까지. 알림의 「팁 그만」으로 바로 끌 수 있어요.'],
@@ -670,6 +674,13 @@ function renderSettings() {
             <small>④⑤⑥⑧ 문구는 「프롬프트 · 토큰」 창에서 고칠 수 있어요. ⑤는 관계 탭의 「욕구 AI로 채우기」로 한 번에 채울 수 있어요.</small>
             </details>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="romrec" title="① 연인은 고백으로만 · ② 한 번에 확 못 오르게 · ④ 관계를 사실로"><i class="fa-solid fa-heart"></i> 추천 세트 켜기 (①②④)</button><button class="menu_button" data-s-act="romoff"><i class="fa-solid fa-power-off"></i> 로맨스 보정 모두 끄기</button></div>
+            <b class="ss-set-h">✨ 설렘 · 사건 한 스푼 <small>(기본 꺼짐 · 걸린 턴에만 주입 한 줄)</small></b>
+            <small>상태창이 너무 정적일 때. 가끔 인물이 <b>지금 관계 단계에 맞게</b> 먼저 설레는 행동을 하고, 가끔 세상 쪽에서 새 일이 생겨요. 친구 사이면 「너라서 그렇지」 같은 말이나 작은 선물까지 — 고백 · 연인 행동은 안 해요.</small>
+            <label class="checkbox_label"><input type="checkbox" data-s="romSpark" ${s.romSpark ? 'checked' : ''}> ✨ 설렘 한 스푼 — 장면 속 인물이 지금 단계에 맞는 설레는 한 순간을 스스로 <small>(애정 꺼 둔 사람은 우정 표현만)</small></label>
+            <label>설렘 확률 % (AI 답 1번마다 · 걸린 뒤 3턴은 쉼)<input type="number" min="0" max="100" class="text_pole" data-s="romSparkPct" value="${s.romSparkPct}"></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="storyPush" ${s.storyPush ? 'checked' : ''}> 🎬 사건 한 스푼 — 이야기가 제자리일 때 세상 쪽에서 새 일 하나 (방문객 · 소식 · 기회 · 작은 문제)</label>
+            <label>사건 확률 % (AI 답 1번마다 · 걸린 뒤 4턴은 쉼)<input type="number" min="0" max="100" class="text_pole" data-s="storyPushPct" value="${s.storyPushPct}"></label>
+            <small>문구는 「프롬프트 · 토큰」 창에서 고칠 수 있어요. 걸린 턴은 그 창의 「지금 보내는 글」에서 볼 수 있어요.</small>
             <b class="ss-set-h">데이터 · 화면</b>
             <label class="checkbox_label"><input type="checkbox" data-s="updateNotice" ${s.updateNotice !== false ? 'checked' : ''}> 📣 업데이트하면 「바뀐 점」을 한 번 알려 주기</label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="whatsnew"><i class="fa-solid fa-bullhorn"></i> 업데이트 내역</button></div>

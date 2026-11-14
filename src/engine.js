@@ -1975,6 +1975,17 @@ export function buildInjection(r, opt = {}) {
         return inj;
     } finally { INJ.on = was; }
 }
+// 설렘 한 스푼: 단계마다 할 수 있는 「설레는 한 순간」과 넘으면 안 되는 선 (친구인데 연인처럼 굴지 않게)
+function sparkFor(x, k, Lv, lovers) {
+    if (x.noLove) return { moment: 'a loyal-friend gesture — remembering something small {{user}} said, a treat or small gift "because I saw it and thought of you", having {{user}}\'s back in front of others', limit: 'This is friendship only: no romantic or flirty undertone.' };
+    if (lovers) return { moment: 'a spontaneous affectionate gesture, a small surprise plan or meaningful gift, or honestly saying what they love about {{user}}', limit: 'They are lovers, so warmth is welcome — still in their own voice and personality.' };
+    const gap = Lv >= 0 ? Lv - k : 3; // 연인 단계까지 몇 단계 남았나
+    if (k <= 0) return { moment: 'an unexpected small kindness, noticing something about {{user}} others missed, or quietly helping without being asked', limit: 'They barely know each other: no flirting, no claims of closeness.' };
+    if (gap >= 4) return { moment: 'remembering a small detail {{user}} mentioned, a casual treat or small gift, stepping in to help, or a warm teasing line', limit: 'They are not close yet: keep it light and friendly, nothing romantic.' };
+    if (gap === 3) return { moment: 'a small gift "I just happened to see it", remembering exactly what {{user}} likes, or a line that slips out a bit too sincerely ("I did it because it\'s you, obviously") that they don\'t explain', limit: 'They are friends: it can leave a moment of awkward silence, but there is no confession, no flirting on purpose and no couple behaviour.' };
+    if (gap === 2) return { moment: 'a slightly too-honest line ("…because it\'s you, that\'s why"), worrying about {{user}} out loud, a small gift that shows they paid attention, or staying close a little longer than needed', limit: 'It may sound like more than friendship, but they do NOT confess, kiss or act as a couple — they can deflect, joke it off or get flustered.' };
+    return { moment: 'an almost-confession that they stop halfway, a protective moment, a gift that clearly means something, or a brief touch they don\'t explain', limit: 'They are NOT lovers yet: no confession is made or accepted, no kiss, no possessive or controlling behaviour.' };
+}
 // ───── 로맨스 보정 주입 (v2.6 · 따로 주입 · 깊이 따로) ─────
 function romanceBlock(r) {
     const set = settings(), s = r.state, d = s.data, meta = getMeta();
@@ -2006,6 +2017,7 @@ function romanceBlock(r) {
             }
         }
     }
+    const nFacts = L.length; // 위까지가 관계 사실 · 욕구 (머리말은 이게 있을 때만)
     if (set.romIntent) L.push(P('inj.rom.intent'));
     if (set.romInit) { // 먼저 움직이기: 답 1번마다 주사위 (같은 턴엔 같은 결과 → 프롬프트 창과 실제가 같다)
         const rng = seeded(`${ctx().getCurrentChatId?.() ?? MODULE}:init:${s.turn}:${(ctx().chat ?? []).length}`);
@@ -2014,7 +2026,34 @@ function romanceBlock(r) {
             L.push(P('inj.rom.init', { who: cand.length ? cand[Math.floor(rng() * cand.length)] : 'one of the characters present' }));
         }
     }
-    const hasFacts = L.some(l => !l.startsWith(P('inj.rom.intent').slice(0, 30)) && !l.startsWith(P('inj.rom.init', { who: '' }).slice(0, 12)));
+    // ✨ 설렘 한 스푼 · 🎬 사건 한 스푼 (v2.7.13): 가끔 그 단계에 맞는 설렘 한 순간 · 이야기가 움직일 일 하나
+    // 같은 턴엔 같은 결과 (스와이프해도 같은 주사위) · 바로 앞 몇 턴에 걸렸으면 쉬어서 연달아 안 나와요
+    if (set.romSpark || set.storyPush) {
+        const ck = `${ctx().getCurrentChatId?.() ?? MODULE}`, turn = s.turn ?? 0;
+        // 턴을 cool×2 칸씩 묶어 한 묶음에 많아야 한 번 · 걸리는 자리는 묶음 앞쪽 cool칸 중 하나 → 두 번 사이는 늘 cool턴 넘게 쉼
+        // (한 턴 확률 p% ≈ 묶음 확률 p×묶음 길이 · 묶음마다 정해져서 스와이프 · 다시 계산해도 같다)
+        const hit = (tag, pct, cool) => {
+            const p = clamp(num(pct, 12), 0, 100) / 100, W = cool * 2, w = Math.floor(turn / W);
+            const r = seeded(`${ck}:${tag}:${w}`);
+            const go = r() < Math.min(1, p * W), at = Math.floor(r() * cool);
+            return go && turn - w * W === at;
+        };
+        if (set.romSpark && modOn('rel', meta) && d.rel && hit('spark', set.romSparkPct, 3)) {
+            const rl = d.rel, st = rl.stages?.length ? rl.stages : DEFAULT_STAGES, top = st.length - 1, Lv = loveIndex(st);
+            const cand = rl.user.filter(y => inScene(y.name) && !y.out && ((y.aff ?? 0) >= 5 || (y.trust ?? 0) >= 20));
+            if (cand.length) {
+                const rng = seeded(`${ck}:sparkwho:${turn}`);
+                const w = cand.map(y => Math.max(1, (y.aff ?? 0) + 10)), tot = w.reduce((a, b) => a + b, 0);
+                let pick = rng() * tot, x = cand[0];
+                for (let i = 0; i < cand.length; i++) { pick -= w[i]; if (pick <= 0) { x = cand[i]; break; } }
+                const k = clamp(x.stage ?? 0, 0, top), lovers = (set.romBond ? !!x.bond : true) && Lv >= 0 && k >= Lv;
+                const { moment, limit } = sparkFor(x, k, Lv, lovers);
+                L.push(P('inj.rom.spark', { who: x.name, stage: st[k]?.name ?? '', moment, limit }));
+            }
+        }
+        if (set.storyPush && hit('push', set.storyPushPct, 4)) L.push(P('inj.story.push'));
+    }
+    const hasFacts = nFacts > 0;
     const out = L.length ? [...(hasFacts ? [P('inj.rom.header')] : []), ...L] : []; // 장면에 사람이 없으면 「아래가 사실」 머리말은 빼기
     const mine = String(set.romInject ?? '').trim();
     if (mine) out.push(mine);

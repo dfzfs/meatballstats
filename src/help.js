@@ -82,6 +82,8 @@ RECENT (v2.7.7–v2.7.12)
 - 「이것도 아세요?」 tips: once per session, 3h apart, 2 per day; 「팁 그만」 on the notification turns them off (setting actionTips). 「💡 팁 · 주의 알림」 turns off all tips.
 - Performance: stats-only adds ~15ms per AI reply on a phone, all panels ~20ms, idle 0. Injection with everything on is ~700 tokens per turn.
 
+- v2.7.13 ✨ 설렘 한 스푼 (romSpark, default off): sometimes a present character makes one stage-appropriate heart-flutter moment on their own (friends: small gift, a too-sincere line, no confession; lovers: affectionate surprise; 애정 꺼 둔 사람: friendship only). 🎬 사건 한 스푼 (storyPush, default off): sometimes one new development from the world. Both in extension settings › 「✨ 설렘 · 사건 한 스푼」, chance % per AI reply with a few turns of rest, same result on swipes.
+
 COMMON PROBLEMS
 - New settings not visible after an update: hard refresh (Ctrl+Shift+R); check the installed branch in Manage extensions.
 - Numbers look wrong / sheet missing: 자가 진단.
