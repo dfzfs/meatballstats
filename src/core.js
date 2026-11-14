@@ -3,7 +3,7 @@ import { toEnglish, usedPairs } from './skeleton_en.js'; // 영어 저장일 때
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.7.11';
+export const VERSION = '2.7.12';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
 export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
@@ -62,7 +62,8 @@ export const DEFAULTS = Object.freeze({
     autoBake: true,          // 긴 채팅: 오래된 기록을 자동으로 굳혀 계산을 가볍게 (v2.7)
     bakeAfter: 250,          // 굳히지 않은 메시지가 이만큼 넘으면 (최근 120개는 늘 그대로)
     featureTips: true,       // 💡 이야기에 맞는 순간 안 쓰는 기능을 한 번씩 추천 (기능마다 한 번 · AI 0회 · v2.7)
-    tipGap: 20,              // 추천 사이 최소 턴 (관련 말 없이 권하는 건 이 두 배)
+    actionTips: true,        // 💡 칸에서 뭔가 할 때 「이것도 아세요?」 (v2.7.12 · 알림의 「팁 그만」으로 끔)
+    tipGap: 40,              // 추천 사이 최소 턴 (v2.7.12 · 20 → 40) (관련 말 없이 권하는 건 이 두 배)
     tipNever: {},            // 「괜찮아요」 누른 기능 (모든 채팅에서 다시 안 권함)
     hintSeen: {},            // 💡 팁 · ⚠️ 주의: true = 「알아요」 · 숫자 = 보여 준 횟수 (2번이면 그만)
     genMode: 'hybrid',       // 만들기 방식: ai = 전부 AI | hybrid = 기본 틀 + 세계관 칸만 AI (기본·추천) | tpl = 기본 틀만 (AI 0회) (v2.7)

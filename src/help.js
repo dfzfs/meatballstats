@@ -74,6 +74,14 @@ PLAY STYLES
 SLASH COMMANDS
 /ss [탭] · /ss-make · /ss-prompts · /ss-roll [판정] · /ss-set key=… 값 · /ss-instruct tab=… 지시 · /ss-get [key=…] · /ss-undo · /ss-save · /ss-backup · /ss-inbox · /ss-search · /ss-diag · /ss-pause · /ss-resume · /ss-skip · /ss-help [질문]. Macro: {{ss::key}} e.g. {{ss::cash}}, {{ss::aff:레온}}.
 
+RECENT (v2.7.7–v2.7.12)
+- Contact/feed edits store only the changed part; old chats are slimmed once on open. Saves happen within 0.3s and on tab close.
+- Swipe delete keeps every remaining swipe's changes. Results that arrive after the user switched chats are dropped (not mixed in).
+- If MVU / RPG Companion also run in the chat, the user is told once (double tokens, numbers counted twice); they are not blocked.
+- 화면만 번역: text the AI wrote later stays English until translated. The 🌐 header button shows how many are left; 「남은 글 번역하기」 translates only those (60 per AI call; free with 실리 기본 번역). Auto-translate of new text is off by default for the LLM translator to save tokens (setting 「새로 쓴 영어 글 자동 번역」 → 항상).
+- 「이것도 아세요?」 tips: once per session, 3h apart, 2 per day; 「팁 그만」 on the notification turns them off (setting actionTips). 「💡 팁 · 주의 알림」 turns off all tips.
+- Performance: stats-only adds ~15ms per AI reply on a phone, all panels ~20ms, idle 0. Injection with everything on is ~700 tokens per turn.
+
 COMMON PROBLEMS
 - New settings not visible after an update: hard refresh (Ctrl+Shift+R); check the installed branch in Manage extensions.
 - Numbers look wrong / sheet missing: 자가 진단.

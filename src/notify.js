@@ -109,7 +109,7 @@ function toastHTML(n) {
         : n.kind === 'ending' ? `<button class="ss-t-btn" data-ending="${esc(n.ending)}">엔딩 쓰기</button>`
             : n.kind === 'day' ? '<button class="ss-t-btn" data-open="record">자세히</button>'
                 : n.kind === 'update' ? '<button class="ss-t-btn" data-whatsnew="1">자세히</button>'
-                    : n.kind === 'hint' && n.hint ? `<button class="ss-t-btn" data-hintok="${esc(n.hint)}" title="이 문구는 다시 안 보여요">알아요</button>`
+                    : n.kind === 'hint' && n.hint ? `<span class="ss-t-tip"><button class="ss-t-btn" data-hintok="${esc(n.hint)}" title="이 문구는 다시 안 보여요">알아요</button>${n.icon !== '⚠️' ? '<button class="ss-t-btn ghost" data-hintstop="1" title="「이것도 아세요?」 팁을 더는 안 띄워요">팁 그만</button>' : ''}</span>`
                     : n.kind === 'tip' && n.mod ? `<span class="ss-t-tip"><button class="ss-t-btn" data-tipon="${esc(n.mod)}">써 볼래요</button><button class="ss-t-btn ghost" data-tipno="${esc(n.mod)}" title="이 기능은 다시 권하지 않아요">괜찮아요</button></span>` : '';
     const mood = settings().showMascot === false ? '' : moodOf(n);
     return `<div class="ss-t-ico ${mood ? 'cat' : ''}">${mood ? `<img src="${mascotUrl(mood)}" alt="">` : esc(n.icon)}</div><div class="ss-t-b"><b>${esc(n.title)}</b>${n.text ? `<small>${esc(n.text)}</small>` : ''}</div>${extra}<button class="ss-t-x" data-x="1" title="닫기">×</button>`;
@@ -160,6 +160,7 @@ export function showToast(n) {
         if (on) { close(); app.enableTip?.(on); return; }
         const ok = e.target.closest('[data-hintok]')?.dataset.hintok;
         if (ok) { close(); app.knowHint?.(ok); return; }
+        if (e.target.closest('[data-hintstop]')) { close(); app.knowHint?.(n.hint); app.stopActionTips?.(); return; }
         if (no) { close(); app.neverTip?.(no); return; }
         const en = e.target.closest('[data-ending]');
         if (en) { app.writeEnding?.(en.dataset.ending); return close(); }

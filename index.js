@@ -187,6 +187,11 @@ app.showWhatsNew = (all = true) => showWhatsNew(all);
 
 // ───── 📣 업데이트 알림: 버전이 바뀌면 「바뀐 점」을 한 번 보여 준다 ─────
 const CHANGELOG = [
+    { v: '2.7.12', title: '남은 영어 번역 · 팁 덜 자주 · 도우미 설명서 정리', items: [
+        ['🔤 남은 영어 번역', '🌐 버튼에 영어로 남은 글 수가 보이고, 「남은 글 번역하기」로 그것만 번역해요. 직업 · 상태 메시지도 이제 번역돼요.'],
+        ['💡 팁 덜 자주', '「이것도 아세요?」는 접속당 1번 · 3시간에 한 번 · 하루 2번까지. 알림의 「팁 그만」으로 바로 끌 수 있어요.'],
+        ['📖 도우미', '설명서를 7묶음으로 정리하고 자주 묻는 답(스와이프 · 저장 · 번역 · 다른 상태창 · 렉)을 새로 넣었어요.'],
+    ] },
     { v: '2.7.11', title: '저장 놓침 막기 · 다른 상태창 알림', items: [
         ['💾 저장', '버튼을 누르고 바로 채팅을 옮겨도 마지막 변경이 저장돼요. 탭을 닫거나 앱을 내릴 때도 바로 저장해요.'],
         ['🔔 다른 상태창', 'MVU · RPG Companion 같은 다른 상태창이 같이 돌고 있으면 채팅마다 한 번만 알려 줘요.'],
@@ -636,6 +641,7 @@ function renderSettings() {
             <label>팝업이 보이는 시간 (초)<input type="number" min="2" max="20" class="text_pole" data-s="toastSec" value="${s.toastSec}"></label>
             <label class="checkbox_label"><input type="checkbox" data-s="daySummary" ${s.daySummary ? 'checked' : ''}> 하루가 지나면 「하루 정리」 카드</label>
             <label class="checkbox_label"><input type="checkbox" data-s="featureTips" ${s.featureTips !== false ? 'checked' : ''}> 💡 팁 · 주의 알림 — 안 쓰는 기능 추천 · 「이것도 아세요?」 · 설정 주의를 가끔 한 번씩 <small>(「알아요」 누르면 다시 안 나옴 · AI 0회)</small></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="actionTips" ${s.actionTips !== false ? 'checked' : ''}> 　└ 칸에서 뭔가 할 때 「이것도 아세요?」 <small>(접속당 1번 · 3시간에 한 번 · 하루 2번까지)</small></label>
             <div class="ss-set-btns"><button class="menu_button" data-s-act="tipreset"><i class="fa-solid fa-rotate-left"></i> 넘긴 추천 · 팁 다시 보기</button></div>
             <b class="ss-set-h">추천 음악</b>
             <label>좋아하는 음악 (모든 채팅 기본)<input class="text_pole" data-s="musicTaste" value="${esc(s.musicTaste)}" placeholder="예: K-pop 발라드, 영화 OST, 로파이"></label>

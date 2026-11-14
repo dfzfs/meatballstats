@@ -72,7 +72,11 @@ async function stMany(list, rev = false) {
     return out;
 }
 // 코드 값(상태·종류·id 같은 것)은 번역하면 안 된다
-const CODE_KEYS = new Set(['id', 'kind', 'role', 'status', 'mode', 'type', 'cls', 'repeat', 'by', 'from', 'icon', 'color', 'unit', 'every', 'key', 'currencyCode', 'contact', 'play', 'system', 'sys', 'judge', 'genre', 'sort', 'show', 'pick', 'mesid', 'chatId', 'seed', 'url', 'link', 'src', 'img', 'avatar', 'handle']);
+const CODE_KEYS = new Set(['id', 'cls', 'repeat', 'icon', 'color', 'every', 'key', 'currencyCode', 'system', 'sys', 'judge', 'sort', 'show', 'pick', 'mesid', 'chatId', 'seed', 'url', 'link', 'src', 'img', 'avatar', 'handle']);
+// 이 칸들은 코드일 때도 글일 때도 있다 (v2.7.12): role = 'npc' 또는 「Life Saver & Clown」, status = 'active' 또는 「Buried in treaty paperwork」
+// → 띄어쓰기 없는 소문자 낱말일 때만 코드로 본다 (예전엔 늘 코드로 봐서 직업 · 상태 메시지가 영어로 남았음)
+const SOFT_KEYS = new Set(['kind', 'role', 'status', 'mode', 'type', 'by', 'from', 'unit', 'contact', 'play', 'genre']);
+const softCode = (v) => /^[a-z0-9_\-.]{1,24}$/.test(String(v).trim());
 // 이름 모를 칸에 든 값이 코드인지: 예전엔 「소문자 한 낱말」을 모두 코드로 봐서 bread · rope · lantern 같은 소지품 이름이 영어로 남았어요 (v2.7.3)
 // → 이제 밑줄 · 하이픈 · 숫자가 섞인 것과, 미트볼이 쓰는 정해진 코드 값만 코드로 봐요
 const CODE_VALS = new Set(['open', 'active', 'done', 'failed', 'user', 'main', 'npc', 'minimal', 'detailed', 'phone', 'instant', 'letter', 'curse', 'bless', 'luck', 'bad', 'event', 'yearly', 'once', 'day', 'week', 'month', 'num', 'bar', 'text', 'ai', 'me', 'them', 'deco', 'item', 'mes', 'peek', 'song', 'auto', 'pinned', 'summary', 'off', 'on', 'true', 'false', 'none', 'rp', 'multi', 'director', 'easy', 'normal', 'hard', 'crit', 'ok', 'fail', 'fumble', 'info', 'bank', 'loan', 'pawn', 'shark', 'paid', 'late', 'tag', 'kw', 'always', 'aff', 'trust', 'stage', 'jealous', 'up', 'down', 'neg', 'pos', 'hi', 'warn', 'free', 'st', 'llm', 'ko', 'en', 'enview']);
@@ -80,7 +84,7 @@ const codeLike = (v) => { const t = v.trim(); return /^[a-z0-9_\-]{1,14}$/.test(
 // rev = 한국어 → 영어 (옛 번역본을 영어 저장으로 바꿀 때): 한글이 든 칸만
 // SNS 아이디 · 핸들(@luffy, mugiwara_luffy, law.d.water 같은 것)은 이름이 아니라 번역하지 않는다 (v2.7.2)
 const HANDLE = (v) => /^@?[A-Za-z0-9_.]{2,30}$/.test(v.trim()) && (v.trim().startsWith('@') || /[_.\d]/.test(v));
-const isCode = (k, v, rev = false) => CODE_KEYS.has(k) || (rev ? !/[가-힣]/.test(v) : (codeLike(v) || !/[A-Za-z]/.test(v) || HANDLE(v)));
+const isCode = (k, v, rev = false) => CODE_KEYS.has(k) || (SOFT_KEYS.has(k) && softCode(v)) || (rev ? !/[가-힣]/.test(v) : (codeLike(v) || !/[A-Za-z]/.test(v) || HANDLE(v)));
 function leaves(o, acc = new Set(), k = '', rev = false) {
     if (typeof o === 'string') { if (o.trim() && !isCode(k, o, rev)) acc.add(o); return acc; }
     if (Array.isArray(o)) { for (const v of o) leaves(v, acc, k, rev); return acc; }
@@ -189,7 +193,9 @@ export async function openTrFix(only = null) {
     const edits = new Map(); // en → 새 한국어 (목록을 다시 그려도 고친 게 남게)
     const el = document.createElement('div');
     el.className = 'ss-root ss-scope ss-trfix ss-notr';
+    const nMiss = only ? 0 : missingTr().length;
     el.innerHTML = `<div class="ss-wz-head"><i class="fa-solid fa-language"></i><div><b>🌐 번역 고치기</b><small>상태창 전체 · 고친 건 📌 고정 — 모든 탭과 앞으로 새로 생기는 글에도 그대로 (AI 0회)</small></div></div>
+        ${nMiss ? `<div class="ss-card ss-trf-miss"><b>🔤 아직 영어로 남은 글 ${nMiss}개</b><small class="ss-hint">AI가 나중에 새로 쓴 글이에요. ${engineST() ? '실리 기본 번역으로 (토큰 0)' : '번역 모델로 (AI 호출 · 자동 번역은 토큰을 아끼려고 꺼져 있어요)'} 한 번에 번역해요.</small><button class="ss-btn pri ss-trf-go"><i class="fa-solid fa-language"></i> 남은 글 번역하기</button></div>` : ''}
         <div class="ss-inline"><input class="ss-in ss-trf-q" placeholder="찾기 — 영어나 한국어 (예: Law, 트라팔가)"><label class="ss-tog sm"><input type="checkbox" class="ss-switch ss-trf-pin"><span>📌 고정만</span></label></div>
         <small class="ss-hint ss-trf-n"></small>
         <div class="ss-trf-list"></div>
@@ -203,6 +209,7 @@ export async function openTrFix(only = null) {
         nEl.textContent = `${hits.length}개${hits.length > shown.length ? ` 중 ${shown.length}개 보임 — 찾기로 좁혀 보세요` : ''}`;
         listEl.innerHTML = shown.map(en => `<label class="ss-trf-row"><small>${lock[en] ? '<b class="ss-trf-lock">📌</b> ' : ''}${esc(en)}</small><input class="ss-in" data-en="${esc(en)}" value="${esc(val(en))}" placeholder="(아직 번역 없음 — 비워 두면 자동)"></label>`).join('') || '<p class="ss-hint">찾는 글이 없어요.</p>';
     };
+    el.querySelector('.ss-trf-go')?.addEventListener('click', (e) => { el.closest('dialog')?.querySelector('.popup-button-cancel')?.click(); translateMissing(null); });
     listEl.addEventListener('input', (e) => { const en = e.target.dataset?.en; if (en !== undefined) edits.set(en, e.target.value.trim()); });
     qEl.addEventListener('input', draw); pinEl.addEventListener('change', draw);
     draw();
@@ -409,6 +416,7 @@ export async function translateSheet(btn) {
     if (viewTr() && koPanels().length) return convertToEnglish(btn); // 화면만 번역인데 한국어로 저장된 칸이 있으면 → 그걸 먼저 영어 저장으로
     const s = app.current?.state;
     if (!s) return;
+    if (viewTr()) return translateMissing(btn); // 화면만 번역: 아직 번역 안 된 글만 (v2.7.12 · 예전엔 다 번역된 칸까지 칸마다 다시)
     const meta = getMeta();
     const ids = ['core', ...MOD_IDS.filter(id => modOn(id, meta) && s.data[id])];
     if (!(await SillyTavern.getContext().Popup.show.confirm(TITLE, `상태창 ${ids.length}칸을 「${esc(settings().trLang || '한국어')}」로 번역해요 (번역 모델 ${ids.length}회). 숫자·구조는 그대로 둬요. 다시 누르면 멈춰요.`))) return;
@@ -428,6 +436,37 @@ export async function translateSheet(btn) {
     } finally { running = false; if (btn) btn.innerHTML = old; }
     if (viewTr()) { app.refreshNow?.(); translateView(); }
     toastr.success(`${k}칸 번역했어요${stop ? ' (멈춤)' : ''}.${viewTr() ? ' 데이터는 영어 그대로고, 화면에만 번역이 보여요.' : ''}`, TITLE);
+}
+// 화면에 영어로 남은 글 (사전에 없는 것)
+export function missingTr() {
+    const s = app.current?.state; if (!s || !viewTr()) return [];
+    const d = trDict() ?? {}, meta = getMeta(), out = new Set();
+    for (const o of [s.core, ...MOD_IDS.filter(id => modOn(id, meta) && s.data[id]).map(id => s.data[id])]) {
+        for (const x of leaves(o)) { const k = x.trim(); if (k && k.length <= 600 && !/[가-힣]/.test(k) && !Object.hasOwn(d, k)) out.add(k); }
+    }
+    return [...out];
+}
+// 🌐 버튼 (화면만 번역): 영어로 남은 글만 모아 번역한다 — 자동 번역을 꺼 둔 경우(번역 모델 · 토큰 아끼기)에 직접 누르는 용
+export async function translateMissing(btn) {
+    const need = missingTr();
+    if (!need.length) { toastr.success('번역 안 된 글이 없어요. 그래도 이상한 번역이 보이면 「번역 고치기」로 직접 고칠 수 있어요.', TITLE); return; }
+    const calls = engineST() ? '실리 기본 번역 · 토큰 0' : `번역 모델 약 ${Math.ceil(need.length / 60)}회`;
+    if (!(await SillyTavern.getContext().Popup.show.confirm(TITLE, `아직 영어로 남은 글 ${need.length}개를 번역해요 (${esc(calls)}).<br><small>이미 번역된 글 · 직접 고친 글은 그대로예요. 다시 누르면 멈춰요.</small>`))) return;
+    running = true; stop = false;
+    const old = btn?.innerHTML;
+    let done = 0;
+    try {
+        for (let i = 0; i < need.length && !stop; i += 60) {
+            if (btn) btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${done}/${need.length}`;
+            const src = { list: need.slice(i, i + 60) };
+            const out = await trJSON(src);
+            if (out !== src && Array.isArray(out?.list) && out.list.length === src.list.length) { addPairs(pairsOf(src, out)); done += src.list.length; }
+        }
+        addPairs(rulePairs());
+    } finally { running = false; if (btn) btn.innerHTML = old; }
+    app.refreshNow?.(); translateView();
+    const left = missingTr().length;
+    toastr[left ? 'info' : 'success'](`${done}개 번역했어요${stop ? ' (멈춤)' : ''}.${left ? ` 아직 ${left}개 남았어요 — 한 번 더 누르면 이어서 해요.` : ''}`, TITLE);
 }
 // 이 채팅에서 한국어로 저장된 칸 (화면만 번역 모드에서 AI에게 한국어가 새는 곳)
 export function koPanels() {

@@ -32,7 +32,7 @@ export function maybeTip() {
         const turn = app.current.state.turn ?? 0;
         const T = (meta.tips ??= { seen: {}, last: 0, start: turn });
         if (turn - (T.start ?? 0) < 6) return; // 막 만든 채팅엔 바로 권하지 않기
-        const gap = Math.max(5, parseInt(set.tipGap, 10) || 20), since = turn - (T.last ?? 0);
+        const gap = Math.max(5, parseInt(set.tipGap, 10) || 40), since = turn - (T.last ?? 0);
         if (since < gap) return; // 몇 턴에 한 번만
         const never = set.tipNever ?? {};
         const text = (ctx().chat ?? []).slice(-4).map(m => stripStatus(m?.mes)).join('\n');
@@ -129,12 +129,13 @@ const SET_HINTS = {
     genParallel: (v) => (Number(v) > 4 ? H('w.par', '동시에 많이 보내면 API가 「요청이 너무 많다(429)」로 거절할 수 있어요.', 'warn') : null),
 };
 const session = { n: 0, at: 0 }; // 이번 접속에서 보여 준 수 · 마지막 시각 (너무 자주 안 뜨게)
-// v2.7.1: 너무 자주 뜬다는 의견 → 접속당 2번 · 마지막 팁에서 30분 (새로고침해도 이어짐 · settings.hintAt) · 하루 4번 · 25% 확률
-const HINT_GAP = 30 * 60 * 1000, HINT_PER_SESSION = 2, HINT_PER_DAY = 4, HINT_CHANCE = 0.25;
+// v2.7.1: 너무 자주 뜬다는 의견 → 접속당 2번 · 30분 · 하루 4번 · 25%
+// v2.7.12: 그래도 자주 뜬다는 의견 → 접속당 1번 · 마지막 팁에서 3시간 · 하루 2번 · 15% · 같은 팁은 한 번만 · 알림에 「팁 그만」
+const HINT_GAP = 3 * 60 * 60 * 1000, HINT_PER_SESSION = 1, HINT_PER_DAY = 2, HINT_CHANCE = 0.15;
 const today = () => new Date().toDateString();
 let pendingHint = false;
 // 팁은 그냥 닫으면 한 번 더 (최대 2번) · 주의는 한 번이면 끝 (「추후 한 번」)
-function seen(id, kind = 'tip') { const v = settings().hintSeen?.[id]; return v === true || v >= (kind === 'warn' ? 1 : 2); }
+function seen(id, kind = 'tip') { const v = settings().hintSeen?.[id]; return v === true || v >= 1; }
 function bump(id) { const s = settings(); s.hintSeen = { ...(s.hintSeen ?? {}) }; if (s.hintSeen[id] !== true) s.hintSeen[id] = (s.hintSeen[id] ?? 0) + 1; saveSettings(); }
 export function knowHint(id) { const s = settings(); s.hintSeen = { ...(s.hintSeen ?? {}), [id]: true }; saveSettings(); }
 // 팁도 알림함에 남긴다 — 팝업을 놓쳐도 🔔 알림함에서 다시 읽을 수 있게
@@ -149,7 +150,7 @@ function show(h, { save = true } = {}) {
 // 상태창에서 뭔가 했을 때 (shell.js) — 그 칸의 안 본 팁 중 하나를, 가끔만
 export function hintAfterAction(tab) {
     try {
-        if (settings().featureTips === false || !getMeta()?.base) return;
+        if (settings().featureTips === false || settings().actionTips === false || !getMeta()?.base) return;
         const set = settings(), last = Math.max(session.at, Number(set.hintAt) || 0);
         if (session.n >= HINT_PER_SESSION || Date.now() - last < HINT_GAP) return;
         if (set.hintDay?.d === today() && set.hintDay.n >= HINT_PER_DAY) return;
@@ -198,3 +199,5 @@ export function maybeLaterWarn() {
     } catch (e) { ssWarn(LOG, 'warn', e); }
 }
 app.knowHint = knowHint;
+// 알림의 「팁 그만」: 칸에서 뭔가 할 때 뜨는 💡 팁만 끈다 (⚠️ 주의 · 기능 추천은 그대로 — 확장 설정에서 다시 켤 수 있음)
+app.stopActionTips = () => { settings().actionTips = false; saveSettings(); toastr.info('이제 「이것도 아세요?」 팁은 안 떠요. 확장 설정 › 💡 팁에서 다시 켤 수 있어요.', TITLE); };
