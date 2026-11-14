@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>bench</title>
+<style>body{font-family:sans-serif;margin:0}#sheld{width:700px}.mes{border-bottom:1px solid #ddd;padding:4px}#extensions_settings2{display:none}dialog.popup{position:fixed;top:20px;left:20px;width:760px;max-height:85vh;overflow:auto}</style>
+</head><body>
+<div id="sheld"><div id="chat"></div><div id="form_sheld"><textarea id="send_textarea"></textarea><div id="send_but"></div></div></div>
+<div id="extensions_settings2"></div>
+<script src="/harness/st-stub.js"></script>
+<script type="module">
+globalThis.__SS_TEST__ = {};
+const mode = new URLSearchParams(location.search).get('mode');
+const t0 = performance.now();
+if (mode === 'meatball') { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = '/ext/style.css'; document.head.appendChild(l); await import('/ext/index.js'); }
+if (mode === 'mini') { await new Promise(r => { const s = document.createElement('script'); s.src = '/harness/mini-stats.js'; s.onload = r; document.body.appendChild(s); }); }
+await SillyTavern.getContext().eventSource.emit('app_ready');
+window.__loadMs = performance.now() - t0;
+window.__ready = true;
+</script>
+</body></html>
