@@ -3,7 +3,7 @@ import { toEnglish, usedPairs } from './skeleton_en.js'; // 영어 저장일 때
 export const MODULE = 'statussim';
 export const LOG = '[미트볼 상태창]';
 export const TITLE = '미트볼 상태창';
-export const VERSION = '2.7.12';
+export const VERSION = '2.7.13';
 export const INJECT_KEY = 'statussim_state';
 export const INJECT_KEY2 = 'statussim_people';
 export const INJECT_KEY3 = 'statussim_romance'; // 로맨스 보정 · 내 주입문 (v2.6)
@@ -110,6 +110,10 @@ export const DEFAULTS = Object.freeze({
     romInject: '',           // 내가 넣는 추가 주입문 (비우면 안 보냄)
     romInit: false,          // 먼저 움직이기: 가끔 그 장면의 인물이 스스로 일을 벌이게
     romInitPct: 25,          // 그 확률 % (AI 답 1번마다)
+    romSpark: false,         // ✨ 설렘 한 스푼: 가끔 장면 속 인물이 지금 단계에 맞는 설레는 한 순간을 스스로 (v2.7.13)
+    romSparkPct: 12,         // 그 확률 % (AI 답 1번마다 · 걸린 뒤 3턴은 쉼)
+    storyPush: false,        // 🎬 사건 한 스푼: 가끔 세상 쪽에서 새 일 하나 (방문객 · 소식 · 기회 · 작은 문제)
+    storyPushPct: 10,        // 그 확률 % (AI 답 1번마다 · 걸린 뒤 4턴은 쉼)
     profHelp: '',            // 미트볼 도우미가 쓸 모델 (연결 프로필, '' = 확장 AI 모델)
     helpMode: 'local',       // 도우미 답 방식: local (README 먼저 · 토큰 0) | ai (바로 AI)
     romDepth: 1,             // 로맨스 보정 주입 깊이 (0 = 맨 끝)
