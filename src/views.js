@@ -71,8 +71,7 @@ export const TILES = {
 };
 function barLabel(name, long) {
     const n = viewTr() ? trString(name) : String(name ?? '');
-    if (long) return n;
-    return /[가-힣]/.test(n) ? (n.length <= 4 ? n : n.slice(0, 3)) : n.slice(0, 3);
+    return n; // 줄이지 않고 다 보여 줌 — 칸이 좁으면 글자가 칸에 맞게 작아지고(fitTiles), 칸을 넓히면 다시 커짐
 }
 const TMOD = { bars: 'stats', date: 'calendar', loc: 'map', cash: 'wallet', contact: 'contact', quest: 'quest', rel: 'rel', mind: 'rel', cond: 'stats', news: 'news', fate: 'fate', music: 'music', custom: 'custom' };
 // 판 배경 기본 무늬 (v2.7.21 · 직접 그린 SVG · 그림 파일 없음) — 고르지 않으면 「모눈 데이지」
