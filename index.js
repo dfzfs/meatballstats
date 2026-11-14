@@ -2,7 +2,7 @@
 // 어떤 카드·세계관에도 붙는 상태창. 모든 칸은 AI가 처음 채우고, 직접 편집 · 추가 지시 · 다시 생성이 된다.
 import { rev, ctxReset, app, ctx, settings, saveSettings, migrateParts, getMeta, saveMeta, isActive, ready, modOn, MODS, MOD_IDS, MOD, esc, short, splitBar, findBy, TITLE, LOG, VERSION, MODULE, sub, rand, DIFFS, ssErr, ssWarn } from './src/core.js';
 import { opInfo } from './src/engine.js';
-import { clampAdjust, noteGeneration, compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, shiftSwipeKeys, drawerOps, setDrawer, extractOps, ssValue, undoLast, hasStatus, autoBake, slimLegacy } from './src/engine.js';
+import { shiftSwipeAnchors, clampAdjust, noteGeneration, compute, buildInjection, setInjection, addAdjust, KEYMAP, unreadCount, stashStatus, stashAllSwipes, shiftSwipeKeys, drawerOps, setDrawer, extractOps, ssValue, undoLast, hasStatus, autoBake, slimLegacy } from './src/engine.js';
 import { analyzeMessage, instructModule } from './src/ai.js';
 import { listProfiles, mainBusy } from './src/prompts.js';
 import { diffHTML, confirmPopup, applyTheme, askInput, mascot, popup } from './src/kit.js';
@@ -42,7 +42,7 @@ function waitChips() {
 }
 // v2.7.21: 칩이 붙은 뒤 다른 확장(번역 등)이 본문을 다시 그리며 칩 자리를 지우면, 다음 사건까지 칩이 안 보였다 (칩 점검 「칩 자리가 사라졌어요」)
 // → #chat 의 바뀜을 지켜보다가 칩이 있어야 할 답에서 칩 자리가 사라졌으면 다시 붙인다 (모아서 한 번 · 칩이 없어야 할 답 · 쓰는 중인 답은 건너뜀)
-let healTimer = null, healObs = null, healN = 0, healAt = 0;
+let healTimer = null, healN = 0, healAt = 0;
 function needsChip(mesEl) {
     const i = Number(mesEl.getAttribute('mesid')); if (Number.isNaN(i)) return false;
     const snap = app.current?.snaps.get(i), set = settings();
@@ -59,20 +59,9 @@ function healChips() {
     for (const el of lost) doneEl.delete(el);
     try { decorateAll(); } catch (e) { ssWarn(LOG, 'heal', e); }
 }
-function watchChips() {
-    const chatEl = document.getElementById('chat');
-    if (!chatEl || healObs) return;
-    healObs = new MutationObserver((list) => {
-        if (healTimer || !app.current) return;
-        // 우리 칩을 붙이는 바뀜만 있으면 무시
-        if (list.every(r => [...r.addedNodes, ...r.removedNodes].every(n => n.nodeType !== 1 || n.classList?.contains('ss-slot') || n.closest?.('.ss-slot')))) return;
-        healTimer = setTimeout(healChips, 250);
-    });
-    healObs.observe(chatEl, { childList: true, subtree: true });
-}
 function decorateAll() {
     if (!app.current) return;
-    watchChips();
+    watchChat();
     const set = settings();
     const baked = getMeta()?.startAt ?? 0; // 굳힌 기록 안의 답은 고쳐도 반영되지 않으니 ✏️를 숨긴다
     const chat = ctx().chat ?? [];
@@ -142,25 +131,36 @@ function decorateAll() {
         }
     });
 }
-// 번역 확장 등이 답 본문(.mes_text)을 통째로 다시 그리면 칩 자리(.ss-slot)도 같이 지워진다
-// → 지워지는 걸 보면 잠깐 뒤 다시 붙인다 (미트볼이 칩 안쪽만 바꿀 땐 .ss-slot 자체는 안 지워져서 반복되지 않음)
-let slotObs = null, slotTimer = 0;
-function watchSlots() {
+// #chat 감시자는 하나 (예전엔 둘이 같은 곳을 따로 지켜봤음 — 「칩 자리가 지워짐」 · 「칩이 있어야 할 답에 칩이 없음」)
+// ① 번역 확장 등이 답 본문(.mes_text)을 통째로 다시 그려 칩 자리(.ss-slot)가 지워지면 → 잠깐 뒤 다시 붙인다
+//    (미트볼이 칩 안쪽만 바꿀 땐 .ss-slot 자체는 안 지워져서 반복되지 않음)
+// ② 그 밖에 남이 본문을 바꿨으면 → 칩이 있어야 할 답에서 사라졌는지 살펴보고 다시 붙인다 (모아서 한 번 · 5초에 20번까지)
+let chatObs = null, slotTimer = 0;
+const isSlot = (n) => n.nodeType === 1 && (n.classList?.contains('ss-slot') || !!n.closest?.('.ss-slot'));
+function watchChat() {
     const chatEl = document.getElementById('chat');
     if (!chatEl || typeof MutationObserver === 'undefined') return;
-    if (slotObs) { if (slotObs._el === chatEl) return; slotObs.disconnect(); }
-    slotObs = new MutationObserver((muts) => {
-        if (mainBusy()) return; // 스트리밍 중엔 본문이 글자마다 다시 그려진다 — 끝난 뒤 한 번만 붙인다
-        for (const m of muts) for (const n of m.removedNodes) {
-            if (n.nodeType === 1 && (n.classList.contains('ss-slot') || n.querySelector('.ss-slot'))) {
-                clearTimeout(slotTimer);
-                slotTimer = setTimeout(() => { try { decorateAll(); } catch (e) { ssWarn(LOG, 'decorate', e); } }, 80);
-                return;
+    if (chatObs) { if (chatObs._el === chatEl) return; chatObs.disconnect(); }
+    chatObs = new MutationObserver((muts) => {
+        let slotGone = false, foreign = false;
+        for (const m of muts) {
+            for (const n of m.removedNodes) {
+                if (n.nodeType !== 1) continue;
+                if (n.classList.contains('ss-slot') || n.querySelector('.ss-slot')) slotGone = true;
+                if (!isSlot(n)) foreign = true;
             }
+            if (!foreign) for (const n of m.addedNodes) if (n.nodeType === 1 && !isSlot(n)) { foreign = true; break; }
         }
+        // 스트리밍 중엔 본문이 글자마다 다시 그려진다 — 끝난 뒤 한 번만 붙인다
+        if (slotGone && !mainBusy()) {
+            clearTimeout(slotTimer);
+            slotTimer = setTimeout(() => { try { decorateAll(); } catch (e) { ssWarn(LOG, 'decorate', e); } }, 80);
+            return;
+        }
+        if (foreign && !healTimer && app.current) healTimer = setTimeout(healChips, 250);
     });
-    slotObs._el = chatEl;
-    slotObs.observe(chatEl, { childList: true, subtree: true });
+    chatObs._el = chatEl;
+    chatObs.observe(chatEl, { childList: true, subtree: true });
 }
 document.addEventListener('click', async (e) => {
     const star = e.target.closest('.ss-star[data-ss-star]');
@@ -719,7 +719,7 @@ function renderSettings() {
                 <label>별도 분석 (자동 반영 B · A+B)<select class="text_pole" data-s="profAnalyze">${featOptions(s.profAnalyze)}</select></label>
                 <label>미트볼 도우미 (기능 물어보기)<select class="text_pole" data-s="profHelp">${featOptions(s.profHelp)}</select></label>
             </details>
-            <label class="checkbox_label"><input type="checkbox" data-s="aiFallbackMain" ${s.aiFallbackMain ? 'checked' : ''}> 연결 프로필이 실패하면 메인 연결로 다시 보내기 <small>(끄면 실패로 끝나요 · 비싼 메인 모델로 새는 것 방지)</small></label>
+            <label class="checkbox_label"><input type="checkbox" data-s="aiFallbackMain" ${s.aiFallbackMain ? 'checked' : ''}> 연결 프로필이 실패하면 메인 연결로 다시 보내기 <small>(기본 끔 — 실패하면 거기서 멈추고 알려 줘요 · 비싼 메인 모델로 새는 것 방지)</small></label>
             <label class="checkbox_label"><input type="checkbox" data-s="genBatch" ${s.genBatch ? 'checked' : ''}> 상태창 만들기: 관련 칸끼리 묶어서 생성 <small>(호출 17번 → 6번 · 빠진 칸만 따로 다시)</small></label>
             <label>동시에 보낼 생성 요청 수 <small>(너무 높으면 API가 거절할 수 있어요)</small><input type="number" min="1" max="8" class="text_pole" data-s="genParallel" value="${s.genParallel}"></label>
             <label>확장 AI 최대 출력 토큰<input type="number" min="500" max="32000" class="text_pole" data-s="aiMaxTokens" value="${s.aiMaxTokens}"></label>
@@ -1043,6 +1043,8 @@ function onSwipeDeleted(e) {
     try {
         const m = ctx().chat?.[Number(e?.messageId)];
         if (shiftSwipeKeys(m, Number(e?.swipeId))) { clearTimeout(stashSave); stashSave = setTimeout(() => ctx().saveChat?.(), 400); }
+        const meta = getMeta();
+        if (meta?.base && shiftSwipeAnchors(meta, m, Number(e?.swipeId))) saveMeta(); // 그 답에 묶인 행동(구매 · 이동 …)도 새 번호로
     } catch (err) { ssWarn(LOG, 'swipe delete', err); }
     refresh(true);
 }
@@ -1165,7 +1167,7 @@ function init() {
     registerMacros();
     if (settings().autoRegex) installRegex(false);
     try { startViewTr(); } catch (e) { ssWarn(LOG, 'viewtr', e); }
-    try { watchSlots(); } catch (e) { ssWarn(LOG, 'slots', e); }
+    try { watchChat(); } catch (e) { ssWarn(LOG, 'slots', e); }
     const on = (name, fn) => { if (E[name]) eventSource.on(E[name], fn); };
     on('CHAT_CHANGED', onChatChanged);
     on('GENERATION_AFTER_COMMANDS', onBeforeGenerate);

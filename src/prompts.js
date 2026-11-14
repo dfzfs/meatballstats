@@ -148,7 +148,7 @@ export function mainBusy() {
         return !!stop && getComputedStyle(stop).display !== 'none';
     } catch { return false; }
 }
-async function waitMainIdle(maxMs = 60000) {
+async function waitMainIdle(maxMs = 300000) { // 생각이 긴 모델은 답 하나에 1분을 넘긴다 → 5분까지 기다림 (예전 1분 뒤엔 겹쳐 보냈음)
     const t0 = Date.now();
     let told = false;
     while (mainBusy() && Date.now() - t0 < maxMs) {
@@ -188,9 +188,8 @@ async function aiGenerateOnce(feature, systemPrompt, prompt, maxTokens, opts = {
             if (prof && svc?.sendRequest) {
                 entry.model = prof.model ?? prof.name ?? '';
                 try {
-                    let r;
-                    try { r = await svc.sendRequest(id, [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max); }
-                    catch { r = await svc.sendRequest(id, `${systemPrompt}\n\n${prompt}`, max); }
+                    // 실패하면 다시 보내지 않는다 (예전엔 어떤 오류든 글자 하나로 묶어 한 번 더 보냈음 → 429 · 과금 두 번)
+                    const r = await svc.sendRequest(id, [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max);
                     text = typeof r === 'string' ? r : (r?.content ?? '');
                 } catch (e) {
                     ssWarn(LOG, 'profile request failed', e);

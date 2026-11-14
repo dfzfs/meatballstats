@@ -1,6 +1,6 @@
 // 🛟 데이터 지키기: 전체 백업 · 세이브 슬롯 · 카드에 상태창 붙이기 · 자가 진단 · 분기 따라가기 · 2회차
 import { app, ctx, settings, saveSettings, getMeta, saveMeta, MODULE, DATA_V, VERSION, MOD_IDS, MOD, NORM, normalize, clone, esc, short, fmtNum, uid, TITLE, LOG, stamp, findBy, norm, arr, DIFFS, ssWarn } from './core.js';
-import { compute, chatCharacters } from './engine.js';
+import { compute, chatCharacters, msgKey } from './engine.js';
 import { askConfirm, askInput, mascot } from './kit.js';
 
 const CARD_KEY = 'statussim';
@@ -36,6 +36,10 @@ export function restoreFile(setBase) {
                 m.adjust = arr(m.adjust).filter(a => a && typeof a === 'object').map(a => (a.set?.data && (a.set.mod === 'core' || NORM[a.set.mod]) ? { ...a, set: { ...a.set, data: a.set.mod === 'core' ? NORM.core(a.set.data) : normalize(a.set.mod, a.set.data) } } : a));
                 if ((m.startAt ?? 0) > chatLen()) { m.startAt = chatLen(); m.startKey = lastKey(); } // 다른 채팅에 넣을 때: 지금부터 이어서
                 m.adjust = arr(m.adjust).filter(a => (a.at ?? 0) <= chatLen());
+                // 묶인 행동(구매 · 이동 …)은 묶인 메시지가 이 채팅에 있을 때만 계산된다 → 다른 채팅에 넣으면 조용히 빠졌음
+                // → 이 채팅에 없는 메시지에 묶인 것은 묶음을 풀어 그대로 계산되게 (같은 채팅이면 묶음 유지)
+                const here = new Set((ctx().chat ?? []).map(x => msgKey(x)));
+                for (const a of m.adjust) if (typeof a.an === 'string' && !here.has(a.an.slice(0, a.an.lastIndexOf('|')))) delete a.an;
                 m.chatId = ctx().getCurrentChatId?.() ?? null;
                 ctx().chatMetadata[MODULE] = m;
                 getMeta(); // 옛 버전 백업이면 여기서 변환

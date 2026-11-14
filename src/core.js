@@ -71,7 +71,7 @@ export const DEFAULTS = Object.freeze({
     trAuto: 'st',            // 화면만 번역: 새로 생긴 영어 글 자동 번역 — st = 실리 기본 번역일 때만 (무료) | always = 번역 모델이어도 (AI 호출) | off             // 번역 지침 — LLM: 그대로 전달 · 실리 기본 번역: 「원문 = 번역」 줄만 (이름 고정)
     prompts: {},             // 사용자 수정 프롬프트
     stashTags: true,         // <meatball>을 읽은 뒤 본문에서 떼어 메시지 숨은 칸에 보관 (다른 확장·요약에 안 보임)
-    aiFallbackMain: true,    // 연결 프로필 실패·빈 응답 때 메인 연결로 다시 보냄
+    aiFallbackMain: false,   // 연결 프로필 실패·빈 응답 때 메인 연결로 다시 보냄 (기본 끔 = 실패하면 거기서 멈춤)
     profContact: '',         // 기능별 모델 (연결 프로필, '' = 확장 AI 모델)
     profGen: '',
     profFeeds: '',
@@ -454,6 +454,8 @@ export function settings() {
     if (fresh && s.contactInject === false) s.contactReflect = 'off'; // v2.2 이전 '연락 알려 주기' 끔 → 반영 끔
     // v2.7.18: 2.7.16~17은 연락 간단 모드를 예고 없이 모두에게 켰다 → 한 번만 원래(자세히)로 되돌린다 (그 뒤 직접 켜면 그대로)
     if (s.contactSimpleFix !== '2.7.18') { s.contactSimple = false; s.contactSimpleFix = '2.7.18'; }
+    // 연결 프로필이 실패하면 멈추는 게 기본 (예전 기본은 「메인 연결로 다시 보내기」) → 한 번만 끔으로 맞춘다 (그 뒤 직접 켜면 그대로)
+    if (s.fallbackFix !== '2.7.21') { s.aiFallbackMain = false; s.fallbackFix = '2.7.21'; }
     filled = s;
     return s;
 }

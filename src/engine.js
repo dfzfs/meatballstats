@@ -1422,6 +1422,33 @@ function legacyKeys(chat) {
     return map;
 }
 export const anchorOf = (m) => `${msgKey(m)}|${m?.swipe_id ?? 0}`;
+// 스와이프 삭제 (v2.7.21 고침): 묶인 행동의 열쇠는 「첫 스와이프의 생성 시각 | 스와이프 번호」라서,
+// 앞 스와이프를 지우면 번호가 하나씩 당겨지고 · 첫 스와이프를 지우면 열쇠 자체가 바뀐다 → 그 답에 묶인 행동이 계산에서 조용히 빠졌음
+// → 계산할 때마다 메시지의 열쇠를 적어 두고(스와이프가 줄어든 채로는 덮어쓰지 않음), 지웠다는 신호가 오면 옛 열쇠로 찾아 새 열쇠 · 새 번호로 옮긴다.
+//   지운 스와이프에 묶여 있던 행동은 돌아올 스와이프가 없으니 「|x」로 표시해 다른 스와이프에 잘못 붙지 않게 한다 (기록은 남음).
+const keyMemo = new WeakMap();
+function rememberKey(m) {
+    if (!m || typeof m !== 'object') return;
+    const n = Array.isArray(m.swipes) ? m.swipes.length : 0, old = keyMemo.get(m);
+    if (old && n < old.n) return; // 스와이프가 줄었는데 아직 옮기지 않았다 → 옛 열쇠를 지킨다
+    keyMemo.set(m, { k: msgKey(m), n });
+}
+export function shiftSwipeAnchors(meta, m, removed) {
+    if (!m || !Number.isInteger(removed) || removed < 0) return false;
+    const now = msgKey(m), old = keyMemo.get(m)?.k ?? now;
+    keyMemo.set(m, { k: now, n: Array.isArray(m.swipes) ? m.swipes.length : 0 });
+    let changed = false;
+    for (const a of meta?.adjust ?? []) {
+        if (typeof a?.an !== 'string') continue;
+        const cut = a.an.lastIndexOf('|');
+        if (cut < 0 || a.an.slice(0, cut) !== old) continue;
+        const sid = Number(a.an.slice(cut + 1));
+        if (!Number.isInteger(sid)) continue; // 이미 「|x」
+        const next = sid === removed ? `${now}|x` : `${now}|${sid > removed ? sid - 1 : sid}`;
+        if (next !== a.an) { a.an = next; changed = true; }
+    }
+    return changed;
+}
 // 이야기와 상관없는 정리 · 설정 편집은 묶지 않음 (메시지를 지워도 남음): 번역 · 영어 저장(라벨 없는 칸 저장) · 완전 삭제 · 읽음 · 메모 · 업적 표시 · 애정 끄기 · 연인 확정
 const META_OPS = new Set(['_purge', '_read', '_nread', '_memo', '_achtog', '_nolove', '_love', '_bond', '_unbond', '_alert']);
 export const isMetaEdit = (a) => (a?.ops?.length ? a.ops.every(([k]) => META_OPS.has(k)) : !!a?.set && !a.label && !a.silent) || a?.keep === true; // 조용한 저장(구매 때 상점 재고 −1 등)은 행동이라 묶음
@@ -1461,7 +1488,7 @@ export function compute(limit, opts = {}) {
     if (!meta.atFix) { clampAdjust(meta, chat.length); meta.atFix = true; }
     // 묶인 편집: 묶인 메시지가 지금 채팅에 그 스와이프로 있을 때만 · 자리는 그 메시지 바로 뒤
     moveContinued(meta, chat);
-    const byKey = new Map(); chat.forEach((m, i) => byKey.set(msgKey(m), i));
+    const byKey = new Map(); chat.forEach((m, i) => { byKey.set(msgKey(m), i); rememberKey(m); });
     let legacy = null;
     const live = (a) => {
         if (!a.an) return true;

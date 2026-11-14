@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 let bad = 0;
-for (const t of ['t-smoke', 't-quest', 't-pip', 't-misc', 't-tr', 't-v275', 't-v276', 't-v277', 't-v2710', 't-xss', 't-v2712', 't-v2713', 't-v2716', 't-v2718', 't-v2719', 't-v2720', 't-v2721', 't-real', 't-help', 't-mobile', 't-tiles', 't-audit', 't-recheck', 't-fuzz2']) {
+for (const t of ['t-smoke', 't-quest', 't-pip', 't-misc', 't-tr', 't-v275', 't-v276', 't-v277', 't-v2710', 't-xss', 't-v2712', 't-v2713', 't-v2716', 't-v2718', 't-v2719', 't-v2720', 't-v2721', 't-real', 't-help', 't-mobile', 't-tiles', 't-audit', 't-recheck', 't-fuzz2', 't-swdel']) {
     const r = spawnSync(process.execPath, [path.join(here, `${t}.mjs`)], { encoding: 'utf8', timeout: 240000 });
     const out = `${r.stdout}${r.stderr}`;
     const fails = out.split('\n').filter(l => l.includes('✘') || /Error/.test(l));
