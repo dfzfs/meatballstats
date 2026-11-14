@@ -55,7 +55,7 @@ const fi = (c) => `<i class="fa-solid ${c}"></i>`;
 export const TILES = {
     date: { name: '날짜 · 시간', w: 2, on: (d) => d.calendar, f: (s, L) => { const c = s.data.calendar; return { h: `<b class="hi">${esc(c.time)}</b><small>${esc(L ? dateShort(c) : `${c.m}/${c.d}`)}</small>${L && c.weather ? `<small>${esc(c.weather)}</small>` : ''}`, t: `${dateShort(c)} ${c.time}${c.weather ? ` · ${c.weather}` : ''}` }; } },
     loc: { name: '위치', on: (d) => d.map?.here, f: (s) => ({ h: `${fi('fa-location-dot')}<span>${esc(s.data.map.here)}</span>`, t: s.data.map.here }) },
-    bars: { name: '게이지', w: 4, on: (d) => d.stats?.bars.length, f: (s, L) => ({ h: s.data.stats.bars.slice(0, 4).map(b => { const p = b.max > 0 ? Math.max(0, Math.min(100, b.cur / b.max * 100)) : 0; return `<span class="g"><em>${esc(L ? b.name : /[가-힣]/.test(b.name) ? b.name.slice(0, 2) : b.name.slice(0, 3))}</em><b>${fmtNum(b.cur)}</b><i><u style="width:${p}%;background:${esc(b.color || 'var(--ss-acc)')}"></u></i></span>`; }).join(''), t: s.data.stats.bars.map(b => `${b.name} ${b.cur}/${b.max}`).join(' · ') }) },
+    bars: { name: '게이지', w: 4, on: (d) => d.stats?.bars.length, f: (s, L) => ({ h: s.data.stats.bars.slice(0, 4).map(b => { const p = b.max > 0 ? Math.max(0, Math.min(100, b.cur / b.max * 100)) : 0; return `<span class="g"><em>${esc(barLabel(b.name, L))}</em><b>${fmtNum(b.cur)}</b><i><u style="width:${p}%;background:${esc(b.color || 'var(--ss-acc)')}"></u></i></span>`; }).join(''), t: s.data.stats.bars.map(b => `${b.name} ${b.cur}/${b.max}`).join(' · ') }) },
     cash: { name: '돈', on: (d) => d.wallet, f: (s, L) => ({ h: `${fi('fa-coins')}<span>${L ? `${fmtNum(s.data.wallet.cash)} ${esc(s.data.wallet.currency)}` : man(s.data.wallet.cash)}</span>`, t: `${fmtNum(s.data.wallet.cash)} ${s.data.wallet.currency}` }) },
     contact: { name: '연락', on: (d) => d.contact, f: (s) => { const n = unreadCount(s), tr = inTransit(s).length; return { h: `${fi(s.data.contact.mode === 'letter' ? 'fa-envelope' : 'fa-comment')}${n ? `<b class="al">${n}</b>` : ''}${tr ? `<small>${tr}</small>` : ''}`, t: `${s.data.contact.app}${n ? ` · 새 ${n}` : ''}${tr ? ` · 배달 중 ${tr}` : ''}` }; } },
     quest: { name: '퀘스트', on: (d) => d.quest?.list.some(q => q.status === 'active'), f: (s, L) => { const a = s.data.quest.list.filter(q => q.status === 'active'); return { h: `${fi('fa-scroll')}<span>${L ? esc(a[0].title) : a.length}</span>`, t: a.map(q => q.title).join(' · ') }; } },
@@ -69,6 +69,11 @@ export const TILES = {
     music: { name: '지금 BGM', on: (d) => d.music?.now, f: (s) => ({ h: `${fi('fa-music')}<span>${esc(s.data.music.now.title)}</span>`, t: s.data.music.now.title }) },
     custom: { name: '내 탭', on: (d) => d.custom?.tabs.some(t => t.fields.length), f: (s, L) => { const t = s.data.custom.tabs.find(x => x.fields.length), f = t.fields[0]; return { h: `<span>${esc(t.icon)}</span><span>${L ? `${esc(f.k)} ` : ''}${esc(String(f.type === 'text' ? f.v : fmtNum(f.v)))}</span>`, t: t.fields.map(x => `${x.k} ${x.v}`).join(' · ') }; } },
 };
+function barLabel(name, long) {
+    const n = viewTr() ? trString(name) : String(name ?? '');
+    if (long) return n;
+    return /[가-힣]/.test(n) ? (n.length <= 4 ? n : n.slice(0, 3)) : n.slice(0, 3);
+}
 const TMOD = { bars: 'stats', date: 'calendar', loc: 'map', cash: 'wallet', contact: 'contact', quest: 'quest', rel: 'rel', mind: 'rel', cond: 'stats', news: 'news', fate: 'fate', music: 'music', custom: 'custom' };
 // 판 배경 기본 무늬 (v2.7.21 · 직접 그린 SVG · 그림 파일 없음) — 고르지 않으면 「모눈 데이지」
 const svg = (w, h, body) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'>${body}</svg>`)}")`;

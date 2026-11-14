@@ -953,7 +953,7 @@ function registerCommands() {
                 const after = await instructModule(id, String(text ?? ''), app.current.state);
                 const box = document.createElement('div'); box.className = 'ss-root ss-scope ss-preview';
                 box.innerHTML = `<h3>바뀌는 내용 — ${esc(id === 'core' ? '세계' : MOD[id].name)}</h3>${diffHTML(id === 'core' ? app.current.state.core : app.current.state.data[id], after)}`;
-                if (await confirmPopup(box)) await addAdjust({ set: { mod: id, data: after }, label: `💬 ${id === 'core' ? '세계' : MOD[id].name} 수정: ${short(text, 40)}` });
+                if (await confirmPopup(box)) await addAdjust({ set: { mod: id, data: after }, label: `💬 ${id === 'core' ? '세계' : MOD[id].name} 수정: ${short(text, 40)}`, keep: true });
             } catch (e) { toastr.error(esc(e.message), TITLE); }
             return '';
         },

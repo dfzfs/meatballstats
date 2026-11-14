@@ -222,13 +222,13 @@ async function onPanelAction(el, act, arg, btn) {
             return rr();
         }
         case 'cancel': st.mode = 'view'; return rr();
-        case 'save': st.mode = 'view'; await commit(mod, st.work, `✏️ ${mname} 직접 편집`); return;
+        case 'save': st.mode = 'view'; await commit(mod, st.work, `✏️ ${mname} 직접 편집`, { keep: true }); return;
         case 'savejson': {
-            try { const obj = JSON.parse(el.querySelector('.ss-json').value); st.mode = 'view'; await commit(mod, obj, `✏️ ${mname} 직접 편집`); }
+            try { const obj = JSON.parse(el.querySelector('.ss-json').value); st.mode = 'view'; await commit(mod, obj, `✏️ ${mname} 직접 편집`, { keep: true }); }
             catch (e) { toastr.error(`JSON 형식이 올바르지 않아요: ${esc(e.message)}`, TITLE); }
             return;
         }
-        case 'genblank': return commit(mod, EMPTY[mod](), '');
+        case 'genblank': return commit(mod, EMPTY[mod](), '', { keep: true });
         case 'gen': case 'regen': {
             if (act === 'regen' && !(await askConfirm(`「${mname}」 칸을 처음부터 다시 만들까요? (AI 1회 · 지금 내용은 바뀝니다. 부분 수정은 「AI로 수정」)`))) return;
             busyBtn(btn, true);
@@ -236,7 +236,7 @@ async function onPanelAction(el, act, arg, btn) {
                 const sources = await gatherSources({});
                 const data = await genModule(mod, { sources, core: s.core, profileMode: s.data.profile?.mode, instruction: st.ui.instructText, contactMode: s.data.contact?.mode });
                 if (mod === 'rel' && s.data.profile) relFromProfiles(data, s.data.profile); // 다시 생성해도 프로필의 사람은 빠지지 않게
-                await commit(mod, data, `🔄 ${mname} 생성`);
+                await commit(mod, data, `🔄 ${mname} 생성`, { keep: true });
                 toastr.success('채웠어요.', TITLE);
             } catch (e) { ssErr(LOG, e); toastr.error(`생성 실패: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
             return;
@@ -250,7 +250,7 @@ async function onPanelAction(el, act, arg, btn) {
                 const after = await instructModule(mod, text, s);
                 busyBtn(btn, false);
                 const box = h(`<div class="ss-root ss-scope ss-preview"><h3>바뀌는 내용 — ${esc(mname)}</h3><p class="ss-hint">지시: ${esc(text)}</p>${diffHTML(before, after)}</div>`);
-                if (await confirmPopup(box)) { st.ui.instructText = ''; st.ui.instructOpen = false; await commit(mod, after, `💬 ${mname} 수정: ${short(text, 40)}`); toastr.success('적용했어요.', TITLE); }
+                if (await confirmPopup(box)) { st.ui.instructText = ''; st.ui.instructOpen = false; await commit(mod, after, `💬 ${mname} 수정: ${short(text, 40)}`, { keep: true }); toastr.success('적용했어요.', TITLE); }
             } catch (e) { ssErr(LOG, e); toastr.error(`수정 실패: ${esc(e.message)}`, TITLE); busyBtn(btn, false); }
             return;
         }
@@ -360,7 +360,7 @@ const MANAGE_ACTIONS = {
         const sources = await gatherSources({});
         let k = 0;
         for (const id of todo) {
-            try { await commit(id, await genModule(id, { sources, core: app.current.state.core, profileMode: app.current.state.data.profile?.mode ?? 'minimal' }), ''); }
+            try { await commit(id, await genModule(id, { sources, core: app.current.state.core, profileMode: app.current.state.data.profile?.mode ?? 'minimal' }), '', { keep: true }); }
             catch (e) { toastr.error(`${MOD[id].name} 실패: ${esc(e.message)}`, TITLE); }
             busyBtn(btn, false); busyBtn(btn, true, `${++k}/${todo.length}`);
         }

@@ -1486,6 +1486,8 @@ export function compute(limit, opts = {}) {
     // 분기한 채팅의 뒷부분 편집은 채팅을 열 때 followBranch(safe.js)가 지운다 — 여기서 걸러 두기만 하면 채팅이 그 길이를 다시 넘을 때 되살아나서 거르지 않는다
     // 지운 메시지 뒤의 편집은 지울 때 당겨 둔다(clampAdjust) · 2.7.20 앞 채팅은 처음 한 번 당긴다
     if (!meta.atFix) { clampAdjust(meta, chat.length); meta.atFix = true; }
+    // 2.7.21: 탭 고치기(✏️ 직접 편집 · 💬 AI로 수정 · 🔄 다시 생성)까지 답에 묶여서, 그 답을 리롤하면 고친 게 사라졌음 → 한 번 풀어 둠
+    if (!meta.editFix) { for (const a of meta.adjust ?? []) if (a?.an && a.set && /^(✏️|💬|🔄) /u.test(a.label ?? '')) { delete a.an; a.keep = true; } meta.editFix = true; }
     // 묶인 편집: 묶인 메시지가 지금 채팅에 그 스와이프로 있을 때만 · 자리는 그 메시지 바로 뒤
     moveContinued(meta, chat);
     const byKey = new Map(); chat.forEach((m, i) => { byKey.set(msgKey(m), i); rememberKey(m); });
